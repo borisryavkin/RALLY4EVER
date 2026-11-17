@@ -185,11 +185,13 @@ class _RallyAppState extends State<RallyApp> {
         ],
       ),
     );
-    if (accepted != true || !await Geolocator.isLocationServiceEnabled())
+    if (accepted != true || !await Geolocator.isLocationServiceEnabled()) {
       return;
+    }
     var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied)
+    if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
+    }
     if (permission == LocationPermission.whileInUse ||
         permission == LocationPermission.always) {
       final value = await Geolocator.getCurrentPosition();
@@ -821,23 +823,25 @@ class AboutAccess extends StatelessWidget {
         style: TextStyle(fontWeight: FontWeight.w800),
       ),
       CardBox(
-        child: Column(
-          children: ['Working', 'Studying', 'Looking for work', 'Retired']
-              .map(
-                (value) => RadioListTile<String>(
-                  value: value,
-                  groupValue: member.currentActivity,
-                  activeColor: red,
-                  onChanged: (value) {
-                    if (value != null) {
-                      member.currentActivity = value;
-                      refresh();
-                    }
-                  },
-                  title: Text(value),
-                ),
-              )
-              .toList(),
+        child: RadioGroup<String>(
+          groupValue: member.currentActivity,
+          onChanged: (value) {
+            if (value != null) {
+              member.currentActivity = value;
+              refresh();
+            }
+          },
+          child: Column(
+            children: ['Working', 'Studying', 'Looking for work', 'Retired']
+                .map(
+                  (value) => RadioListTile<String>(
+                    value: value,
+                    activeColor: red,
+                    title: Text(value),
+                  ),
+                )
+                .toList(),
+          ),
         ),
       ),
       const SizedBox(height: 16),
@@ -1464,7 +1468,7 @@ class _LocationPickerState extends State<LocationPicker> {
               Expanded(
                 child: ListView.separated(
                   itemCount: matches.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
                   itemBuilder: (_, index) {
                     final location = matches[index];
                     final selected = location == widget.currentLocation;
@@ -1612,11 +1616,12 @@ class _PlayState extends State<Play> {
       FutureBuilder<List<RallyProgram>>(
         future: programs,
         builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done)
+          if (snapshot.connectionState != ConnectionState.done) {
             return const Padding(
               padding: EdgeInsets.all(28),
               child: Center(child: CircularProgressIndicator(color: red)),
             );
+          }
           // The manually selected play area is the search origin. This keeps
           // “Near Bondi” results anchored to Bondi even if an emulator or a
           // stale device location reports somewhere else.
@@ -1638,12 +1643,13 @@ class _PlayState extends State<Play> {
                   .where((item) => item.distance <= 80)
                   .toList()
                 ..sort((a, b) => a.distance.compareTo(b.distance));
-          if (matching.isEmpty)
+          if (matching.isEmpty) {
             return CardBox(
               child: Text(
                 'No active $sport programs are currently listed within 80 km of ${widget.location}.',
               ),
             );
+          }
           return Column(
             children: matching
                 .map(
@@ -2376,7 +2382,7 @@ class Profile extends StatelessWidget {
 }
 
 class Help extends StatelessWidget {
-  const Help();
+  const Help({super.key});
   @override
   Widget build(BuildContext c) => ListView(
     padding: const EdgeInsets.all(22),
@@ -2706,8 +2712,9 @@ class MapPaint extends CustomPainter {
   @override
   void paint(Canvas c, Size s) {
     c.drawColor(const Color(0xffedf4ef), BlendMode.srcOver);
-    for (final p in [Offset(s.width * .28, 260), Offset(s.width * .62, 340)])
+    for (final p in [Offset(s.width * .28, 260), Offset(s.width * .62, 340)]) {
       c.drawCircle(p, 16, Paint()..color = navy);
+    }
     c.drawCircle(Offset(s.width * .3, 220), 18, Paint()..color = red);
   }
 
