@@ -73,7 +73,7 @@ service cloud.firestore {
           && request.resource.data.updatedAt == request.time);
       }
     }
-    match /emailIdentities/{emailHash} { allow read, write: if admin(); }
+    match /emailIdentities/{normalizedEmail} { allow read, write: if admin(); }
     match /events/{eventId} {
       allow read: if active() && (resource.data.status == 'published' || assignedCoach(eventId) || admin());
       allow write: if admin();

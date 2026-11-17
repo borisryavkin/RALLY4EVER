@@ -3,7 +3,7 @@ import { initializeApp, deleteApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { requireEmulators, projectId } from './emulator-env.mjs';
-import { accounts, demoPassword, profile, emailHash, event } from './fixtures.mjs';
+import { accounts, demoPassword, profile, identityKey, event } from './fixtures.mjs';
 
 export async function seed() {
   requireEmulators();
@@ -26,7 +26,7 @@ export async function seed() {
       }
       await auth.setCustomUserClaims(account.uid, {role: account.role});
       await create(`users/${account.uid}`, profile(account, now));
-      await create(`emailIdentities/${emailHash(account.email)}`, {
+      await create(`emailIdentities/${identityKey(account.email)}`, {
         emailLower: account.email, uid: account.uid, createdAt: now,
       });
     }
@@ -42,7 +42,7 @@ export async function seed() {
       eventId: 'event-1', uid: 'participant-1', createdAt: now, cancelledAt: null, source: 'coach-added',
     });
     await create('checkins/event-3_participant-1', {
-      eventId: 'event-3', uid: 'participant-1', scannedAt: now, method: 'manual',
+      feedbackReminderPending: true, eventId: 'event-3', uid: 'participant-1', scannedAt: now, method: 'manual',
       lat: -33.8926, lng: 151.2511, distanceM: 0, status: 'confirmed', confirmedBy: 'coach-1',
       confirmedAt: now, walkIn: false, corrections: [],
       eventEndsAt: Timestamp.fromMillis(now.toMillis() - 82800000),

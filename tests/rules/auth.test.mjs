@@ -4,14 +4,14 @@ import {initializeApp, deleteApp} from 'firebase/app';
 import {getAuth, connectAuthEmulator, signInWithEmailAndPassword, signOut, getIdTokenResult} from 'firebase/auth';
 import {getFirestore, connectFirestoreEmulator, doc, getDoc, getDocs, collection, query, where} from 'firebase/firestore';
 import {seed} from '../../scripts/seed.mjs';
-import {accounts, demoPassword, normalizeEmail, emailHash} from '../../scripts/fixtures.mjs';
+import {accounts, demoPassword, normalizeEmail, identityKey} from '../../scripts/fixtures.mjs';
 import {requireEmulators, projectId} from '../../scripts/emulator-env.mjs';
 
 test('seed + real Auth emulator login: roles and canonical coach-added intent',async () => {
   requireEmulators();
   assert.deepEqual(await seed(),{accounts:13,events:3});
   assert.deepEqual(await seed(),{accounts:13,events:3}); // safe to rerun
-  assert.equal(emailHash('  MEMBER1@EXAMPLE.TEST '),emailHash('member1@example.test'));
+  assert.equal(identityKey('  MEMBER1@EXAMPLE.TEST '),identityKey('member1@example.test'));
   const app=initializeApp({apiKey:'demo-api-key',projectId,appId:'demo-auth-test'},'auth-integration');
   const auth=getAuth(app), db=getFirestore(app);
   connectAuthEmulator(auth,'http://127.0.0.1:9099',{disableWarnings:true});

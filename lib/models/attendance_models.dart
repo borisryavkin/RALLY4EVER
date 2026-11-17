@@ -140,7 +140,7 @@ class CheckInRecord {
   final DateTime scannedAt;
   final CheckInMethod method;
   final CheckInStatus status;
-  final double lat, lng, distanceM;
+  final double? lat, lng, distanceM;
   final bool walkIn;
   final String? confirmedBy;
   final List<Map<String, dynamic>> corrections;
@@ -150,9 +150,9 @@ class CheckInRecord {
     scannedAt: (d['scannedAt'] as Timestamp).toDate(),
     method: CheckInMethod.values.byName(d['method'] as String),
     status: CheckInStatus.values.byName(d['status'] as String),
-    lat: (d['lat'] as num).toDouble(),
-    lng: (d['lng'] as num).toDouble(),
-    distanceM: (d['distanceM'] as num).toDouble(),
+    lat: (d['lat'] as num?)?.toDouble(),
+    lng: (d['lng'] as num?)?.toDouble(),
+    distanceM: (d['distanceM'] as num?)?.toDouble(),
     walkIn: d['walkIn'] as bool,
     confirmedBy: d['confirmedBy'] as String?,
     corrections: (d['corrections'] as List)

@@ -1,7 +1,5 @@
-import { createHash } from 'node:crypto';
-
 export const normalizeEmail = email => email.trim().toLowerCase();
-export const emailHash = email => createHash('sha256').update(normalizeEmail(email)).digest('hex');
+export const identityKey = normalizeEmail;
 export const demoPassword = 'Emulator-only-Password-123!';
 export const accounts = [
   {uid: 'admin-1', email: 'admin@rally4ever.org', role: 'admin'},
