@@ -170,3 +170,9 @@ Track these in `docs/SETUP.md` during implementation:
 7. Review a dry-run migration/merge report and backup/rollback strategy before authorizing any real-data mutation. Emulator fixtures can exercise the path first.
 
 **Stop point:** approve or revise this plan before implementation. The Git repository boundary also needs resolution before feature-branch commits.
+
+## 10. Implementation status after approval — 17 November 2026
+
+The findings above describe the original prototype and remain historical evidence. The app now has its own Git repository (`main` baseline `071698b`, active `feature/qr-attendance`), and the nine analyzer findings were corrected separately in `3a9b5b0`. The parent SDK repo was not changed.
+
+Stage 3 adds a local-only Firebase foundation, role/ownership rules, schema, indexes, Auth/read service contracts, seed and emulator tests; see `DATA_MODEL.md`, `PLAN.md`, `CHANGELOG.md`, `SETUP.md` and root `firestore.rules`. No UI paths have been connected or replaced yet. Production Firebase configuration, Functions, concurrent identity provisioning, merge implementation, check-in validation and live notifications remain unimplemented. No claim is made that the old backend duplicate defect is fixed. Review is required at this stage before continuing.
