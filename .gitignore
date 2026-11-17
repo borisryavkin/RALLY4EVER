@@ -72,3 +72,6 @@ ui-debug.log*
 node_modules/
 .firebase-emulator-data/
 /functions/lib/
+
+# Generated only by the explicit development LAN launcher
+.firebase.lan.generated.json

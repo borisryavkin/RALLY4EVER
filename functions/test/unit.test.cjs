@@ -218,3 +218,37 @@ test("Workspace email never creates a coach role; coach access needs a claim and
     "participant",
   );
 });
+
+test("network guard permits LAN only with explicit private host and demo emulator identity", () => {
+  const { assertEmulatorNetwork } = require("../lib/emulator_network");
+  const local = {
+    FUNCTIONS_EMULATOR: "true",
+    GCLOUD_PROJECT: "demo-rally4ever",
+    FIRESTORE_EMULATOR_HOST: "127.0.0.1:8080",
+    FIREBASE_AUTH_EMULATOR_HOST: "127.0.0.1:9099",
+  };
+  assertEmulatorNetwork(local);
+  const lan = {
+    ...local,
+    LAN_TESTING: "true",
+    LAN_HOST: "192.168.1.50",
+    FIRESTORE_EMULATOR_HOST: "0.0.0.0:8080",
+    FIREBASE_AUTH_EMULATOR_HOST: "0.0.0.0:9099",
+  };
+  assertEmulatorNetwork(lan);
+  for (const ip of ["10.0.0.20", "172.16.1.20", "172.31.1.20", "192.168.1.20"])
+    assertEmulatorNetwork({ ...lan, LAN_HOST: ip });
+  for (const env of [
+    { ...lan, LAN_TESTING: "false" },
+    { ...lan, LAN_HOST: "8.8.8.8" },
+    { ...lan, LAN_HOST: "" },
+    { ...lan, FUNCTIONS_EMULATOR: "false" },
+    { ...lan, GCLOUD_PROJECT: "production" },
+    { ...lan, FIREBASE_PROJECT_ID: "production" },
+    { ...lan, FIREBASE_CONFIG: '{"projectId":"production"}' },
+    { ...lan, NODE_ENV: "production" },
+    { ...local, FIRESTORE_EMULATOR_HOST: "0.0.0.0:8080" },
+    { ...lan, FIREBASE_AUTH_EMULATOR_HOST: "8.8.8.8:9099" },
+  ])
+    assert.throws(() => assertEmulatorNetwork(env));
+});

@@ -1,3 +1,4 @@
+import { authEmulatorOrigin, developmentWebOrigin } from "./emulator_network";
 import { randomBytes } from "node:crypto";
 import { DocumentData, Timestamp } from "firebase-admin/firestore";
 import { AttendanceService } from "./service";
@@ -108,14 +109,14 @@ export class NoAppService {
         consumed: false,
       });
       const response = await fetch(
-        "http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=demo-api-key",
+        `${authEmulatorOrigin()}/identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=demo-api-key`,
         {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             requestType: "EMAIL_SIGNIN",
             email,
-            continueUrl: `http://localhost:7357/?noAppRequest=${requestId}`,
+            continueUrl: `${developmentWebOrigin()}/?noAppRequest=${requestId}`,
             canHandleCodeInApp: true,
           }),
         },
@@ -158,7 +159,7 @@ export class NoAppService {
         "Use the QR code that started this request",
       );
     const response = await fetch(
-      "http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signInWithEmailLink?key=demo-api-key",
+      `${authEmulatorOrigin()}/identitytoolkit.googleapis.com/v1/accounts:signInWithEmailLink?key=demo-api-key`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },

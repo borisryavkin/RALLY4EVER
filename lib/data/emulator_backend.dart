@@ -4,38 +4,56 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 
 import '../models/attendance_models.dart';
+import 'emulator_settings.dart';
 
-/// Explicit opt-in; not wired into the prototype UI until the participant stage.
+/// Explicit development opt-in; loopback by default, private LAN only by flag.
 /// There is deliberately no production initialization path.
 class EmulatorBackend {
-  EmulatorBackend._(this.app, this.auth, this.firestore, this.functions);
-  static const projectId = 'demo-rally4ever';
+  EmulatorBackend._(
+    this.app,
+    this.auth,
+    this.firestore,
+    this.functions,
+    this.settings,
+  );
+  static const projectId = EmulatorSettings.projectId;
   final FirebaseApp app;
   final FirebaseAuth auth;
   final FirebaseFirestore firestore;
   final FirebaseFunctions functions;
+  final EmulatorSettings settings;
 
-  static String validateHost(String host) {
-    // Android emulator uses 10.0.2.2 to reach the machine's loopback interface.
-    if (!const ['localhost', '127.0.0.1', '10.0.2.2'].contains(host)) {
-      throw ArgumentError.value(
-        host,
-        'host',
-        'Only local emulator hosts allowed',
-      );
-    }
-    return host;
-  }
+  static String validateHost(
+    String host, {
+    bool lanTesting = false,
+    String lanHost = '',
+  }) => EmulatorSettings.resolve(
+    host: host,
+    lanTesting: lanTesting,
+    lanHost: lanHost,
+  ).host;
 
   static Future<EmulatorBackend> connect({
     bool enabled = const bool.fromEnvironment('USE_FIREBASE_EMULATORS'),
     String host = const String.fromEnvironment(
       'FIREBASE_EMULATOR_HOST',
-      defaultValue: '127.0.0.1',
+      defaultValue: '',
+    ),
+    bool lanTesting = const bool.fromEnvironment('LAN_TESTING'),
+    String lanHost = const String.fromEnvironment('LAN_HOST'),
+    String requestedProjectId = const String.fromEnvironment(
+      'FIREBASE_PROJECT_ID',
+      defaultValue: projectId,
     ),
   }) async {
     if (!enabled) throw StateError('Enable USE_FIREBASE_EMULATORS explicitly');
-    validateHost(host);
+    final settings = EmulatorSettings.resolve(
+      host: host,
+      lanTesting: lanTesting,
+      lanHost: lanHost,
+      requestedProjectId: requestedProjectId,
+    );
+    final emulatorHost = settings.host;
     final app = await Firebase.initializeApp(
       name: 'rally4ever-emulator',
       options: const FirebaseOptions(
@@ -49,15 +67,15 @@ class EmulatorBackend {
     final auth = FirebaseAuth.instanceFor(app: app);
     final firestore = FirebaseFirestore.instanceFor(app: app);
     // Connect before making any Auth or Firestore request. No production fallback.
-    await auth.useAuthEmulator(host, 9099);
+    await auth.useAuthEmulator(emulatorHost, 9099);
     firestore.settings = const Settings(persistenceEnabled: false);
-    firestore.useFirestoreEmulator(host, 8080);
+    firestore.useFirestoreEmulator(emulatorHost, 8080);
     final functions = FirebaseFunctions.instanceFor(
       app: app,
       region: 'australia-southeast1',
     );
-    functions.useFunctionsEmulator(host, 5001);
-    return EmulatorBackend._(app, auth, firestore, functions);
+    functions.useFunctionsEmulator(emulatorHost, 5001);
+    return EmulatorBackend._(app, auth, firestore, functions, settings);
   }
 }
 

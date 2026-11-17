@@ -22,10 +22,14 @@ class ParticipantApp extends StatefulWidget {
     this.initialEventId,
     this.cameraEnabled = true,
     this.mapTilesEnabled = true,
+    this.lanTesting = const bool.fromEnvironment('LAN_TESTING'),
+    this.lanHost = const String.fromEnvironment('LAN_HOST'),
   });
   final ParticipantRepository? repository;
   final String? startupError, initialPage, initialEventId;
   final bool cameraEnabled, mapTilesEnabled;
+  final bool lanTesting;
+  final String lanHost;
   @override
   State<ParticipantApp> createState() => _ParticipantAppState();
 }
@@ -253,7 +257,35 @@ class _ParticipantAppState extends State<ParticipantApp> {
           child: Center(
             child: SizedBox(
               width: math.min(constraints.maxWidth, 520),
-              child: AbsorbPointer(absorbing: busy, child: buildPage(context)),
+              child: Column(
+                children: [
+                  if (widget.lanTesting)
+                    Material(
+                      key: const Key('lan-testing-banner'),
+                      color: pink,
+                      child: SafeArea(
+                        bottom: false,
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Text(
+                            'LAN TESTING — DEVELOPMENT ONLY\n${widget.lanHost} · Emulators exposed to Wi-Fi. Demo data only.',
+                            style: const TextStyle(
+                              color: navy,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  Expanded(
+                    child: AbsorbPointer(
+                      absorbing: busy,
+                      child: buildPage(context),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -510,90 +542,103 @@ class _ParticipantAppState extends State<ParticipantApp> {
     return Scaffold(
       backgroundColor: colors[step - 1],
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(child: brand(light: light)),
-                  TextButton(
-                    onPressed: () => go('account'),
-                    child: Text(
-                      'Skip',
-                      style: TextStyle(color: light ? Colors.white : navy),
-                    ),
-                  ),
-                ],
-              ),
-              const Spacer(),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(24),
-                child: Image.asset(
-                  [
-                    'assets/candid_photo.jpg.webp',
-                    'assets/group.jpg.webp',
-                    'assets/lmfo.jpg.webp',
-                  ][step - 1],
-                  height: 230,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                titles[step - 1],
-                style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                  color: light ? Colors.white : navy,
-                  fontSize: 38,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Text(
-                [
-                  'Free social tennis and pickleball in 50+ places across Australia.',
-                  'No experience needed. Rackets and balls are provided. Just come along and have a hit.',
-                  'A regular, low-pressure way to get moving and meet people near you.',
-                ][step - 1],
-                style: TextStyle(
-                  color: light ? Colors.white : navy,
-                  height: 1.5,
-                ),
-              ),
-              const SizedBox(height: 22),
-              Row(
-                children: List.generate(
-                  3,
-                  (i) => Container(
-                    width: i == step - 1 ? 22 : 6,
-                    height: 5,
-                    margin: const EdgeInsets.only(right: 5),
-                    decoration: BoxDecoration(
-                      color: (light ? Colors.white : navy).withValues(
-                        alpha: i == step - 1 ? 1 : .35,
+        child: introViewport(
+          Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(child: brand(light: light)),
+                    TextButton(
+                      onPressed: () => go('account'),
+                      child: Text(
+                        'Skip',
+                        style: TextStyle(color: light ? Colors.white : navy),
                       ),
-                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ],
+                ),
+                const Spacer(),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: Image.asset(
+                    [
+                      'assets/candid_photo.jpg.webp',
+                      'assets/group.jpg.webp',
+                      'assets/lmfo.jpg.webp',
+                    ][step - 1],
+                    height: 230,
+                    width: double.infinity,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  titles[step - 1],
+                  style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                    color: light ? Colors.white : navy,
+                    fontSize: 38,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  [
+                    'Free social tennis and pickleball in 50+ places across Australia.',
+                    'No experience needed. Rackets and balls are provided. Just come along and have a hit.',
+                    'A regular, low-pressure way to get moving and meet people near you.',
+                  ][step - 1],
+                  style: TextStyle(
+                    color: light ? Colors.white : navy,
+                    height: 1.5,
+                  ),
+                ),
+                const SizedBox(height: 22),
+                Row(
+                  children: List.generate(
+                    3,
+                    (i) => Container(
+                      width: i == step - 1 ? 22 : 6,
+                      height: 5,
+                      margin: const EdgeInsets.only(right: 5),
+                      decoration: BoxDecoration(
+                        color: (light ? Colors.white : navy).withValues(
+                          alpha: i == step - 1 ? 1 : .35,
+                        ),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
                     ),
                   ),
                 ),
-              ),
-              const Spacer(),
-              FilledButton(
-                style: FilledButton.styleFrom(
-                  backgroundColor: step == 2 ? coral : navy,
+                const Spacer(),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: step == 2 ? coral : navy,
+                  ),
+                  onPressed: () =>
+                      go(step == 3 ? 'account' : 'welcome${step + 1}'),
+                  child: Text(step == 3 ? 'Get started' : 'Continue'),
                 ),
-                onPressed: () =>
-                    go(step == 3 ? 'account' : 'welcome${step + 1}'),
-                child: Text(step == 3 ? 'Get started' : 'Continue'),
-              ),
-              const SizedBox(height: 8),
-            ],
+                const SizedBox(height: 8),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
+
+  Widget introViewport(Widget child) => !widget.lanTesting
+      ? child
+      : LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: IntrinsicHeight(child: child),
+            ),
+          ),
+        );
 
   String stateFor(Record e) {
     final scan = repo.checkin(eid(e));

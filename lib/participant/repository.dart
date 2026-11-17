@@ -280,7 +280,7 @@ class FirebaseParticipantRepository extends ParticipantRepository {
   Future<void> sendLink(String email) => backend.auth.sendSignInLinkToEmail(
     email: normalizeEmail(email),
     actionCodeSettings: ActionCodeSettings(
-      url: 'http://localhost:7357',
+      url: backend.settings.webOrigin,
       handleCodeInApp: true,
     ),
   );
