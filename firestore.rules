@@ -82,8 +82,16 @@ service cloud.firestore {
       }
     }
     match /emailIdentities/{normalizedEmail} { allow read, write: if admin(); }
+    match /programs/{programId} {
+      allow read: if active() && (resource.data.status in ['active', 'archived'] || admin());
+      allow write: if false; // Validated, audited admin callables only.
+    }
+    match /catalogueAudits/{auditId} { allow read: if admin(); allow write: if false; }
+    function legacyEvent(eventId) {
+      return !get(/databases/$(database)/documents/events/$(eventId)).data.get('catalogueManaged', false);
+    }
     match /events/{eventId} {
-      allow read: if active() && (resource.data.status == 'published' || assignedCoach(eventId) || admin());
+      allow read: if active() && (resource.data.status in ['published', 'cancelled'] || assignedCoach(eventId) || admin());
       allow write: if admin();
     }
     match /eventSecrets/{eventId} {
@@ -96,11 +104,13 @@ service cloud.firestore {
         && id == request.resource.data.eventId + '_' + request.auth.uid
         && request.resource.data.keys().hasAll(['uid', 'eventId', 'createdAt', 'cancelledAt', 'source'])
         && request.resource.data.keys().hasOnly(['uid', 'eventId', 'createdAt', 'cancelledAt', 'source'])
+        && legacyEvent(request.resource.data.eventId)
         && published(request.resource.data.eventId)
         && request.time <= get(/databases/$(database)/documents/events/$(request.resource.data.eventId)).data.endsAt
         && request.resource.data.createdAt == request.time
         && request.resource.data.cancelledAt == null && request.resource.data.source == 'app');
       allow update: if admin() || (own(resource.data.uid)
+        && legacyEvent(resource.data.eventId)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancelledAt'])
         && (request.resource.data.cancelledAt == request.time
           || (request.resource.data.cancelledAt == null && published(resource.data.eventId)

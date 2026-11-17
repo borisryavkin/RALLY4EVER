@@ -1,9 +1,10 @@
+import { CatalogueService } from "./catalogue";
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
 import { setGlobalOptions } from "firebase-functions/v2";
 import { onCall, HttpsError } from "firebase-functions/v2/https";
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentWritten } from "firebase-functions/v2/firestore";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { authIdentity, input, id } from "./domain";
 import { AttendanceService } from "./service";
@@ -185,3 +186,15 @@ export const assignEventCoaches = callable((who, data) =>
 export const coachOverview = callable((who, data) =>
   roles.coachOverview(who, data),
 );
+
+const catalogue = new CatalogueService(service);
+export const listPrograms = callable((who, data) => catalogue.listPrograms(who, data));
+export const saveProgram = callable((who, data) => catalogue.saveProgram(who, data));
+export const saveSession = callable((who, data) => catalogue.saveSession(who, data));
+export const setRsvp = callable((who, data) => rateLimit(db, "setRsvp", who.uid, 30, 60000).then(() => catalogue.setRsvp(who, data)));
+export const syncSessionAvailability = onDocumentWritten({document:"rsvps/{rsvpId}",retry:true}, async (event) => {
+  assertLocal();
+  const before = event.data?.before.data(), after = event.data?.after.data();
+  const ids = new Set([before?.eventId, after?.eventId].filter(Boolean));
+  for (const eventId of ids) await catalogue.reconcileAvailability(eventId);
+});

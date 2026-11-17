@@ -89,3 +89,9 @@ node_modules/
 *.pem
 *.pfx
 *.key
+
+# Isolated catalogue emulator test config
+.firebase.catalogue-tests.generated.json
+
+/tests/rules/.catalogue-regression.test.mjs
+/test/failures/
