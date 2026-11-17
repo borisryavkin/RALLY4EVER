@@ -34,3 +34,13 @@ Bundled Inter/Figtree and Material icons are loaded. Camera preview and external
 | S24 help | [PNG](screenshots/participant/S24-help.png) |
 
 Regenerate deliberately with `flutter test --update-goldens test/participant_widgets_test.dart`; regular `flutter test` compares the committed captures and tests behavior. The A-series captures are additional access screens, not claims about the canvas’s later S25+ coach-console designs.
+
+## Program catalogue previews
+
+These use synthetic fixtures, not published staging listings:
+
+- [Active/archive program browser](../test/goldens/catalogue-programs.png)
+- [Program details and session calendar](../test/goldens/catalogue-calendar.png)
+- [Admin program management](../test/goldens/catalogue-admin.png)
+
+Regenerate with `flutter test --update-goldens test/catalogue_widgets_test.dart`.

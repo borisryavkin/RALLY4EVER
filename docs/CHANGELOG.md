@@ -1,3 +1,11 @@
+## Program catalogue and session availability — 17 November 2026
+
+- Added audited admin callables for active/draft/archived programs and dated sessions, with venue coordinates, timezones, existing coach assignments, HTTPS venue photos, notes and per-session capacity. Transactional reservations enforce the last available spot and preserve attendance separately. Sessions with scans retain their original metadata.
+- Connected live program discovery, postcode-based maps, calendar/details and admin management. Retained the saved directory as an explicitly labelled fallback. Existing counted-in lists remain available per session.
+- Added a default dry-run importer: 83 bundled source rows become 61 drafts, with 36 coordinates and two venue conflicts requiring review. No guessed dates, accounts or coordinates are created. Emulator-only apply is create-only.
+- Validation: analyzer clean; 66 Flutter tests passed (one browser-only skip); 14 current-workspace Functions unit tests; five LAN tests; two importer tests; 24 isolated emulator catalogue/rules tests including existing rules regression. Added screenshots and a saved-postcode map regression.
+- No real-project writes, deployment, paid services or new store uploads. Phone build 5 is unchanged; reviewed staging backend/data and a new tester build are required. See docs/PROGRAMS.md for fields, APIs and manual rollout. Concurrent unrelated workspace edits are excluded from these commits.
+
 ## Internal tester uploads and Android package correction — 17 November 2026
 
 - Owner authorized uploading both tester builds and specified Android package `org.raly4ever`. Updated Android applicationId and assetlinks template; kept the source namespace and iOS bundle ID unchanged. Registered the matching Firebase Android app, preserving the prior registration; updated only ignored local client config. No keys were generated and no backend deployed in this task.
