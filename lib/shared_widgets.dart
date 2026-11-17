@@ -489,7 +489,12 @@ class Question extends StatelessWidget {
           children: options
               .map(
                 (x) => ChoiceChip(
-                  label: Text(x),
+                  label: Text(
+                    x,
+                    style: TextStyle(
+                      color: x == options.last ? Colors.white : navy,
+                    ),
+                  ),
                   selected: x == options.last,
                   onSelected: (_) {},
                   selectedColor: navy,

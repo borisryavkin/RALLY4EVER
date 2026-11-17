@@ -393,6 +393,31 @@ void main() {
       repo.dispose();
     },
   );
+  testWidgets(
+    'a failed function call offers Retry, which re-runs the same action',
+    (tester) async {
+      final repo = FakeParticipantRepository();
+      repo.checkInError = 'You are too far from the venue';
+      await show(tester, repo, 'scan');
+      await tester.enterText(
+        find.byKey(const Key('qr-link')),
+        'https://rally4ever.org/c/EVENT-1?k=${'A' * 43}',
+      );
+      await tester.tap(find.byKey(const Key('use-qr')));
+      await tester.pumpAndSettle();
+      expect(find.text('You are too far from the venue'), findsOneWidget);
+      expect(find.byKey(const Key('retry-action')), findsOneWidget);
+      expect(repo.checkin('event-1'), isNull);
+      repo.checkInError = null;
+      await tester.tap(find.byKey(const Key('retry-action')));
+      await tester.pumpAndSettle();
+      expect(find.text('You are too far from the venue'), findsNothing);
+      expect(find.byKey(const Key('retry-action')), findsNothing);
+      expect(repo.checkin('event-1'), isNotNull);
+      await tester.pumpWidget(const SizedBox());
+      repo.dispose();
+    },
+  );
   testWidgets('loading and empty states have useful copy', (tester) async {
     final repo = FakeParticipantRepository();
     repo.ready = false;

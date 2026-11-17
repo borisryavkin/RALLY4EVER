@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
@@ -10,6 +11,27 @@ import '../data/emulator_backend.dart';
 import '../models/attendance_models.dart';
 
 typedef Record = Map<String, dynamic>;
+
+const _fallbackFunctionsError =
+    'Something went wrong completing that action. Please try again.';
+
+/// Cloud Functions callables in this app always throw a short, single-line,
+/// human-authored HttpsError message for expected business failures. A raw
+/// platform-level failure (token/claim verification, an uncaught server
+/// error) instead leaks internal diagnostic text through the same
+/// exception type, so this is told apart by shape, not by error code alone.
+String friendlyFunctionsError(FirebaseFunctionsException e) {
+  final message = e.message;
+  if (message == null || message.isEmpty) return _fallbackFunctionsError;
+  final looksRaw =
+      message.length > 140 ||
+      message.contains('\n') ||
+      RegExp(
+        r'\bclaim\b|\btoken\b|\bstack\b|\bexception\b',
+        caseSensitive: false,
+      ).hasMatch(message);
+  return looksRaw ? _fallbackFunctionsError : message;
+}
 
 abstract class ParticipantRepository extends ChangeNotifier {
   DateTime now() => DateTime.now();
@@ -393,10 +415,19 @@ class FirebaseParticipantRepository extends ParticipantRepository {
 
   @override
   Future<Record> call(String name, Record data) async {
-    final result = await backend.functions
-        .httpsCallable(name)
-        .call<dynamic>(data);
-    return Map<String, dynamic>.from(result.data as Map);
+    try {
+      final result = await backend.functions
+          .httpsCallable(name)
+          .call<dynamic>(data);
+      return Map<String, dynamic>.from(result.data as Map);
+    } on FirebaseFunctionsException catch (e, stackTrace) {
+      // Technical detail stays in the console; the UI only ever sees the
+      // friendly message from friendlyFunctionsError.
+      debugPrint(
+        'Cloud Function "$name" failed: ${e.code} ${e.message}\n$stackTrace',
+      );
+      throw StateError(friendlyFunctionsError(e));
+    }
   }
 
   @override

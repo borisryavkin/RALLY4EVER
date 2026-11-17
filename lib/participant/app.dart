@@ -44,6 +44,7 @@ class _ParticipantAppState extends State<ParticipantApp>
   late String page =
       widget.initialPage ?? (repo.uid == null ? 'welcome1' : 'home');
   String? selectedId, selectedProgramId, error;
+  Future<void> Function()? _lastFailedAction;
   String locationSearch = '';
   bool areaChosen = false;
   bool busy = false, agreed = false, pendingSubmission = false;
@@ -191,7 +192,9 @@ class _ParticipantAppState extends State<ParticipantApp>
     });
     try {
       await work();
+      _lastFailedAction = null;
     } catch (e) {
+      _lastFailedAction = work;
       if (mounted) setState(() => error = readableError(e));
     } finally {
       if (mounted) {
@@ -202,6 +205,11 @@ class _ParticipantAppState extends State<ParticipantApp>
         }
       }
     }
+  }
+
+  void retryLastAction() {
+    final work = _lastFailedAction;
+    if (work != null) unawaited(action(work));
   }
 
   String readableError(Object e) {
@@ -399,24 +407,45 @@ class _ParticipantAppState extends State<ParticipantApp>
       top: false,
       child: Column(
         children: [
-          if (error != null || repo.streamError != null)
-            Container(
-              key: const Key('error-banner'),
-              width: double.infinity,
-              color: pink,
-              padding: const EdgeInsets.all(14),
-              child: Text(
-                error ?? repo.streamError!,
-                style: const TextStyle(color: navy),
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
           if (busy) const LinearProgressIndicator(minHeight: 3),
           Expanded(
+            // The error banner lives inside this scrollable, rather than as
+            // a fixed sibling, so a long message (or a short keyboard-
+            // shrunk viewport) scrolls into view instead of overflowing.
             child: ListView(
               padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-              children: children,
+              children: [
+                if (error != null || repo.streamError != null)
+                  Container(
+                    key: const Key('error-banner'),
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 16),
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: pink,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          error ?? repo.streamError!,
+                          style: const TextStyle(color: navy),
+                        ),
+                        if (error != null && _lastFailedAction != null)
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              key: const Key('retry-action'),
+                              onPressed: busy ? null : retryLastAction,
+                              child: const Text('Retry'),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ...children,
+              ],
             ),
           ),
           if (bottom != null)
