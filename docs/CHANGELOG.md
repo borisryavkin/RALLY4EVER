@@ -1,3 +1,11 @@
+## Internal tester uploads and Android package correction — 17 November 2026
+
+- Owner authorized uploading both tester builds and specified Android package `org.raly4ever`. Updated Android applicationId and assetlinks template; kept the source namespace and iOS bundle ID unchanged. Registered the matching Firebase Android app, preserving the prior registration; updated only ignored local client config. No keys were generated and no backend deployed in this task.
+- Apple Transporter confirmed `1.0.1 (5)` delivered to app `6816826035`; it was processing at the final observation. Export was internal-only; no assignment to the external `rally4ever` group was made.
+- Play accepted the corrected signed `org.raly4ever` AAB and the Internal testing track visibly showed Active, version `1.0.1`, code `5`. Android release notes disclose that native Google coach sign-in remains unconfigured.
+- Analyzer clean and 57 Flutter tests passed (one browser-only skip). Flutter's appbundle command exited 1 because cmdline-tools/apkanalyzer is missing after Gradle generated the bundle; independently verified signature, manifest and all six stripped core native libraries/separate symbol metadata. Play accepted the native symbols attachment. No check disabled or SDK license accepted.
+- See `docs/UPLOADS.md` for receipts, app/track IDs, checksums and remaining tester setup. Build 5 is consumed; RELEASE.md uses build 6 for the next upload, subject to console recheck. No production track, payment or billing change. Concurrent unrelated changes remain outside this commit.
+
 ## Tester release preparation — 17 November 2026
 
 - Preserved `org.rally4ever` on both platforms. Raised `1.0.1+2` to `1.0.1+5` after the owner confirmed TestFlight build 4 is highest; Android historical code/package reuse still needs confirmation because its old app was removed. No store records were changed.

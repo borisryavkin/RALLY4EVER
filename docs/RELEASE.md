@@ -1,6 +1,19 @@
 # Tester release preparation
 
-Status: local preparation only. This release-preparation task has performed no upload, deployment, store-track change, new key, billing upgrade or payment. Concurrent workspace edits contain separate backend deployment notes; their authorization and live results have not been verified in this task. Distribution is restricted to a NEW TestFlight internal group and Google Play Internal testing. The existing external TestFlight group **`rally4ever` has real testers: never add these builds to it**, and never enable automatic distribution to that group.
+## Upload update — 17 November 2026
+
+Both uploads are now confirmed; see [UPLOADS.md](UPLOADS.md) for the delivery record and remaining tester setup.
+
+Owner subsequently authorized “upload them all” and specified the Android package **`org.raly4ever`** (one “l” in “raly”). This supersedes the earlier Android package assumption below. iOS remains **`org.rally4ever`**. Only Android `applicationId` changed; the source namespace/MainActivity remain `org.rally4ever`. The domain association template now targets the corrected Android package.
+
+Registered the matching Android Firebase client `1:55117668228:android:effa8a7b07f1dbd52607d1` in the existing `rally4ever-3adaf` project, kept the old registration, and updated only the ignored Android client config. No key was generated and no backend deployed in this upload task.
+
+Transporter confirmed iOS `1.0.1 (5)` delivered to app `6816826035` at 20:38 Sydney time; Apple processing was pending at that observation. The exported artifact has `testFlightInternalTestingOnly=true`; no external-group assignment was made. Android's new app record is `4975028595777084434`, with the UI explicitly showing Create internal testing release. See [UPLOADS.md](UPLOADS.md) for final upload status and artifact checksums.
+
+The corrected Android release was built by Gradle with versionName `1.0.1`, versionCode `5`, and the existing upload signing key. Flutter's post-build verification returned failure because Android SDK cmdline-tools/apkanalyzer is missing. Independently verified all six `libflutter.so`/`libapp.so` ABI libraries have no `.debug_*` sections, separate `.sym` metadata exists for each, and jarsigner verifies the bundle. No check was disabled or SDK license accepted. Installing the official Android command-line tools later will allow Flutter's own check to run; do not infer a native stripping failure from this generic message alone.
+
+
+Preparation snapshot (before the upload update above): local preparation only. This release-preparation task has performed no upload, deployment, store-track change, new key, billing upgrade or payment. Concurrent workspace edits contain separate backend deployment notes; their authorization and live results have not been verified in this task. Distribution is restricted to a NEW TestFlight internal group and Google Play Internal testing. The existing external TestFlight group **`rally4ever` has real testers: never add these builds to it**, and never enable automatic distribution to that group.
 
 ## Audit and known store state (17 November 2026)
 
@@ -8,13 +21,13 @@ Status: local preparation only. This release-preparation task has performed no u
 |---|---|
 | iOS bundle ID | `org.rally4ever`, unchanged in all Runner configurations |
 | App Store Connect | Apple ID `6816826035`; user reports version `1.0.0`, never publicly released; build 4 is being tested externally |
-| Android applicationId / namespace | `org.rally4ever`, unchanged; no current Play app, user reports old app removed 6 November. User must check package reuse in the new app. No replacement ID will be chosen without instruction. |
+| Android applicationId / namespace | Owner specified `org.raly4ever` for the new Play app; source namespace remains `org.rally4ever`. Code 5 is now uploaded to Internal testing. |
 | Version before preparation | `1.0.1+2` from pubspec; native builds consume Flutter version values |
 | Prepared version | `1.0.1+5`: above supplied iOS `1.0.0` / build 4. Android has no current release; confirm historical highest versionCode and whether package reuse is allowed before upload. Never reuse a previously consumed code. |
 | Android signing | Release config reads ignored `android/key.properties`; configured keystore exists. Existing alias/passwords are not printed or copied. Uses configured `keyPassword`, with the existing PKCS12 store-password fallback. Verify this is the key Play expects before uploading. |
 | Apple signing | Owner confirmed `7HGT5BT6KT` is the correct team (17 November 2026). `ios/ExportOptions.plist` and `ios/ExportOptions.internal.plist` previously read `565ZMX3G2X`; both corrected to `7HGT5BT6KT` to match Runner Debug/Profile/Release and derived-flavor `DEVELOPMENT_TEAM`. No certificate/profile generated. |
 | Existing APIs | Current app uses demo Firebase Auth/Firestore/Functions and OpenStreetMap raster tiles. Audited prototype baseline has bundled program JSON and no persistent member API. Legacy published-app backend is unknown; old Admin app absent. |
-| Firebase candidate | User supplied `rally4ever-3adaf`, their only project. Owner confirmed (17 November 2026) it is empty/safe for staging use. Registered iOS (`1:55117668228:ios:5e47b3910d5846d92607d1`) and Android (`1:55117668228:android:678ee9fc62957bf42607d1`) apps via `firebase apps:create`; filled `config/staging.ios.json` and `config/staging.android.json` (both git-ignored) with the real API key/app ID/sender ID per platform. `GOOGLE_SERVER_CLIENT_ID` and `FIREBASE_IOS_CLIENT_ID` remain placeholders — no OAuth client exists yet because Google Sign-In has not been enabled on the project. No native config files were added under `ios/Runner` or `android/app/src` — a first pass with `flutterfire configure` did this and was reverted immediately because it tripped the emulator-flavor native guard; only the Firebase-console app registrations from that pass were kept. |
+| Firebase candidate | User supplied `rally4ever-3adaf`, their only project. Owner confirmed (17 November 2026) it is empty/safe for staging use. Registered iOS (`1:55117668228:ios:5e47b3910d5846d92607d1`) and Android (`1:55117668228:android:effa8a7b07f1dbd52607d1`) apps via `firebase apps:create`; filled `config/staging.ios.json` and `config/staging.android.json` (both git-ignored) with the real API key/app ID/sender ID per platform. `GOOGLE_SERVER_CLIENT_ID` and `FIREBASE_IOS_CLIENT_ID` remain placeholders — no OAuth client exists yet because Google Sign-In has not been enabled on the project. No native config files were added under `ios/Runner` or `android/app/src` — a first pass with `flutterfire configure` did this and was reverted immediately because it tripped the emulator-flavor native guard; only the Firebase-console app registrations from that pass were kept. |
 
 ## Flavor isolation
 
@@ -26,13 +39,15 @@ Native Gradle/Xcode preflight validation runs before packaging and rejects real 
 
 `staging` uses real Firebase SDK options and never calls `use*Emulator`. It rejects USE_FIREBASE_EMULATORS, LAN_TESTING, LAN_HOST and FIREBASE_EMULATOR_HOST; requires FIREBASE_PROJECT_ID and explicit STAGING_PROJECT_ID to both equal the owner-supplied candidate `rally4ever-3adaf`. That allowlist is a configuration assertion, not proof a project is nonproduction. The owner must classify and approve it first. There is no production flavor or fallback.
 
-Copy the credential-free `config/staging.example.json` into ignored `config/staging.ios.json` and `config/staging.android.json`, with the separately registered app ID per platform. Fill from the registered Firebase apps for exactly `org.rally4ever`. Do not add service accounts, APNs private keys, store credentials or passwords. Client API keys are shipped with Firebase clients, so enforce rules/provider restrictions rather than treating them as authorization. Keep the local files outside git. This task did not create real client config files; concurrent work has since supplied ignored platform files.
+Copy the credential-free `config/staging.example.json` into ignored `config/staging.ios.json` and `config/staging.android.json`, with the separately registered app ID per platform. Fill from the registered Firebase apps for iOS `org.rally4ever` and Android `org.raly4ever`. Do not add service accounts, APNs private keys, store credentials or passwords. Client API keys are shipped with Firebase clients, so enforce rules/provider restrictions rather than treating them as authorization. Keep the local files outside git. This task did not create real client config files; concurrent work has since supplied ignored platform files.
 
 **Staging readiness remains unverified:** at initial audit Functions were hardcoded to the demo project. Concurrent edits now resolve the runtime project, allowlist `rally4ever-3adaf`, and include notes claiming a real deployment. This task has not deployed or validated that live backend, and leaves those changes outside its commits. No-app email auth remains emulator-only and notification delivery still records `emulatorPushes` rather than sending FCM. A separate staging seed script also appeared concurrently; do not run it until data classification and real writes are explicitly approved. Review project targeting, rules/indexes, schedules, notification delivery, billing and actual deployed code before distributing testers. No command in this guide deploys the backend.
 
 Native Google sign-in also needs the existing registered iOS OAuth client and reversed client-ID URL scheme, Android SHA fingerprints (Play signing certificate as well as local upload certificate where appropriate), approved Google provider and authorized link domains. Native email-link return routing and APNs/FCM require physical-device validation. Emulator verified fixture accounts/passwords must never be seeded into staging.
 
 ## Local validation and builds
+
+Build 5 has now been uploaded on both platforms. The commands below use **build 6 for the next upload**; recheck the consoles first to ensure it is unused. The release record remains version `1.0.1`, build `5`.
 
 Use the compatible installed SDK, not an older PATH entry:
 
@@ -65,15 +80,15 @@ After all blockers are resolved, compile staging with platform-specific local co
 
 ```sh
 unset LAN_TESTING LAN_HOST FIRESTORE_EMULATOR_HOST FIREBASE_AUTH_EMULATOR_HOST
-# Confirm 5 is still unused; substitute a larger approved number if necessary.
+# Confirm 6 is still unused; substitute a larger approved number if necessary.
 flutter build ipa --release --flavor staging \
   --dart-define-from-file=config/staging.ios.json \
-  --build-name=1.0.1 --build-number=5 \
+  --build-name=1.0.1 --build-number=6 \
   --export-options-plist=ios/ExportOptions.internal.plist
 
 flutter build appbundle --release --flavor staging \
   --dart-define-from-file=config/staging.android.json \
-  --build-name=1.0.1 --build-number=5
+  --build-name=1.0.1 --build-number=6
 ```
 
 `ios/ExportOptions.internal.plist` exports locally (`destination=export`) and sets `testFlightInternalTestingOnly=true`: Xcode marks this build ineligible for external TestFlight or App Store distribution. It follows the current local project/export team; actual app ownership still needs confirmation.
@@ -112,7 +127,7 @@ This is an optional faster feedback path, not an enabled replacement for the req
 ```sh
 flutter build apk --release --flavor staging \
   --dart-define-from-file=config/staging.android.json \
-  --build-name=1.0.1 --build-number=5
+  --build-name=1.0.1 --build-number=6
 # UPLOAD ONLY AFTER APPROVAL; use the actual registered Android Firebase app ID.
 firebase appdistribution:distribute build/app/outputs/flutter-apk/app-staging-release.apk \
   --project rally4ever-3adaf --app "$STAGING_ANDROID_FIREBASE_APP_ID" \
@@ -124,7 +139,7 @@ For iOS, an App Store signed IPA cannot simply be installed through App Distribu
 ```sh
 flutter build ipa --release --flavor staging \
   --dart-define-from-file=config/staging.ios.json \
-  --build-name=1.0.1 --build-number=5 --export-method=ad-hoc
+  --build-name=1.0.1 --build-number=6 --export-method=ad-hoc
 # UPLOAD ONLY AFTER APPROVAL; actual registered iOS Firebase app ID required.
 firebase appdistribution:distribute build/ios/ipa/rally4ever.ipa \
   --project rally4ever-3adaf --app "$STAGING_IOS_FIREBASE_APP_ID" \
