@@ -47,11 +47,17 @@ android {
         manifestPlaceholders["MAPS_API_KEY"] = localProperties.getProperty("MAPS_API_KEY", "")
     }
 
+    flavorDimensions += "backend"
+    productFlavors {
+        create("emulator") { dimension = "backend" }
+        create("staging") { dimension = "backend" }
+    }
+
     signingConfigs {
         create("release") {
             keyAlias = keystoreProperties.getProperty("keyAlias")
             // PKCS12 stores use a single password for both the store and key.
-            keyPassword = keystoreProperties.getProperty("storePassword")
+            keyPassword = keystoreProperties.getProperty("keyPassword") ?: keystoreProperties.getProperty("storePassword")
             storeFile = keystoreProperties.getProperty("storeFile")?.let { file(it) }
             storePassword = keystoreProperties.getProperty("storePassword")
         }
@@ -76,4 +82,15 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+// Refuse mixed backend config before native compilation or packaging.
+androidComponents.onVariants { variant ->
+    val variantName = variant.name.replaceFirstChar { it.uppercaseChar() }
+    val flavor = variant.productFlavors.first { it.first == "backend" }.second
+    val guard = tasks.register<Exec>("validate${variantName}Backend") {
+        commandLine("python3", rootProject.file("../scripts/validate-build.py").absolutePath,
+            "--flavor", flavor, "--dart-defines", project.findProperty("dart-defines")?.toString() ?: "")
+    }
+    tasks.matching { it.name == "pre${variantName}Build" }.configureEach { dependsOn(guard) }
 }

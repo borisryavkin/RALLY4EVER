@@ -75,3 +75,17 @@ node_modules/
 
 # Generated only by the explicit development LAN launcher
 .firebase.lan.generated.json
+
+# Local Firebase client configuration and release evidence
+/config/*.json
+**/GoogleService-Info.plist
+**/google-services.json
+/release-artifacts/
+!/config/staging.example.json
+
+# Xcode local SwiftPM resolution generated during scheme validation
+/ios/Runner.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+/ios/Runner.xcworkspace/xcshareddata/swiftpm/
+*.pem
+*.pfx
+*.key

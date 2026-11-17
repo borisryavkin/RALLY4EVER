@@ -9,7 +9,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>Rally4Ever uses your camera to scan the current session QR code from your coach.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Rally4ever uses your location to find nearby Rally4ever events.</string>
+	<string>Rally4Ever uses your location to find nearby sessions and check that you are at the venue when you check in.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Rally4ever uses your location to help you find nearby programs when you use the app.</string>
 	<key>io.flutter.embedded_views_preview</key>
@@ -32,6 +32,17 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.55117668228-tms8gf4e4augfcojpvkv5kdgnvlgjppq</string>
+			</array>
+		</dict>
+	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>
