@@ -195,6 +195,6 @@ export const setRsvp = callable((who, data) => rateLimit(db, "setRsvp", who.uid,
 export const syncSessionAvailability = onDocumentWritten({document:"rsvps/{rsvpId}",retry:true}, async (event) => {
   assertLocal();
   const before = event.data?.before.data(), after = event.data?.after.data();
-  const ids = new Set([before?.eventId, after?.eventId].filter(Boolean));
+  const ids = new Set([before?.eventId, after?.eventId].filter((id): id is string => typeof id === "string" && /^[a-zA-Z0-9-]{1,128}$/.test(id)));
   for (const eventId of ids) await catalogue.reconcileAvailability(eventId);
 });

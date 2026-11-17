@@ -107,4 +107,6 @@ test('session-specific capacity, cancellation and revision checks are audited wi
  await assertSucceeds(getDoc(doc(participant,'events/session-one')));
  assert.equal((await db.collection('rsvps').get()).size,2);
  assert.ok((await db.collection('catalogueAudits').get()).size>=3);
+ await db.doc('checkins/session-one_participant-1').set({eventId:'session-one',uid:'participant-1',status:'pending'});
+ await rejects(()=>session({revision:2,capacity:2}),'session-started');
 });

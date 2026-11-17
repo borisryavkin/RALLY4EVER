@@ -109,6 +109,8 @@ export class CatalogueService {
         if (!coach || coach.role !== "coach" || coach.coachEnabled === false || coach.mergedInto !== null)
           fail("failed-precondition", "invalid-coach", "Assign an active coach account");
       }
+      if (old.exists && !(await tx.get(db.collection("checkins").where("eventId", "==", eventId).limit(1))).empty)
+        fail("failed-precondition", "session-started", "Attendance has begun; retain the original session details");
       const capacity = d.capacity === undefined ? p.capacity : d.capacity;
       if (capacity !== null && (!Number.isInteger(capacity) || (capacity as number) < 1 || (capacity as number) > 5000)) fail("invalid-argument", "invalid-capacity", "Choose a valid session capacity");
       const registrationStatus = d.registrationStatus === undefined ? p.registrationStatus : choice(d.registrationStatus, ["open", "full", "closed"], "reservations");
