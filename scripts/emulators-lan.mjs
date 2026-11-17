@@ -27,7 +27,7 @@ function run(command, args) {
   return new Promise((resolve, reject) => {
     child = spawn(command, args, {
       cwd: root,
-      env: process.env,
+      env: { ...process.env, DEMO_PROJECT_ID: "demo-rally4ever" },
       stdio: "inherit",
     });
     child.once("error", reject);

@@ -155,17 +155,66 @@ test("notification delivery is idempotent for sent records and missing trigger s
   assert.equal(await n.deliver("already-sent"), false);
   assert.equal(await n.notifyCoaches("missing"), 0);
 });
-test("functions entry point fails closed outside the demo emulators", () => {
-  const { assertLocal } = require("../lib/index");
-  const previous = process.env.FUNCTIONS_EMULATOR;
+function withEnv(overrides, fn) {
+  const keys = Object.keys(overrides);
+  const previous = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
   try {
-    delete process.env.FUNCTIONS_EMULATOR;
-    rejects(assertLocal, "emulator-only", "failed-precondition");
+    for (const k of keys) {
+      if (overrides[k] === undefined) delete process.env[k];
+      else process.env[k] = overrides[k];
+    }
+    return fn();
   } finally {
-    if (previous === undefined) delete process.env.FUNCTIONS_EMULATOR;
-    else process.env.FUNCTIONS_EMULATOR = previous;
+    for (const k of keys) {
+      if (previous[k] === undefined) delete process.env[k];
+      else process.env[k] = previous[k];
+    }
   }
+}
+
+test("the no-app walk-in gate fails closed outside the demo emulators", () => {
+  const { assertEmulatorOnly } = require("../lib/index");
+  withEnv({ FUNCTIONS_EMULATOR: undefined }, () =>
+    rejects(assertEmulatorOnly, "emulator-only", "failed-precondition"),
+  );
 });
+
+test(
+  "the general backend gate fails closed with no emulator and no approved project, " +
+    "but passes for the one real project these functions are approved to run against",
+  () => {
+    const { assertApprovedBackend } = require("../lib/index");
+    withEnv(
+      {
+        FUNCTIONS_EMULATOR: undefined,
+        GCLOUD_PROJECT: undefined,
+        GOOGLE_CLOUD_PROJECT: undefined,
+      },
+      () =>
+        rejects(assertApprovedBackend, "unapproved-backend", "failed-precondition"),
+    );
+    withEnv(
+      {
+        FUNCTIONS_EMULATOR: undefined,
+        GCLOUD_PROJECT: undefined,
+        GOOGLE_CLOUD_PROJECT: "some-other-project",
+      },
+      () =>
+        rejects(assertApprovedBackend, "unapproved-backend", "failed-precondition"),
+    );
+    // Regression test for the incident this app hit: a deployed function
+    // must actually work against its own real, approved project, not just
+    // fail closed forever.
+    withEnv(
+      {
+        FUNCTIONS_EMULATOR: undefined,
+        GCLOUD_PROJECT: undefined,
+        GOOGLE_CLOUD_PROJECT: "rally4ever-3adaf",
+      },
+      assertApprovedBackend,
+    );
+  },
+);
 
 test("transient Auth lookup failures retry the coach trigger instead of silently dropping alerts", async () => {
   const { AttendanceService } = require("../lib/service");
@@ -224,6 +273,7 @@ test("network guard permits LAN only with explicit private host and demo emulato
   const local = {
     FUNCTIONS_EMULATOR: "true",
     GCLOUD_PROJECT: "demo-rally4ever",
+    DEMO_PROJECT_ID: "demo-rally4ever",
     FIRESTORE_EMULATOR_HOST: "127.0.0.1:8080",
     FIREBASE_AUTH_EMULATOR_HOST: "127.0.0.1:9099",
   };
@@ -249,6 +299,29 @@ test("network guard permits LAN only with explicit private host and demo emulato
     { ...lan, NODE_ENV: "production" },
     { ...local, FIRESTORE_EMULATOR_HOST: "0.0.0.0:8080" },
     { ...lan, FIREBASE_AUTH_EMULATOR_HOST: "8.8.8.8:9099" },
+    // No DEMO_PROJECT_ID at all: this is the shape of a real deployed
+    // function's environment, which must never pass as "the emulator".
+    { ...local, DEMO_PROJECT_ID: undefined },
+    { ...local, DEMO_PROJECT_ID: "" },
   ])
     assert.throws(() => assertEmulatorNetwork(env));
+});
+
+test("production entry point and its guards never hardcode the demo project id", async () => {
+  // Regression test for a real incident: functions/src/index.ts hardcoded
+  // initializeApp({ projectId: "demo-rally4ever" }), so deployed functions on
+  // rally4ever-3adaf verified real Firebase ID tokens against the wrong
+  // "aud" and rejected every real caller. The demo project id must only ever
+  // come from an environment variable that emulator/test setups set, never
+  // from a literal in functions/src.
+  const { readdir, readFile } = require("node:fs/promises");
+  const path = require("node:path");
+  const srcDir = path.join(__dirname, "..", "src");
+  const offenders = [];
+  for (const name of await readdir(srcDir)) {
+    if (!name.endsWith(".ts")) continue;
+    const content = await readFile(path.join(srcDir, name), "utf8");
+    if (content.includes("demo-rally4ever")) offenders.push(name);
+  }
+  assert.deepEqual(offenders, []);
 });

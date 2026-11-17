@@ -13,15 +13,36 @@ import { NotificationService } from "./notifications";
 import { rateLimit } from "./rate_limits";
 import { NoAppService } from "./no_app";
 import { AdminRoleService } from "./admin_roles";
-import { assertEmulatorNetwork } from "./emulator_network";
+import { assertEmulatorNetwork, assertApprovedProject } from "./emulator_network";
 
 setGlobalOptions({ region: "australia-southeast1", maxInstances: 1 });
-const app = initializeApp({ projectId: "demo-rally4ever" });
+// No projectId here: resolve from the runtime's own environment (the real
+// project when deployed, the emulator's GCLOUD_PROJECT when run locally).
+// A hardcoded project here previously made deployed functions verify real
+// Firebase ID tokens against the wrong "aud", rejecting every real caller.
+const app = initializeApp();
 const db = getFirestore(app),
   service = new AttendanceService({ db, auth: getAuth(app) });
 const merge = new MergeService(service);
 
-export function assertLocal(): void {
+// Passes for the local demo emulator or the one real project these
+// functions are approved to run against (see emulator_network.ts). Covers
+// everything that only reads/writes via the Admin SDK.
+export function assertApprovedBackend(): void {
+  try {
+    assertApprovedProject();
+  } catch {
+    throw new HttpsError(
+      "failed-precondition",
+      "This function is not available in this environment",
+      { reason: "unapproved-backend" },
+    );
+  }
+}
+// The "no app" walk-in flow calls the local Auth emulator's REST API
+// directly (see emulator_network.ts) and has no real-project
+// implementation yet, so it stays emulator-only regardless of project.
+export function assertEmulatorOnly(): void {
   try {
     assertEmulatorNetwork();
   } catch {
@@ -36,7 +57,7 @@ export function assertLocal(): void {
 const notifications = new NotificationService(
   service,
   async (notificationId, note, tokens) => {
-    assertLocal();
+    assertApprovedBackend();
     await db.doc(`emulatorPushes/${notificationId}`).set({
       notificationId,
       uid: note.uid,
@@ -55,7 +76,7 @@ const callable = (
   ) => Promise<unknown>,
 ) =>
   onCall(async (request) => {
-    assertLocal();
+    assertApprovedBackend();
     const who = authIdentity(request.auth);
     try {
       return await handler(who, request.data);
@@ -98,7 +119,7 @@ export const mergeProfiles = callable((who, data) =>
 export const notifyCoachesOnCheckIn = onDocumentCreated(
   { document: "checkins/{checkinId}", retry: true },
   async (event) => {
-    assertLocal();
+    assertApprovedBackend();
     try {
       await notifications.notifyCoaches(event.params.checkinId);
     } catch (error) {
@@ -110,17 +131,17 @@ export const notifyCoachesOnCheckIn = onDocumentCreated(
   },
 );
 export const sendFeedbackReminders = onSchedule("every 5 minutes", async () => {
-  assertLocal();
+  assertApprovedBackend();
   await notifications.feedbackReminders();
 });
 
 const noApp = new NoAppService(service);
 export const beginNoAppCheckIn = onCall(async (request) => {
-  assertLocal();
+  assertEmulatorOnly();
   return noApp.begin(request.data, request.rawRequest.ip ?? "local");
 });
 export const completeNoAppCheckIn = onCall(async (request) => {
-  assertLocal();
+  assertEmulatorOnly();
   return noApp.complete(request.data, request.rawRequest.ip ?? "local");
 });
 
@@ -157,7 +178,7 @@ export const getCountedIn = callable(async (who, value) => {
 });
 
 export const getNoAppForms = onCall(async (request) => {
-  assertLocal();
+  assertEmulatorOnly();
   await rateLimit(
     db,
     "noapp-info",
@@ -193,7 +214,7 @@ export const saveProgram = callable((who, data) => catalogue.saveProgram(who, da
 export const saveSession = callable((who, data) => catalogue.saveSession(who, data));
 export const setRsvp = callable((who, data) => rateLimit(db, "setRsvp", who.uid, 30, 60000).then(() => catalogue.setRsvp(who, data)));
 export const syncSessionAvailability = onDocumentWritten({document:"rsvps/{rsvpId}",retry:true}, async (event) => {
-  assertLocal();
+  assertApprovedBackend();
   const before = event.data?.before.data(), after = event.data?.after.data();
   const ids = new Set([before?.eventId, after?.eventId].filter((id): id is string => typeof id === "string" && /^[a-zA-Z0-9-]{1,128}$/.test(id)));
   for (const eventId of ids) await catalogue.reconcileAvailability(eventId);
