@@ -34,7 +34,7 @@ npm run test:all:emulator
 
 Tests deliberately clear **local demo Firestore data** in their isolated run. Seed and tests reject absent/nonlocal emulator hosts, unexpected project IDs and Google credential-file configuration. npm scripts specify the demo project explicitly. The Firebase CLI will download emulator binaries on first run.
 
-The app entry now connects `lib/data/emulator_backend.dart` to the participant UI only with `USE_FIREBASE_EMULATORS=true`; otherwise authentication is disabled. Direct backend initialization without explicit opt-in throws. Only `127.0.0.1`, `localhost` and Android-emulator host `10.0.2.2` are accepted. Firestore disk persistence is disabled. Physical-device/LAN connection is not enabled in this stage. There is no production initialization fallback.
+The app entry now connects `lib/data/emulator_backend.dart` to the participant UI only with `USE_FIREBASE_EMULATORS=true`; otherwise authentication is disabled. Direct backend initialization without explicit opt-in throws. By default only `127.0.0.1`, `localhost` and Android-emulator host `10.0.2.2` are accepted. Firestore disk persistence is disabled. The explicit development LAN mode below adds a private-IP opt-in. There is no production initialization fallback.
 
 Participant UI now uses actual emulator authentication and data. The old email-only navigation paths are removed. Chrome UI integration exercises Auth/Firestore/Functions; native device OAuth and camera/GPS integration still require the platform setup below.
 
@@ -67,7 +67,7 @@ npm run emulators
 flutter run -d chrome --web-port 7357 --dart-define=USE_FIREBASE_EMULATORS=true
 ```
 
-Without `USE_FIREBASE_EMULATORS=true`, the app can show its introduction but cannot authenticate or write data. All Firebase SDKs use the named demo app and explicit local Auth/Firestore/Functions endpoints. Android emulator host uses `--dart-define=FIREBASE_EMULATOR_HOST=10.0.2.2`; physical LAN hosts remain blocked.
+Without `USE_FIREBASE_EMULATORS=true`, the app can show its introduction but cannot authenticate or write data. All Firebase SDKs use the named demo app and explicit local Auth/Firestore/Functions endpoints. Android emulator host uses `--dart-define=FIREBASE_EMULATOR_HOST=10.0.2.2`; physical LAN hosts remain blocked unless the development-only opt-in below is enabled.
 
 Email/password sign-up sends a **local emulator verification link**; open/copy it from the emulator terminal and return to “I've verified my email”, or paste the verification link into “I have an email link”. One-time sign-in links use the same local mechanism. No SMTP or real email service was enabled.
 
@@ -88,3 +88,73 @@ npm run test:participant:e2e
 The browser end-to-end test uses a fresh seed and an injected court GPS fix (not physical GPS). All Auth, RSVP, forms, Functions and Firestore confirmation updates are real emulator interactions. Camera acquisition is replaced by pasting the exact coach-generated QR deep link through the same parser. It verifies that intent creates no attendance and that the participant sees the coach-confirmed state live. Browser widget tests explicitly register web Firebase plugins; no production backend is used.
 
 Program JSON assets are now real app-local files, replacing the original absolute symlinks while retaining their contents. Inter/Figtree variable fonts and OFL notices are bundled locally from [Google Fonts](https://github.com/google/fonts/tree/main/ofl). Screen captures and their exact scope are indexed in `SCREENSHOTS.md`.
+
+## Opt-in phone testing over local Wi-Fi (development only)
+
+LAN testing is **off by default**. `firebase.json` continues to bind to loopback. The separate launcher requires `LAN_TESTING=true` and a canonical RFC1918 IPv4 address actually assigned to the Mac: `10.x.x.x`, `172.16.x.x`–`172.31.x.x`, or `192.168.x.x`. It rejects public IPs, names/URLs, wildcard addresses as client targets, production credentials and every project ID except `demo-rally4ever`. The app also rejects LAN settings in profile/release builds. The Android emulator's existing `10.0.2.2` loopback alias is unchanged.
+
+Use the **same Flutter SDK executable** for `flutter pub get`, `flutter run` and tests. If you switch SDK checkouts, regenerate `.dart_tool` with that SDK's `flutter pub get`; mixing a package config from one checkout with another checkout's engine can cause missing framework symbols. Do not combine this with a production/staging project configuration.
+
+1. Put the Mac and phone on the same trusted Wi-Fi. Get the Mac's Wi-Fi IPv4 address (usually `en0`):
+
+   ```sh
+   ipconfig getifaddr en0
+   ```
+
+   If Wi-Fi is on another interface, use the IPv4 address shown in macOS System Settings → Wi-Fi → Details → TCP/IP. The launcher checks that the address belongs to this Mac, so supplying the router's address will fail.
+
+2. In terminal 1, from this app directory, start the explicitly opted-in emulators:
+
+   ```sh
+   export LAN_HOST="$(ipconfig getifaddr en0)"
+   LAN_TESTING=true LAN_HOST="$LAN_HOST" npm run emulators:lan
+   ```
+
+   Stop any existing emulator instance yourself first if these ports are occupied. The launcher does not kill other processes or clear their data. It builds Functions, generates an ignored `.firebase.lan.generated.json`, then starts **only** demo Auth (9099), Firestore (8080) and Functions (5001) with `host: 0.0.0.0`. The privileged emulator UI (4000), hub (4400) and logging service (4500) remain on loopback. The normal config file is never rewritten. The generated config is removed on normal exit; after a force-kill, remove only that stale generated file before restarting the launcher.
+
+3. In terminal 2, seed through the Mac's loopback endpoints:
+
+   ```sh
+   FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 \
+   FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
+   npm run seed
+   ```
+
+4. In terminal 3, run a **debug web app** on port 57602:
+
+   ```sh
+   export LAN_HOST="$(ipconfig getifaddr en0)"
+   flutter pub get
+   flutter run -d web-server \
+     --web-hostname 0.0.0.0 \
+     --web-port 57602 \
+     --dart-define=USE_FIREBASE_EMULATORS=true \
+     --dart-define=LAN_TESTING=true \
+     --dart-define=LAN_HOST="$LAN_HOST" \
+     --dart-define=FIREBASE_PROJECT_ID=demo-rally4ever
+   ```
+
+   Open `http://<Mac-Wi-Fi-IP>:57602` on the phone, for example `http://192.168.1.50:57602`. `0.0.0.0` is a bind address, not the address to open on the phone. The app connects Auth/Firestore/Functions to exactly the supplied `LAN_HOST`; it does not automatically discover a server or fall back to production. If you also set `FIREBASE_EMULATOR_HOST`, it must match `LAN_HOST` exactly.
+
+The app displays a persistent **LAN TESTING — DEVELOPMENT ONLY** warning on every screen, including sign-in. `0.0.0.0` listens on all Mac interfaces: use synthetic/demo accounts only, a trusted router/firewall and no port forwarding. Allow the required local development processes through the Mac firewall if prompted; do not disable the firewall globally. No billing or cloud services are enabled by this mode.
+
+Email-link continuation URLs use `http://<LAN_HOST>:57602`; the no-app service uses the phone-reachable Auth emulator origin in LAN mode. Links are still local emulator links, not real emails. Copy the unconsumed emulator link into the original phone tab's email-link field as described above; do not use `localhost`/`127.0.0.1` on the phone to refer to the Mac.
+
+### Camera and location on the phone
+
+**Camera scanning and browser geolocation will not work over plain `http://<private-IP>`**, even on your own Wi-Fi. Browsers require a secure context for those APIs; the localhost exception applies to the device's own localhost, not another computer's private IP. HTTP LAN mode is useful for layout, sign-in, role switching, profiles and event/intent screens. It does not bypass location checks or invent a GPS fix to make attendance succeed. See [MDN camera requirements](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia) and [secure-context restricted features](https://developer.mozilla.org/en-US/docs/Web/Security/Defenses/Secure_Contexts/features_restricted_to_secure_contexts).
+
+For real camera/location testing, use a separately configured, approved **HTTPS staging build** with an HTTPS backend, or a carefully configured, access-controlled HTTPS reverse proxy/tunnel. An HTTPS tunnel for the web port **alone** is insufficient: HTTPS pages can block calls to the HTTP emulator endpoints as mixed content. Do not expose unprotected emulator APIs/UI through a public tunnel or disable browser security. This strict LAN build intentionally does not accept public tunnel hostnames or real staging/production project IDs; secure proxy/staging support needs a separate reviewed configuration. No tunnel, certificate, staging project or paid service has been provisioned here.
+
+### Return to the normal loopback mode
+
+Stop the LAN app and emulator launcher with Ctrl+C. In terminals where you exported settings:
+
+```sh
+unset LAN_TESTING LAN_HOST
+npm run emulators
+# In another terminal, without LAN defines:
+flutter run -d chrome --web-port 7357 --dart-define=USE_FIREBASE_EMULATORS=true
+```
+
+There is no persistent LAN preference or change to the standard emulator bindings. `npm run test:lan` tests the launcher/configuration guards; the Flutter and Functions tests cover private-address validation, project rejection, release-mode denial and the persistent banner.

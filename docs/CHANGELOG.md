@@ -1,5 +1,13 @@
 # Change log
 
+## 2026-11-17 — opt-in development LAN testing
+
+- Kept default emulator bindings on loopback. Added an explicit LAN_TESTING=true / LAN_HOST launcher that validates an assigned private IPv4 address, generates a temporary config for Auth/Firestore/Functions on 0.0.0.0 and keeps the privileged emulator UI/hub/logging local.
+- Added matching debug-only app host/project validation and a persistent development warning on all screens. Public/ambiguous hosts, mismatched hosts, non-demo project IDs and release/profile LAN builds are rejected. Small-screen introduction scrolling accommodates the banner.
+- Updated email-link callback/Auth emulator origins for the phone-reachable host and port 57602. Documented exact commands, trusted-network exposure, HTTP camera/location restrictions and separate HTTPS staging/proxy alternatives without weakening the private-host guards.
+- Validation: 5 launcher/config tests, 12 Functions unit tests, and isolated matching-SDK Flutter analysis/50 tests pass. The browser-only test remains opt-in. A fresh emulator regression launch was blocked by occupied existing Auth/Firestore ports; that instance and its data were left untouched. No physical Wi-Fi phone test or actual LAN exposure was performed by the agent.
+- Preserved the pre-existing lockfile/generated-plugin edits and mixed-SDK package configuration; Flutter verification used a disposable copy rather than rewriting those files or either SDK. No production services, staging project, tunnel or billing changes.
+
 ## 2026-11-17 — participant UI and Google Workspace coach access
 
 - Replaced fake email/social sign-in and static session routing with emulator-backed Auth, verified signup/email-link/Google sign-in, registerIdentity and published Firestore events. Preserved one canonical profile/UID across participant and coach views.
