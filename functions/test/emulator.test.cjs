@@ -844,3 +844,310 @@ test("protected role demotion overrides claims; claim-only coaches still receive
     ),
   );
 });
+
+test("callable rate limits are enforced on checkIn and registerIdentity", async () => {
+  const qr = await rotate();
+  for (let n = 0; n < 10; n++)
+    await error(
+      () =>
+        call("checkIn", {
+          eventCode: qr.eventCode,
+          secret: "wrong",
+          lat: -33.8926,
+          lng: 151.2511,
+        }),
+      "invalid-secret",
+      "PERMISSION_DENIED",
+    );
+  await error(
+    () =>
+      call("checkIn", {
+        eventCode: qr.eventCode,
+        secret: "wrong",
+        lat: -33.8926,
+        lng: 151.2511,
+      }),
+    "rate-limit",
+    "RESOURCE_EXHAUSTED",
+  );
+  for (let n = 0; n < 20; n++) await call("registerIdentity", {});
+  await error(
+    () => call("registerIdentity", {}),
+    "rate-limit",
+    "RESOURCE_EXHAUSTED",
+  );
+});
+async function noAppData(email = "member1@example.test") {
+  const qr = await rotate();
+  return {
+    email,
+    eventCode: qr.eventCode,
+    secret: qr.secret,
+    lat: -33.8926,
+    lng: 151.2511,
+    firstName: "Court visitor",
+    mobile: "0400000000",
+    emergencyContact: { name: "Emergency Contact", mobile: "0400000001" },
+    signedVersions: { conduct: 1, waiver: 1 },
+  };
+}
+test("returning no-app attendee needs a one-time Firebase email link before attendance", async () => {
+  await db
+    .doc("checkins/event-3_participant-1")
+    .set({ uid: "participant-1", eventId: "event-3", status: "confirmed" });
+  const data = await noAppData();
+  const result = await call("beginNoAppCheckIn", data, null);
+  assert.equal(result.status, "verification-required");
+  assert.equal(
+    (await db.doc("checkins/event-1_participant-1").get()).exists,
+    false,
+  );
+  await error(
+    () =>
+      call(
+        "completeNoAppCheckIn",
+        { requestId: result.requestId, oobCode: "wrong", secret: data.secret },
+        null,
+      ),
+    "verification-invalid",
+    "PERMISSION_DENIED",
+  );
+  const codes = await (
+    await fetch(
+      "http://127.0.0.1:9099/emulator/v1/projects/demo-rally4ever/oobCodes",
+    )
+  ).json();
+  const code = codes.oobCodes
+    .filter(
+      (c) =>
+        c.email === "member1@example.test" && c.requestType === "EMAIL_SIGNIN",
+    )
+    .at(-1);
+  assert.ok(code);
+  const complete = {
+    requestId: result.requestId,
+    oobCode: code.oobCode,
+    secret: data.secret,
+  };
+  const accepted = await call("completeNoAppCheckIn", complete, null);
+  assert.equal(accepted.status, "pending");
+  assert.equal(accepted.verification, "email-link");
+  assert.equal(accepted.idToken, undefined);
+  await error(
+    () => call("completeNoAppCheckIn", complete, null),
+    "verification-expired",
+    "FAILED_PRECONDITION",
+  );
+});
+test("new no-app email creates only a provisional pending walk-in, never a verified login", async () => {
+  const data = await noAppData(`visitor-${Date.now()}@example.test`);
+  const result = await call("beginNoAppCheckIn", data, null);
+  assert.equal(result.status, "pending");
+  assert.equal(result.verification, "email-only");
+  assert.equal(result.idToken, undefined);
+  const user = await auth.getUserByEmail(data.email);
+  assert.equal(user.emailVerified, false);
+  const scan = (await db.doc(`checkins/event-1_${user.uid}`).get()).data();
+  assert.equal(scan.status, "pending");
+  assert.equal(scan.walkIn, true);
+  assert.equal(scan.identityVerification, "email-only");
+  assert.equal(scan.confirmedBy, null);
+});
+test("no-app form requirements cannot be bypassed and private requests cannot use other secrets", async () => {
+  const data = await noAppData(`unsigned-${Date.now()}@example.test`);
+  data.signedVersions = { conduct: 1 };
+  await error(
+    () => call("beginNoAppCheckIn", data, null),
+    "unsigned-forms",
+    "FAILED_PRECONDITION",
+  );
+  const user = await auth.getUserByEmail(data.email);
+  assert.equal(
+    (await db.doc(`checkins/event-1_${user.uid}`).get()).exists,
+    false,
+  );
+  await db
+    .doc("checkins/event-3_participant-1")
+    .set({ uid: "participant-1", eventId: "event-3", status: "confirmed" });
+  const valid = await noAppData();
+  const request = await call("beginNoAppCheckIn", valid, null);
+  await error(
+    () =>
+      call(
+        "completeNoAppCheckIn",
+        {
+          requestId: request.requestId,
+          oobCode: "anything",
+          secret: "different",
+        },
+        null,
+      ),
+    "invalid-secret",
+    "PERMISSION_DENIED",
+  );
+});
+test("counted-in projection exposes only opted-in names and the viewer, never contact details", async () => {
+  await db.doc("rsvps/event-1_participant-2").set({
+    uid: "participant-2",
+    eventId: "event-1",
+    createdAt: stamp(),
+    cancelledAt: null,
+    source: "app",
+  });
+  const result = await call("getCountedIn", { eventId: "event-1" });
+  assert.equal(result.count, 2);
+  assert.equal(result.people.length, 1);
+  assert.equal(result.people[0].isYou, true);
+  await db
+    .doc("users/participant-2")
+    .update({ "preferences.showInWhosGoing": true });
+  const visible = await call("getCountedIn", { eventId: "event-1" });
+  assert.equal(visible.people.length, 2);
+  for (const p of visible.people)
+    assert.deepEqual(Object.keys(p).sort(), ["initials", "isYou", "label"]);
+});
+
+async function googleLogin(email, sub) {
+  const payload = {
+    sub,
+    email,
+    email_verified: true,
+    name: "Workspace Member",
+  };
+  const fakeToken =
+    Buffer.from(JSON.stringify({ alg: "none", typ: "JWT" })).toString(
+      "base64url",
+    ) +
+    "." +
+    Buffer.from(JSON.stringify(payload)).toString("base64url") +
+    ".";
+  const result = await fetch(
+    "http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=demo-api-key",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        requestUri: "http://localhost",
+        postBody: `id_token=${encodeURIComponent(fakeToken)}&providerId=google.com`,
+        returnSecureToken: true,
+        returnIdpCredential: true,
+      }),
+    },
+  );
+  const body = await result.json();
+  assert.ok(result.ok, JSON.stringify(body));
+  tokens.set(body.localId, body.idToken);
+  return body;
+}
+test("Google Workspace sign-in without claim is participant; only admin can grant/assign/revoke coach", async () => {
+  const google = await googleLogin(
+    `workspace-${Date.now()}@rally4ever.org`,
+    "workspace-new",
+  );
+  await call("registerIdentity", {}, google.localId);
+  assert.equal(
+    (await db.doc(`users/${google.localId}`).get()).data().role,
+    "participant",
+  );
+  await error(
+    () => call("coachOverview", {}, google.localId),
+    "coach-claim-required",
+    "PERMISSION_DENIED",
+  );
+  await error(
+    () =>
+      call(
+        "setUserRole",
+        {
+          uid: google.localId,
+          role: "coach",
+          enabled: true,
+          reason: "Self grant",
+        },
+        google.localId,
+      ),
+    "admin-required",
+    "PERMISSION_DENIED",
+  );
+  const grant = await call(
+    "setUserRole",
+    {
+      uid: google.localId,
+      role: "coach",
+      enabled: true,
+      reason: "Approved coach",
+    },
+    "admin-1",
+  );
+  assert.ok(grant.roles.includes("participant"));
+  assert.ok(grant.roles.includes("coach"));
+  const refreshed = await googleLogin(
+    google.email ?? (await auth.getUser(google.localId)).email,
+    "workspace-new",
+  );
+  assert.equal(refreshed.localId, google.localId);
+  await call(
+    "assignEventCoaches",
+    {
+      eventId: "event-1",
+      coachUids: [google.localId],
+      reason: "Session assignment",
+    },
+    "admin-1",
+  );
+  await rotate("event-1", google.localId);
+  const overview = await call("coachOverview", {}, google.localId);
+  assert.equal(overview.events.length, 1);
+  const listing = await call(
+    "listUsers",
+    { query: (await auth.getUser(google.localId)).email },
+    "admin-1",
+  );
+  assert.equal(listing.users[0].uid, google.localId);
+  await call(
+    "setUserRole",
+    {
+      uid: google.localId,
+      role: "coach",
+      enabled: false,
+      reason: "Coach access revoked",
+    },
+    "admin-1",
+  );
+  // Cached Google token still has the old claim, but the protected server gate denies immediately.
+  await error(
+    () => rotate("event-1", google.localId),
+    "event-role-required",
+    "PERMISSION_DENIED",
+  );
+  await error(
+    () => call("coachOverview", {}, google.localId),
+    "coach-claim-required",
+    "PERMISSION_DENIED",
+  );
+  assert.equal(
+    (
+      await db
+        .collection("users")
+        .where("emailLower", "==", (await auth.getUser(google.localId)).email)
+        .get()
+    ).size,
+    1,
+  );
+});
+test("Google and pre-created email account resolve to the same existing Auth UID/profile", async () => {
+  const user = await googleLogin("dan@rally4ever.org", "workspace-dan");
+  assert.equal(user.localId, "coach-1");
+  const identity = await call("registerIdentity", {}, user.localId);
+  assert.equal(identity.uid, "coach-1");
+  assert.equal(identity.created, false);
+  assert.equal(
+    (
+      await db
+        .collection("users")
+        .where("emailLower", "==", "dan@rally4ever.org")
+        .get()
+    ).size,
+    1,
+  );
+});

@@ -16,8 +16,16 @@ service cloud.firestore {
     }
     function admin() { return active() && role() == 'admin'; }
     function own(uid) { return active() && request.auth.uid == uid; }
+    function coachClaim() {
+      return request.auth.token.get('role', '') == 'coach'
+        || request.auth.token.get('roles', []).hasAny(['coach']);
+    }
+    function coachAccess() {
+      return active() && role() == 'coach' && coachClaim()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('coachEnabled', true) != false;
+    }
     function assignedCoach(eventId) {
-      return active() && role() == 'coach'
+      return coachAccess()
         && request.auth.uid in get(/databases/$(database)/documents/events/$(eventId)).data.coachUids;
     }
     function eventExists(eventId) {
@@ -31,7 +39,7 @@ service cloud.firestore {
     function validProfile(d) {
       return d.keys().hasAll(['uid', 'email', 'emailLower', 'role', 'mergedInto', 'createdAt', 'updatedAt',
           'firstName', 'lastName', 'postcode', 'mobile', 'emergencyContact', 'injuries', 'preferences', 'about'])
-        && d.keys().hasOnly(['uid', 'email', 'emailLower', 'role', 'mergedInto', 'createdAt', 'updatedAt',
+        && d.keys().hasOnly(['uid', 'email', 'emailLower', 'role', 'coachEnabled', 'mergedInto', 'createdAt', 'updatedAt',
           'firstName', 'lastName', 'postcode', 'mobile', 'emergencyContact', 'injuries', 'preferences', 'about'])
         && text(d.firstName, 100) && text(d.lastName, 100) && text(d.postcode, 20)
         && text(d.mobile, 40) && text(d.injuries, 2000)
@@ -141,12 +149,14 @@ service cloud.firestore {
       allow update, delete: if admin();
     }
     match /notifications/{id} {
-      allow read: if own(resource.data.uid) || admin();
+      allow read: if admin() || (own(resource.data.uid) && (!resource.data.type.matches('checkin-.*') || coachAccess()));
       allow update: if admin() || (own(resource.data.uid)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt'])
         && request.resource.data.readAt == request.time);
       allow create, delete: if admin();
     }
+    match /roleAudits/{id} { allow read: if admin(); allow write: if false; }
+    match /roleChanges/{id} { allow read, write: if false; }
     match /mergeAudits/{id} { allow read, write: if admin(); }
     match /{document=**} { allow read, write: if false; }
   }

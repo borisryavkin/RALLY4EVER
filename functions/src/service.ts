@@ -52,7 +52,10 @@ export class AttendanceService {
         "inactive-profile",
         "Register or resolve your profile first",
       );
-    return { ...p, role: p.role ?? who.role ?? "participant" };
+    let role = p.role ?? who.role ?? "participant";
+    if (role === "coach" && (who.role !== "coach" || p.coachEnabled === false))
+      role = "participant";
+    return { ...p, role };
   }
   authorize(
     p: DocumentData,
@@ -260,7 +263,11 @@ export class AttendanceService {
       };
     });
   }
-  async checkIn(who: Identity, value: unknown) {
+  async checkIn(
+    who: Identity,
+    value: unknown,
+    trusted: { walkIn?: boolean; identityVerification?: string } = {},
+  ) {
     const d = input(value, ["eventCode", "secret", "lat", "lng", "method"]);
     const code = id(d.eventCode, "eventCode"),
       secret = text(d.secret, "secret", 128);
@@ -352,7 +359,9 @@ export class AttendanceService {
         status: "pending",
         confirmedBy: null,
         confirmedAt: null,
-        walkIn: !rsvp.exists || rsvp.data()!.cancelledAt !== null,
+        walkIn:
+          trusted.walkIn ?? (!rsvp.exists || rsvp.data()!.cancelledAt !== null),
+        identityVerification: trusted.identityVerification ?? "account",
         corrections: [],
         eventEndsAt: e.endsAt,
         feedbackReminderPending: false,

@@ -29,6 +29,14 @@ export class NotificationService {
         tx.update(ref, { deliveryStatus: "suppressed", leaseUntil: null });
         return null;
       }
+      if (
+        n.type.startsWith("checkin-") &&
+        (p.data()!.coachEnabled === false ||
+          !["coach", "admin"].includes(p.data()!.role ?? "coach"))
+      ) {
+        tx.update(ref, { deliveryStatus: "suppressed", leaseUntil: null });
+        return null;
+      }
       if (n.type === "feedback") {
         const scan = await tx.get(db.doc(`checkins/${n.eventId}_${n.uid}`));
         if (!scan.exists || scan.data()!.status !== "confirmed") {
@@ -57,6 +65,20 @@ export class NotificationService {
     });
     if (!claimed) return false;
     try {
+      if (claimed.note.type.startsWith("checkin-")) {
+        const coach = await this.service.auth.getUser(claimed.note.uid);
+        if (
+          coach.disabled ||
+          !coach.emailVerified ||
+          !(
+            coach.customClaims?.role === "coach" ||
+            coach.customClaims?.roles?.includes("coach")
+          )
+        ) {
+          await ref.update({ deliveryStatus: "suppressed", leaseUntil: null });
+          return false;
+        }
+      }
       await this.send(notificationId, claimed.note, claimed.tokens);
       await ref.update({
         deliveryStatus: "sent",
@@ -90,16 +112,25 @@ export class NotificationService {
       // Match callable/rule role fallback when a trusted profile uses claims only.
       const coachProfile = await db.doc(`users/${coachUid}`).get();
       let claimRole: unknown;
-      if (coachProfile.exists && coachProfile.data()!.role === undefined) {
-        try {
-          claimRole = (await this.service.auth.getUser(coachUid)).customClaims
-            ?.role;
-        } catch (error) {
-          if ((error as { code?: string }).code === "auth/user-not-found")
-            continue;
-          throw error;
-        }
+      try {
+        const account = await this.service.auth.getUser(coachUid);
+        if (!account.emailVerified || account.disabled) continue;
+        claimRole =
+          account.customClaims?.roles?.includes("coach") ||
+          account.customClaims?.role === "coach"
+            ? "coach"
+            : undefined;
+      } catch (error) {
+        if ((error as { code?: string }).code === "auth/user-not-found")
+          continue;
+        throw error;
       }
+      if (
+        claimRole !== "coach" ||
+        coachProfile.data()?.coachEnabled === false ||
+        coachProfile.data()?.role === "participant"
+      )
+        continue;
 
       const notificationId = `checkin-${initial.data()!.uid}_${initial.data()!.eventId}_${coachUid}`;
       const created = await db.runTransaction(async (tx) => {
@@ -115,7 +146,9 @@ export class NotificationService {
           !currentEvent.data()?.coachUids?.includes(coachUid) ||
           !coach.exists ||
           coach.data()!.mergedInto !== null ||
-          (coach.data()!.role ?? claimRole) !== "coach" ||
+          !["coach", "admin"].includes(
+            coach.data()!.role ?? (claimRole as string),
+          ) ||
           old.exists
         )
           return false;
@@ -124,6 +157,9 @@ export class NotificationService {
           eventId: scan.data()!.eventId,
           uid: coachUid,
           attendeeUid: scan.data()!.uid,
+          scannedAt: scan.data()!.scannedAt ?? null,
+          distanceM: scan.data()!.distanceM ?? null,
+          identityVerification: scan.data()!.identityVerification ?? "account",
           createdAt: this.service.stamp(),
           readAt: null,
           deliveryStatus: "pending",

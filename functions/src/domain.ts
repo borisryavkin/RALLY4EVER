@@ -142,6 +142,13 @@ export function authIdentity(
   return {
     uid: auth.uid,
     email: normalizeEmail(auth.token.email),
-    role: typeof auth.token.role === "string" ? auth.token.role : undefined,
+    role:
+      Array.isArray(auth.token.roles) && auth.token.roles.includes("admin")
+        ? "admin"
+        : Array.isArray(auth.token.roles) && auth.token.roles.includes("coach")
+          ? "coach"
+          : typeof auth.token.role === "string"
+            ? auth.token.role
+            : undefined,
   };
 }

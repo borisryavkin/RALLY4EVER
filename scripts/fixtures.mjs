@@ -10,7 +10,7 @@ export const accounts = [
 export function profile(account, now) {
   return {
     uid: account.uid, email: account.email, emailLower: normalizeEmail(account.email),
-    role: account.role, mergedInto: null, createdAt: now, updatedAt: now,
+    role: account.role, coachEnabled: account.role === 'coach', mergedInto: null, createdAt: now, updatedAt: now,
     firstName: account.uid, lastName: '', postcode: '2022', mobile: '',
     emergencyContact: {name: '', mobile: ''}, injuries: '',
     preferences: {useInReports: false, wellbeingCheckIns: false, showInWhosGoing: false, marketingEmails: false},

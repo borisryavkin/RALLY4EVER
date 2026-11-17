@@ -10,7 +10,7 @@ let env;
 const now = Timestamp.now();
 const past = Timestamp.fromMillis(now.toMillis() - 3600000);
 const future = Timestamp.fromMillis(now.toMillis() + 3600000);
-const user = (uid, claims = {}) => env.authenticatedContext(uid, {email_verified: true, ...claims}).firestore();
+const user = (uid, claims = {}) => env.authenticatedContext(uid, {email_verified: true, role: accounts.find(a=>a.uid===uid)?.role ?? 'participant', ...claims}).firestore();
 const ownDb = () => user('participant-1');
 const rsvp = (extra = {}) => ({uid:'participant-1', eventId:'event-1', createdAt:serverTimestamp(), cancelledAt:null, source:'app', ...extra});
 const feedback = (extra = {}) => ({uid:'participant-1', eventId:'event-3', rating:4, tags:['people'], comment:'Good session', createdAt:serverTimestamp(), ...extra});
@@ -79,7 +79,7 @@ test('role claim works when trusted profile has no role field',async () => {
   const p = profile(accounts[1],now); delete p.role;
   await trusted('users/coach-1',p);
   await assertSucceeds(getDoc(doc(user('coach-1',{role:'coach'}),'checkins/event-1_participant-1')));
-  await assertFails(getDoc(doc(user('coach-1'),'checkins/event-1_participant-1')));
+  await assertFails(getDoc(doc(env.authenticatedContext('coach-1',{email_verified:true}).firestore(),'checkins/event-1_participant-1')));
 });
 test('published event queries work; drafts require assigned coach or admin',async () => {
   await assertSucceeds(getDocs(query(collection(ownDb(),'events'),where('status','==','published'))));
@@ -171,4 +171,13 @@ test('unknown collections denied; admin can manage forms, profiles and merge aud
     if (!path.startsWith('forms/')) await assertFails(getDoc(doc(ownDb(),path)));
     await assertFails(setDoc(doc(ownDb(),path),{managed:false}));
   }
+});
+
+test('Workspace email without a coach claim cannot read coach data; stale claims fail after revocation',async()=>{
+  const noClaim=env.authenticatedContext('coach-1',{email_verified:true,email:'dan@rally4ever.org',firebase:{sign_in_provider:'google.com'}}).firestore();
+  await assertFails(getDoc(doc(noClaim,'checkins/event-1_participant-1')));
+  await assertFails(getDoc(doc(noClaim,'rsvps/event-1_participant-1')));
+  await assertSucceeds(getDoc(doc(user('coach-1'),'checkins/event-1_participant-1')));
+  await env.withSecurityRulesDisabled(async ctx=>updateDoc(doc(ctx.firestore(),'users/coach-1'),{coachEnabled:false,role:'participant'}));
+  await assertFails(getDoc(doc(user('coach-1'),'checkins/event-1_participant-1')));
 });

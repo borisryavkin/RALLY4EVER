@@ -24,7 +24,7 @@ export async function seed() {
         const existing = await auth.getUser(account.uid);
         if (existing.email !== account.email) throw new Error(`Seed identity collision: ${account.uid}`);
       }
-      await auth.setCustomUserClaims(account.uid, {role: account.role});
+      await auth.setCustomUserClaims(account.uid, {role: account.role, roles: account.role === 'participant' ? ['participant'] : ['participant', account.role]});
       await create(`users/${account.uid}`, profile(account, now));
       await create(`emailIdentities/${identityKey(account.email)}`, {
         emailLower: account.email, uid: account.uid, createdAt: now,

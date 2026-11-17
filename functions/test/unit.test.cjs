@@ -191,3 +191,30 @@ test("transient Auth lookup failures retry the coach trigger instead of silently
   );
   await assert.rejects(jobs.notifyCoaches("e_p"), /Temporary Auth outage/);
 });
+
+test("Workspace email never creates a coach role; coach access needs a claim and protected gate", async () => {
+  const { AttendanceService } = require("../lib/service");
+  const who = authIdentity({
+    uid: "work",
+    token: {
+      email: "member@rally4ever.org",
+      email_verified: true,
+      firebase: { sign_in_provider: "google.com" },
+    },
+  });
+  assert.equal(who.role, undefined);
+  const db = { doc: () => ({}) };
+  let profile = { role: "coach", mergedInto: null, coachEnabled: true };
+  const service = new AttendanceService({ db, auth: {} }),
+    tx = { get: async () => ({ data: () => profile }) };
+  assert.equal((await service.actor(tx, who)).role, "participant");
+  assert.equal(
+    (await service.actor(tx, { ...who, role: "coach" })).role,
+    "coach",
+  );
+  profile = { ...profile, coachEnabled: false };
+  assert.equal(
+    (await service.actor(tx, { ...who, role: "coach" })).role,
+    "participant",
+  );
+});
