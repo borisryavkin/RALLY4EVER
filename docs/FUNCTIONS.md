@@ -140,3 +140,51 @@ FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:909
 Uses the local seed admin/password. To apply a reviewed local plan, pass the same source/target/reason plus `--apply --dry-run-id <auditId>`. It refuses missing emulator environment. Do not adapt this tool to real data without explicit authorization and a reviewed backup/rollback plan.
 
 References: [callable protocol and errors](https://firebase.google.com/docs/functions/callable), [local Functions emulator](https://firebase.google.com/docs/functions/local-emulator), [Firestore trigger delivery semantics](https://firebase.google.com/docs/functions/firestore-events?gen=1st). Triggers can be retried/out of order, so handlers re-read current state and reserve deterministic notification IDs.
+
+## Rate limits
+
+Limits are enforced server-side by transactional fixed-window counters in private `rateLimits` documents; retries and failed validation attempts count too. No participant can reset counters through Firestore rules.
+
+| Entry point | Scope | Limit |
+| --- | --- | --- |
+| `checkIn` | Auth UID | 10 attempts per 60 seconds |
+| `registerIdentity` | Auth UID | 20 attempts per hour |
+| `beginNoAppCheckIn` | Remote IP | 10 attempts per 60 seconds |
+| Returning-member sign-in link | Normalized email | 3 sends per hour |
+| `completeNoAppCheckIn` | Remote IP | 5 attempts per 60 seconds |
+| `getNoAppForms` | Remote IP | 20 reads per 60 seconds |
+
+An exhausted bucket returns `resource-exhausted`, `details.reason = rate-limit`, plus `retryAfterSeconds`. These are application limits; Auth's own sign-in limits are separate. Counters use server time and reset on the first attempt after the window. Internal trusted attendance calls in the no-app service are covered by its public IP/email limits. This emulator-only build is not an internet anti-bot deployment.
+
+## Known risks
+
+- **Email-only no-app identification does not prove ownership.** A person could enter somebody else's address, particularly a new address or a profile with no attendance history. New-email/no-history requests create only a provisional pending walk-in; they never get an app login token or confirmed attendance. Returning profiles with any prior check-in require a one-time Firebase email sign-in link by default. The optional event policy `requireReturningEmailVerification` can be set to false only by trusted admin configuration; clients cannot switch it off. Public responses do not expose profile details, but the verification-required response can reveal that an email has history; IP/email limits reduce repeated probes.
+- **Location is self-reported by the device.** Computing geofence distance server-side does not make GPS spoof-proof. Time-window, QR rotation and geofence checks reject invalid requests but cannot establish physical presence on their own.
+- **Mandatory human confirmation is the mitigation for both risks.** Every app/camera/no-app scan starts pending. Only an assigned coach with an admin-issued claim, or an admin, can confirm it. Coach review data shows the original scan time, server-computed distance and `identityVerification` (`account`, `email-link`, or `email-only`). Email-only arrivals are clearly flagged. The coach must confirm the person at the court; a scan is never automatically treated as attendance. Corrections preserve the original scan and record a reason.
+
+## No-app verification callables
+
+- `getNoAppForms({eventCode,secret,lat,lng})` is public but rate-limited. Validates the live event QR/window/distance and returns `{eventId,name,forms}` containing current form content/version, with no personal data.
+- `beginNoAppCheckIn({email,eventCode,secret,lat,lng,firstName,mobile,emergencyContact,injuries?,signedVersions})` is public but rate-limited. `signedVersions` maps current required form IDs to versions explicitly accepted by the visitor. A returning profile with history receives `{status:'verification-required',requestId}` without an attendance write. Otherwise it returns `{status:'pending',checkinId,eventId,verification:'email-only'}`. Existing profile details are only filled if empty; current signed receipts are preserved.
+- `completeNoAppCheckIn({requestId,oobCode,secret})` exchanges the one-time emailed code with **the local Auth emulator**, verifies its email/UID, consumes the private request and reruns server check-in validation. Returns the same pending result with `verification:'email-link'`. No ID/refresh token is returned. Replays/expiry use `failed-precondition / verification-expired`; invalid/used/wrong-email codes use `permission-denied / verification-invalid`; a request bound to another QR uses `permission-denied / invalid-secret`. New links are needed if the QR expired before verification.
+
+`noAppRequests/{requestId}` is server-only: email, non-secret request data, secretHash, createdAt, expiresAt, consumed and verifiedAt. Requests expire after 15 minutes; QR secrets still expire after five minutes. Emulator email links are printed to the terminal/OOB endpoint; **no real emails are sent**. The local screen supports pasting the link into the original check-in tab. Public Hosting/domain links remain a later deployment stage.
+
+`getCountedIn({eventId})` requires an active verified account and returns `{count,people:[{label,initials,isYou}]}`. Only opted-in first names and the viewer are shown; no email, UID, phone or emergency details are exposed. It is a read projection, not a participant permission to read other RSVP/profile documents.
+
+## Google Workspace and coach administration
+
+Google is an authentication provider, not a role source. Neither a verified `@rally4ever.org` address, Google's domain hint, nor an owner-editable UI choice grants coach access. A coach needs an admin-issued `role:'coach'` or `roles:['participant','coach']` Auth claim **and** an active protected profile gate. A protected participant role or `coachEnabled:false` denies even a cached old coach claim. Participants always retain their own member tools and the same UID/profile when coach access changes. Existing pre-created accounts and Google sign-in are reconciled by Auth's email identity and `registerIdentity`; emulator tests verify no duplicate profile for the same email.
+
+New trusted callables (all authenticated, verified, emulator-only):
+
+| Callable | Input | Output / authorization |
+| --- | --- | --- |
+| `listUsers` | `{query?: emailPrefix,cursor?: emailLower}` | Admin only. Up to 50 `{uid,email,firstName,role,coachEnabled,mergedInto}` records, cursor and up to 100 event summaries for assignment. |
+| `setUserRole` | `{uid,role:'coach',enabled:boolean,reason}` | Admin only. `{uid,roles,coachEnabled,auditId,refreshRequired:true}`. Retains participant access and preserves an existing admin role. |
+| `assignEventCoaches` | `{eventId,coachUids:string[],reason}` | Admin only. Validates up to ten distinct verified, claim-authorized, active coaches; returns eventId/coachUids/auditId. |
+| `coachOverview` | `{}` | Claim-authorized coach/admin only. Assigned event summaries and pending arrivals with firstName, scan time, distance and verification status. |
+
+Role updates fail closed across Auth and Firestore: protected coach access is disabled first, then claims change, then the protected mirror is enabled only after success. A per-UID operation lock serializes concurrent changes. Revocation blocks reads/callables immediately, without signing the person out of participant tools. Grants require a token refresh; the app provides “Refresh access”. Old event assignments do not override a revoked role, and the admin can remove them. `roleAudits` records actor/target or event, reason, action/status and timestamps; `roleChanges` holds private operation locks. Clients cannot write either collection. Failed cross-system updates leave the gate disabled and are retryable by the admin.
+
+Additional errors: `permission-denied / admin-required` or `coach-claim-required`; `invalid-argument / invalid-role` or `invalid-coaches`; `failed-precondition / email-unverified` or `coach-claim-required`; `aborted / role-change-in-progress` for an in-flight update. No production Auth providers, account credentials or paid services were changed.

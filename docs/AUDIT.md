@@ -182,3 +182,9 @@ Stage 3 adds a local-only Firebase foundation, role/ownership rules, schema, ind
 The emulator-only TypeScript backend now implements the seven requested callables plus the pending-check-in trigger and feedback scheduler. See `FUNCTIONS.md` for inputs, outputs, error codes, merge semantics and test coverage. Literal normalized-email identity keys supersede the stage-3 hash convention at the user's request; only local fixture paths changed. Concurrent registration and two-coach walk-in tests verify one profile/UID in the emulator, but the legacy backend duplicate report remains unconfirmed.
 
 No UI has been connected, no production services deployed and no paid services enabled. FCM is still a local delivery double; scheduled handler logic is tested against emulator data, with the local CLI v2 scheduler-dispatch limitation documented. Review is required before participant integration.
+
+## 12. Participant and Workspace stage — 17 November 2026
+
+The participant app is now connected to the local backend, with verified Auth/signup/Google, real event identity, separate RSVP/check-in UI, once-only details/current forms, live confirmation, feedback, profile and help. The old fake navigation paths were retired as approved, with real discovery/location/map/support components retained. Program symlinks were materialized without changing their contents.
+
+Latest authorization requirement supersedes the earlier field-only coach role: coach access now requires an admin-issued claim and a protected active profile gate. Admin user/email listing, grant/revoke and assignment callables/UI are implemented, with one-profile participant/coach switching. Email-only no-app verification, rate limits and known-risk mitigations are documented in FUNCTIONS.md. See PARTICIPANT.md and SCREENSHOTS.md for scope and evidence; native OAuth/hardware and production/FCM/Hosting deployment remain manual/later work.

@@ -1,5 +1,15 @@
 # Change log
 
+## 2026-11-17 — participant UI and Google Workspace coach access
+
+- Replaced fake email/social sign-in and static session routing with emulator-backed Auth, verified signup/email-link/Google sign-in, registerIdentity and published Firestore events. Preserved one canonical profile/UID across participant and coach views.
+- Added S01–S24 participant screens: tiered persistent profile, separate intent/attendance states, RSVP/cancel, private first-name projection, strict event QR parsing, details/forms, waiting/confirmed/rejected, feedback, form/history profile and help. Retained discovery assets, sport/location selection, map and reusable widgets; made program assets portable and bundled Inter/Figtree/OFL fonts.
+- Added server rate limits and one-time Firebase email-link proof for returning no-app identities with prior check-ins; new identities remain unverified pending walk-ins. Documented email-only/GPS risks and mandatory coach review evidence.
+- Coach access now requires an admin-issued claim plus protected active gate; domain or profile role alone cannot grant it. Added admin-only user listing by email, audited coach grant/revoke and event assignment, and read-only coach arrivals showing scan time/distance/verification. Revoked coaches lose access even with a stale token.
+- Added 26 screenshot goldens, UI state tests, rules/callable Workspace tests and a real browser emulator journey through RSVP, QR, details/forms, coach decision and visible confirmation. Manual native OAuth/camera/GPS/FCM setup remains in SETUP.md. No deployment, production changes or paid services.
+
+- Validation: analyzer clean; 45 Flutter tests pass (browser-only test skipped in VM), 11 Functions unit tests, 18 rules/Auth tests, 27 Functions emulator tests, and the separate Chrome participant emulator test pass.
+
 ## 2026-11-17 — Functions stage: emulator-only backend
 
 - Added TypeScript `registerIdentity`, `rotateEventSecret`, `checkIn`, `coachDecision`, `correctAttendance`, `addWalkIn`, and `mergeProfiles`. Runtime guards refuse non-emulator execution; no UI or deployment.

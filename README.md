@@ -1,17 +1,16 @@
-# rally4ever
+# Rally4Ever
 
-A new Flutter project.
+Flutter participant app with a shared Google/email identity, separate RSVP and attendance states, versioned forms and admin-managed coach access. Development is restricted to the local Firebase demo emulators; no production backend fallback.
 
-## Getting Started
+See [setup and manual steps](docs/SETUP.md), [participant review](docs/PARTICIPANT.md), [function contracts/security](docs/FUNCTIONS.md), [schema](docs/DATA_MODEL.md), [screenshots](docs/SCREENSHOTS.md) and [changelog](docs/CHANGELOG.md).
 
-This project is a starting point for a Flutter application.
+```sh
+npm ci
+npm --prefix functions ci
+flutter pub get
+npm run emulators
+# Seed from another terminal using the environment variables in docs/SETUP.md.
+flutter run -d chrome --web-port 7357 --dart-define=USE_FIREBASE_EMULATORS=true
+```
 
-A few resources to get you started if this is your first Flutter project:
-
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Run `flutter analyze`, `flutter test`, `npm run test:functions`, `npm run test:all:emulator` and `npm run test:participant:e2e`. Use Node 24 and Java 21. Tests reset only disposable local demo data.

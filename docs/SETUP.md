@@ -34,9 +34,9 @@ npm run test:all:emulator
 
 Tests deliberately clear **local demo Firestore data** in their isolated run. Seed and tests reject absent/nonlocal emulator hosts, unexpected project IDs and Google credential-file configuration. npm scripts specify the demo project explicitly. The Firebase CLI will download emulator binaries on first run.
 
-The Dart service in `lib/data/emulator_backend.dart` is deliberately not connected to the prototype UI yet. Later integration must call `EmulatorBackend.connect` with `USE_FIREBASE_EMULATORS=true`; otherwise it throws. Only `127.0.0.1`, `localhost` and Android-emulator host `10.0.2.2` are accepted. Firestore disk persistence is disabled. Physical-device/LAN connection is not enabled in this stage. There is no production initialization fallback.
+The app entry now connects `lib/data/emulator_backend.dart` to the participant UI only with `USE_FIREBASE_EMULATORS=true`; otherwise authentication is disabled. Direct backend initialization without explicit opt-in throws. Only `127.0.0.1`, `localhost` and Android-emulator host `10.0.2.2` are accepted. Firestore disk persistence is disabled. Physical-device/LAN connection is not enabled in this stage. There is no production initialization fallback.
 
-Current app UI remains the audited prototype; its email navigation is not real authentication. The new services and rules do not make that old UI a secure product until participant/coach integration replaces the prototype paths. No Android/iOS/web Firebase runtime build is claimed by the service/model tests; JS Auth integration exercises real local Auth tokens through Firestore rules.
+Participant UI now uses actual emulator authentication and data. The old email-only navigation paths are removed. Chrome UI integration exercises Auth/Firestore/Functions; native device OAuth and camera/GPS integration still require the platform setup below.
 
 ## Manual steps later — none required for this stage
 
@@ -56,3 +56,35 @@ See `FUNCTIONS.md` for all seven callable contracts, the Firestore trigger and t
 FCM is a deterministic local delivery double (`emulatorPushes`), with no real sends. Scheduler handler tests invoke the actual SDK `.run` handler against emulator data because CLI 15.36 cannot dispatch v2 scheduled HTTP signatures through its Pub/Sub adapter. No Pub/Sub emulator or paid Scheduler service is required for the current test command. Real push setup remains a later manual step.
 
 The Functions package passes npm audit with zero vulnerabilities at implementation time. Root local CLI-tooling advisories remain as documented above. No native UI or account provider settings changed.
+
+## Participant app and Google Workspace access
+
+```sh
+npm ci
+npm --prefix functions ci
+npm run emulators
+# In another terminal, seed with the two emulator environment variables above.
+flutter run -d chrome --web-port 7357 --dart-define=USE_FIREBASE_EMULATORS=true
+```
+
+Without `USE_FIREBASE_EMULATORS=true`, the app can show its introduction but cannot authenticate or write data. All Firebase SDKs use the named demo app and explicit local Auth/Firestore/Functions endpoints. Android emulator host uses `--dart-define=FIREBASE_EMULATOR_HOST=10.0.2.2`; physical LAN hosts remain blocked.
+
+Email/password sign-up sends a **local emulator verification link**; open/copy it from the emulator terminal and return to “I've verified my email”, or paste the verification link into “I have an email link”. One-time sign-in links use the same local mechanism. No SMTP or real email service was enabled.
+
+“Continue with Google” on Flutter Web uses Firebase Auth's emulator provider popup. Select the seeded Workspace account to use its existing UID. Workspace users without the admin-issued coach claim remain participants and see “Ask your admin for coach access”. An admin signs in with the seed admin account, opens Admin view → Manage users & event coaches, searches by email, supplies a reason, grants/revokes coach access and assigns event coaches. The recipient can refresh access without creating another profile. A dual-role account switches back to participant view without signing out.
+
+Native Android/iOS Google authentication is wired through `google_sign_in`. Before **device** testing, supply the platform OAuth client configuration (and `GOOGLE_SERVER_CLIENT_ID` where required), Android signing fingerprints and iOS URL scheme/client IDs. These settings are not included or provisioned here. Only browser Google emulation and native widget rendering have been tested; real Google device OAuth, camera/GPS hardware, APNs and store release testing remain manual. Firebase Auth still points only to emulators in this build. No production provider was enabled.
+
+Run the full validation:
+
+```sh
+flutter analyze
+flutter test
+npm run test:functions
+npm run test:all:emulator
+npm run test:participant:e2e
+```
+
+The browser end-to-end test uses a fresh seed and an injected court GPS fix (not physical GPS). All Auth, RSVP, forms, Functions and Firestore confirmation updates are real emulator interactions. Camera acquisition is replaced by pasting the exact coach-generated QR deep link through the same parser. It verifies that intent creates no attendance and that the participant sees the coach-confirmed state live. Browser widget tests explicitly register web Firebase plugins; no production backend is used.
+
+Program JSON assets are now real app-local files, replacing the original absolute symlinks while retaining their contents. Inter/Figtree variable fonts and OFL notices are bundled locally from [Google Fonts](https://github.com/google/fonts/tree/main/ofl). Screen captures and their exact scope are indexed in `SCREENSHOTS.md`.
