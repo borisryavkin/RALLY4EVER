@@ -20,6 +20,9 @@ abstract class ParticipantRepository extends ChangeNotifier {
   bool enabled = false;
   String? streamError;
   Record profile = {};
+  List<Record> programs = [];
+  bool catalogueReady = false;
+  String? catalogueError;
   List<Record> events = [],
       rsvps = [],
       checkins = [],
@@ -46,6 +49,7 @@ abstract class ParticipantRepository extends ChangeNotifier {
       : 'participant';
   Future<void> signInGoogle() => throw UnimplementedError();
   Future<void> refreshAccess() => throw UnimplementedError();
+  Future<void> refreshCatalogue() async {}
   Record? rsvp(String eventId) =>
       rsvps.where((d) => d['eventId'] == eventId).firstOrNull;
   Record? checkin(String eventId) =>
@@ -177,13 +181,40 @@ class FirebaseParticipantRepository extends ParticipantRepository {
 
     watch(
       'events',
-      db.collection('events').where('status', isEqualTo: 'published'),
+      db
+          .collection('events')
+          .where('status', whereIn: ['published', 'cancelled']),
       (v) {
         v.sort(
           (a, b) => dateOf(a['startsAt']).compareTo(dateOf(b['startsAt'])),
         );
         events = v;
       },
+    );
+    catalogueReady = false;
+    catalogueError = null;
+    _subscriptions.add(
+      db
+          .collection('programs')
+          .where('status', whereIn: ['active', 'archived'])
+          .snapshots()
+          .listen(
+            (snapshot) {
+              programs =
+                  snapshot.docs.map((d) => {...d.data(), 'id': d.id}).toList()
+                    ..sort(
+                      (a, b) =>
+                          (a['name'] as String).compareTo(b['name'] as String),
+                    );
+              catalogueReady = true;
+              notifyListeners();
+            },
+            onError: (Object error) {
+              catalogueError = error.toString();
+              catalogueReady = true;
+              notifyListeners();
+            },
+          ),
     );
     watch(
       'rsvps',
@@ -214,6 +245,24 @@ class FirebaseParticipantRepository extends ParticipantRepository {
           .where('type', isEqualTo: 'feedback'),
       (v) => notifications = v,
     );
+    notifyListeners();
+  }
+
+  @override
+  Future<void> refreshCatalogue() async {
+    catalogueReady = false;
+    catalogueError = null;
+    notifyListeners();
+    try {
+      final rows = await backend.firestore
+          .collection('programs')
+          .where('status', whereIn: ['active', 'archived'])
+          .get();
+      programs = rows.docs.map((d) => {...d.data(), 'id': d.id}).toList();
+    } catch (error) {
+      catalogueError = error.toString();
+    }
+    catalogueReady = true;
     notifyListeners();
   }
 
@@ -331,6 +380,9 @@ class FirebaseParticipantRepository extends ParticipantRepository {
     verified = false;
     profile = {};
     events = [];
+    programs = [];
+    catalogueReady = false;
+    catalogueError = null;
     rsvps = [];
     checkins = [];
     forms = [];
@@ -359,20 +411,7 @@ class FirebaseParticipantRepository extends ParticipantRepository {
 
   @override
   Future<void> countMeIn(String eventId, {bool cancel = false}) async {
-    final ref = backend.firestore.doc('rsvps/${eventId}_$uid');
-    if (rsvp(eventId) != null) {
-      await ref.update({
-        'cancelledAt': cancel ? FieldValue.serverTimestamp() : null,
-      });
-    } else if (!cancel) {
-      await ref.set({
-        'uid': uid,
-        'eventId': eventId,
-        'createdAt': FieldValue.serverTimestamp(),
-        'cancelledAt': null,
-        'source': 'app',
-      });
-    }
+    await call('setRsvp', {'eventId': eventId, 'cancel': cancel});
   }
 
   @override

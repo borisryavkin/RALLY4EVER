@@ -10,6 +10,8 @@ import 'package:timezone/timezone.dart' as tz;
 import '../shared_widgets.dart' as shared;
 import 'forms.dart';
 import 'access.dart';
+import 'catalogue.dart';
+import 'catalogue_admin.dart';
 import 'repository.dart';
 import 'theme.dart';
 
@@ -41,7 +43,9 @@ class _ParticipantAppState extends State<ParticipantApp>
       widget.repository ?? DisabledParticipantRepository();
   late String page =
       widget.initialPage ?? (repo.uid == null ? 'welcome1' : 'home');
-  String? selectedId, error;
+  String? selectedId, selectedProgramId, error;
+  String locationSearch = '';
+  bool areaChosen = false;
   bool busy = false, agreed = false, pendingSubmission = false;
   int tab = 0;
   CheckInLink? scanned;
@@ -62,6 +66,7 @@ class _ParticipantAppState extends State<ParticipantApp>
       WidgetsBinding.instance.addPostFrameCallback((_) => changed());
     }
     selectedId = widget.initialEventId;
+    syncProfileArea();
     error = widget.startupError;
     repo.addListener(changed);
     tab = switch (page) {
@@ -107,6 +112,8 @@ class _ParticipantAppState extends State<ParticipantApp>
   void changed() {
     if (!mounted) return;
     setState(() {
+      if (repo.uid == null) areaChosen = false;
+      syncProfileArea();
       if (repo.uid != null &&
           ['account', 'welcome1', 'welcome2', 'welcome3'].contains(page)) {
         page =
@@ -155,6 +162,7 @@ class _ParticipantAppState extends State<ParticipantApp>
           .where(
             (e) =>
                 dateOf(e['endsAt']).isAfter(repo.now()) &&
+                (e['status'] != 'cancelled' || repo.countedIn(eid(e))) &&
                 (sport == 'All' ||
                     (e['sport'] as String? ?? '').toLowerCase() ==
                         sport.toLowerCase()),
@@ -522,15 +530,32 @@ class _ParticipantAppState extends State<ParticipantApp>
     return switch (page) {
       'home' => home(context),
       'map' => map(context),
+      'location' when repo.programs.isNotEmpty => catalogueLocation(context),
       'location' => shared.LocationPicker(
         currentLocation: area,
         back: () => go('home'),
         select: (value) {
-          setState(() => area = value);
+          setState(() {
+            area = value;
+            areaChosen = true;
+          });
           go('home');
         },
       ),
       'programs' => programs(context),
+      'programDetail' => programDetail(context),
+      'savedPrograms' => savedPrograms(context),
+      'adminCatalogue' => frame(
+        context,
+        title: 'Admin · programs',
+        back: () => go('role'),
+        children: [
+          if (repo.canAdmin)
+            CatalogueAdminPanel(repository: repo)
+          else
+            const Text('Admin access required.'),
+        ],
+      ),
       'session' => session(context),
       'people' => who(context),
       'checkin' => checkInState(context),
@@ -687,7 +712,33 @@ class _ParticipantAppState extends State<ParticipantApp>
           ),
         );
 
+  String sessionAvailability(Record e) {
+    if (e['status'] == 'cancelled') return 'Cancelled';
+    if (dateOf(e['endsAt']).isBefore(repo.now())) return 'Session ended';
+    if (e['programId'] != null) {
+      final p = repo.programs
+          .where((p) => p['id'] == e['programId'])
+          .firstOrNull;
+      if (p == null ||
+          p['status'] != 'active' ||
+          p['registrationStatus'] == 'closed') {
+        return 'Bookings closed';
+      }
+      if (p['registrationStatus'] == 'full') return 'Full';
+    }
+    return availability(e);
+  }
+
+  bool canReserve(Record e) => ![
+    'Full',
+    'Cancelled',
+    'Bookings closed',
+    'Session ended',
+    'Archived',
+  ].contains(sessionAvailability(e));
+
   String stateFor(Record e) {
+    if (e['status'] == 'cancelled') return 'Cancelled';
     final scan = repo.checkin(eid(e));
     if (scan != null) {
       return switch (scan['status']) {
@@ -697,7 +748,7 @@ class _ParticipantAppState extends State<ParticipantApp>
         _ => 'Checked in',
       };
     }
-    return repo.countedIn(eid(e)) ? 'Counted in' : 'Spots available';
+    return repo.countedIn(eid(e)) ? 'Counted in' : sessionAvailability(e);
   }
 
   Widget eventCard(BuildContext context, Record e, {bool highlight = false}) =>
@@ -762,11 +813,56 @@ class _ParticipantAppState extends State<ParticipantApp>
           ),
         ),
       );
+  void syncProfileArea() {
+    if (areaChosen || repo.programs.isEmpty) return;
+    final postcode = '${repo.profile['postcode'] ?? ''}';
+    final p = repo.programs
+        .where(
+          (p) => p['status'] == 'active' && p['venue']['postcode'] == postcode,
+        )
+        .firstOrNull;
+    if (p != null) {
+      area = '${p['venue']['suburb']} ${p['venue']['postcode']}';
+      areaChosen = true;
+    }
+  }
+
+  bool nearSelectedArea(Record record) {
+    final point = selectedMapPoint, target = venuePoint(record);
+    if (point != null && target != null) {
+      return const Distance().as(LengthUnit.Kilometer, point, target) <= 50;
+    }
+    final v = record['venue'] as Map? ?? {};
+    return '${v['suburb']} ${v['postcode']}' == area;
+  }
+
+  List<Record> get nearbyPrograms {
+    final distance = const Distance();
+    final rows = repo.programs
+        .where((p) => matchesProgram(p, sport: sport) && nearSelectedArea(p))
+        .toList();
+    if (selectedMapPoint != null) {
+      rows.sort(
+        (a, b) =>
+            (venuePoint(a) == null
+                    ? double.infinity
+                    : distance(mapCenter, venuePoint(a)!))
+                .compareTo(
+                  venuePoint(b) == null
+                      ? double.infinity
+                      : distance(mapCenter, venuePoint(b)!),
+                ),
+      );
+    }
+    return rows;
+  }
+
   Widget home(BuildContext context) {
     final active = repo.events
         .where(
           (e) =>
               dateOf(e['endsAt']).isAfter(repo.now()) &&
+              (nearSelectedArea(e) || repo.countedIn(eid(e))) &&
               (sport == 'All' ||
                   (e['sport'] as String? ?? '').toLowerCase() ==
                       sport.toLowerCase()),
@@ -834,7 +930,13 @@ class _ParticipantAppState extends State<ParticipantApp>
           children: ['All', 'Tennis', 'Pickleball']
               .map(
                 (value) => ChoiceChip(
-                  label: Text(value),
+                  label: Text(
+                    value,
+                    style: TextStyle(
+                      color: sport == value ? Colors.white : navy,
+                    ),
+                  ),
+                  selectedColor: navy,
                   selected: sport == value,
                   onSelected: (_) => setState(() => sport = value),
                   showCheckmark: false,
@@ -875,6 +977,16 @@ class _ParticipantAppState extends State<ParticipantApp>
             e,
             highlight: repo.countedIn(eid(e)) || repo.checkin(eid(e)) != null,
           ),
+        if (nearbyPrograms.isNotEmpty) ...[
+          const SizedBox(height: 18),
+          Text(
+            'Find a regular program',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 12),
+          for (final p in nearbyPrograms.take(5))
+            ProgramCard(program: p, onTap: () => selectProgram(p)),
+        ],
         TextButton(
           onPressed: () => go('programs'),
           child: const Text('Explore all programs'),
@@ -949,14 +1061,17 @@ class _ParticipantAppState extends State<ParticipantApp>
       title: 'Come as you are',
       back: () => go('home'),
       children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(22),
-          child: Image.asset(
-            'assets/wavley.jpg',
-            height: 200,
-            fit: BoxFit.cover,
+        if (e['catalogueManaged'] == true)
+          CataloguePhoto(record: e)
+        else
+          ClipRRect(
+            borderRadius: BorderRadius.circular(22),
+            child: Image.asset(
+              'assets/wavley.jpg',
+              height: 200,
+              fit: BoxFit.cover,
+            ),
           ),
-        ),
         const SizedBox(height: 18),
         StatusPill(stateFor(e)),
         const SizedBox(height: 12),
@@ -971,6 +1086,16 @@ class _ParticipantAppState extends State<ParticipantApp>
         ),
         shared.Info(Icons.location_on_outlined, e['venue']['name'] as String),
         shared.Info(Icons.sports_tennis, (e['sport'] as String? ?? 'Tennis')),
+        if (e['catalogueManaged'] == true || e['capacity'] != null) ...[
+          shared.Info(Icons.event_seat_outlined, sessionAvailability(e)),
+          if ((e['coachNames'] as List? ?? []).isNotEmpty)
+            shared.Info(
+              Icons.person_outline,
+              (e['coachNames'] as List).join(', '),
+            ),
+          if ((e['notes'] as String? ?? '').isNotEmpty)
+            Panel(child: Text(e['notes'] as String)),
+        ],
         const SizedBox(height: 18),
         const Panel(
           child: Text(
@@ -1001,8 +1126,12 @@ class _ParticipantAppState extends State<ParticipantApp>
           if (!repo.countedIn(eid(e)))
             FilledButton(
               key: const Key('count-me-in'),
-              onPressed: () => action(() => repo.countMeIn(eid(e))),
-              child: const Text('Count me in'),
+              onPressed: canReserve(e)
+                  ? () => action(() => repo.countMeIn(eid(e)))
+                  : null,
+              child: Text(
+                canReserve(e) ? 'Count me in' : sessionAvailability(e),
+              ),
             )
           else
             const Padding(
@@ -1017,7 +1146,9 @@ class _ParticipantAppState extends State<ParticipantApp>
             FilledButton(
               key: const Key('open-checkin'),
               style: FilledButton.styleFrom(backgroundColor: navy),
-              onPressed: () => go(scanned != null ? 'waiting' : 'checkin'),
+              onPressed: e['status'] == 'cancelled' && scanned == null
+                  ? null
+                  : () => go(scanned != null ? 'waiting' : 'checkin'),
               child: Text(
                 scanned != null ? 'View attendance' : 'Check in at the court',
               ),
@@ -1795,6 +1926,11 @@ class _ParticipantAppState extends State<ParticipantApp>
           onPressed: () => go('adminAccess'),
           child: const Text('Manage users & event coaches'),
         ),
+      if (repo.canAdmin)
+        OutlinedButton(
+          onPressed: () => go('adminCatalogue'),
+          child: const Text('Manage programs & calendar'),
+        ),
       if (repo.canCoach) CoachOverviewPanel(repository: repo),
       Text(
         'Your role is ${repo.role}.',
@@ -1842,11 +1978,38 @@ class _ParticipantAppState extends State<ParticipantApp>
       ),
     ],
   );
+  void selectProgram(Record program) {
+    selectedProgramId = program['id'] as String;
+    go('programDetail');
+  }
+
   Widget programs(BuildContext context) => frame(
     context,
     title: 'Explore programs',
     back: () => go('home'),
     children: [
+      AnimatedBuilder(
+        animation: repo,
+        builder: (_, _) => ProgramBrowser(
+          repository: repo,
+          onSelect: selectProgram,
+          onSavedDirectory: () => go('savedPrograms'),
+        ),
+      ),
+    ],
+  );
+  Widget savedPrograms(BuildContext context) => frame(
+    context,
+    title: 'Saved program directory',
+    back: () => go('programs'),
+    children: [
+      const Panel(
+        color: pink,
+        child: Text(
+          'Saved directory from the existing app. Schedules may have changed. Use the live program calendar for confirmed dates and availability.',
+        ),
+      ),
+      const SizedBox(height: 16),
       FutureBuilder<List<shared.RallyProgram>>(
         future: shared.RallyProgram.load(),
         builder: (context, snapshot) {
@@ -1884,6 +2047,118 @@ class _ParticipantAppState extends State<ParticipantApp>
       ),
     ],
   );
+  Widget programDetail(BuildContext context) {
+    final p = repo.programs
+        .where((p) => p['id'] == selectedProgramId)
+        .firstOrNull;
+    if (p == null) {
+      return frame(
+        context,
+        title: 'Program',
+        back: () => go('programs'),
+        children: [const Text('This program is unavailable.')],
+      );
+    }
+    final v = p['venue'] as Map;
+    final sessions = repo.events
+        .where(
+          (e) =>
+              e['programId'] == p['id'] &&
+              dateOf(e['endsAt']).isAfter(repo.now()),
+        )
+        .toList();
+    return frame(
+      context,
+      title: 'Your regular rally',
+      back: () => go('programs'),
+      children: [
+        CataloguePhoto(record: p),
+        const SizedBox(height: 18),
+        StatusPill(availability(p)),
+        const SizedBox(height: 12),
+        Text(
+          p['name'] as String,
+          style: Theme.of(context).textTheme.headlineMedium,
+        ),
+        shared.Info(
+          Icons.place_outlined,
+          '${v['name']}\n${v['address']} · ${v['suburb']} ${v['state']} ${v['postcode']}',
+        ),
+        shared.Info(
+          Icons.calendar_month_outlined,
+          '${p['scheduleText']}\n${p['timezone']}',
+        ),
+        if ((p['coachNames'] as List? ?? []).isNotEmpty)
+          shared.Info(
+            Icons.person_outline,
+            (p['coachNames'] as List).join(', '),
+          ),
+        if ((p['notes'] as String? ?? '').isNotEmpty)
+          Panel(child: Text(p['notes'] as String)),
+        if (venuePoint(p) == null)
+          const Text('Map location is awaiting verification.'),
+        const SizedBox(height: 24),
+        Text('Session calendar', style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 12),
+        if (p['status'] == 'archived')
+          const Panel(
+            child: Text(
+              'This program is archived. Its history is kept; new bookings are closed.',
+            ),
+          )
+        else if (sessions.isEmpty)
+          const Panel(
+            child: Text(
+              'No dated sessions have been published yet. Check the regular schedule above and return for confirmed dates.',
+            ),
+          )
+        else
+          for (final e in sessions) eventCard(context, e),
+      ],
+    );
+  }
+
+  Widget catalogueLocation(BuildContext context) => frame(
+    context,
+    title: 'Where would you like to play?',
+    back: () => go('home'),
+    children: [
+      TextField(
+        decoration: const InputDecoration(
+          labelText: 'Search suburb or postcode',
+          prefixIcon: Icon(Icons.search),
+        ),
+        onChanged: (v) => setState(() => locationSearch = v),
+      ),
+      const SizedBox(height: 12),
+      for (final p in repo.programs.where(
+        (p) => matchesProgram(p, search: locationSearch),
+      ))
+        ListTile(
+          title: Text('${p['venue']['suburb']} ${p['venue']['postcode']}'),
+          subtitle: Text('${p['venue']['state']} · ${p['name']}'),
+          onTap: () {
+            setState(() {
+              area = '${p['venue']['suburb']} ${p['venue']['postcode']}';
+              areaChosen = true;
+            });
+            go('home');
+          },
+        ),
+    ],
+  );
+  LatLng? get selectedMapPoint {
+    for (final p in repo.programs) {
+      if ('${p['venue']['suburb']} ${p['venue']['postcode']}' == area &&
+          venuePoint(p) != null) {
+        return venuePoint(p)!;
+      }
+    }
+    return shared.playAreaCoordinates[area];
+  }
+
+  LatLng get mapCenter => selectedMapPoint ?? const LatLng(-25, 133);
+
   Widget map(BuildContext context) => Scaffold(
     bottomNavigationBar: bottomNav(),
     appBar: AppBar(
@@ -1894,11 +2169,10 @@ class _ParticipantAppState extends State<ParticipantApp>
       children: [
         Positioned.fill(
           child: FlutterMap(
+            key: ValueKey(area),
             options: MapOptions(
-              initialCenter:
-                  shared.playAreaCoordinates[area] ??
-                  const LatLng(-33.8926, 151.2511),
-              initialZoom: 12,
+              initialCenter: mapCenter,
+              initialZoom: selectedMapPoint == null ? 4 : 12,
             ),
             children: [
               if (widget.mapTilesEnabled)
@@ -1907,27 +2181,55 @@ class _ParticipantAppState extends State<ParticipantApp>
                   userAgentPackageName: 'org.rally4ever.app',
                 ),
               MarkerLayer(
-                markers: repo.events
-                    .map(
-                      (e) => Marker(
-                        point: LatLng(
-                          (e['venue']['lat'] as num).toDouble(),
-                          (e['venue']['lng'] as num).toDouble(),
+                markers: [
+                  for (final p in repo.programs.where(
+                    (p) =>
+                        matchesProgram(p, sport: sport) &&
+                        venuePoint(p) != null,
+                  ))
+                    Marker(
+                      point: venuePoint(p)!,
+                      width: 50,
+                      height: 50,
+                      child: IconButton(
+                        onPressed: () => selectProgram(p),
+                        tooltip: p['name'] as String,
+                        icon: const Icon(
+                          Icons.location_on,
+                          color: coral,
+                          size: 38,
                         ),
-                        width: 50,
-                        height: 50,
-                        child: IconButton(
-                          onPressed: () => select(e, 'session'),
-                          tooltip: e['name'] as String,
-                          icon: const Icon(
-                            Icons.location_on,
-                            color: coral,
-                            size: 38,
+                      ),
+                    ),
+                  ...repo.events
+                      .where(
+                        (e) =>
+                            venuePoint(e) != null &&
+                            e['status'] != 'cancelled' &&
+                            !repo.programs.any(
+                              (p) => p['id'] == e['programId'],
+                            ),
+                      )
+                      .map(
+                        (e) => Marker(
+                          point: LatLng(
+                            (e['venue']['lat'] as num).toDouble(),
+                            (e['venue']['lng'] as num).toDouble(),
+                          ),
+                          width: 50,
+                          height: 50,
+                          child: IconButton(
+                            onPressed: () => select(e, 'session'),
+                            tooltip: e['name'] as String,
+                            icon: const Icon(
+                              Icons.location_on,
+                              color: coral,
+                              size: 38,
+                            ),
                           ),
                         ),
                       ),
-                    )
-                    .toList(),
+                ],
               ),
               const RichAttributionWidget(
                 attributions: [
@@ -1965,13 +2267,20 @@ class _ParticipantAppState extends State<ParticipantApp>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${repo.events.length} sessions nearby',
+                  repo.programs.isEmpty
+                      ? '${repo.events.length} sessions nearby'
+                      : '${repo.programs.where((p) => matchesProgram(p, sport: sport) && venuePoint(p) != null).length} programs on the map',
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 8),
-                const Text('Tap a marker to see its session.'),
+                Text(
+                  repo.programs.isEmpty
+                      ? 'Tap a marker to see its session.'
+                      : 'Tap a marker for the program and session dates.',
+                ),
                 TextButton(
-                  onPressed: () => go('home'),
+                  onPressed: () =>
+                      go(repo.programs.isEmpty ? 'home' : 'programs'),
                   child: const Text('List view'),
                 ),
               ],

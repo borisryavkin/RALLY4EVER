@@ -1,0 +1,632 @@
+import 'package:flutter/material.dart';
+import 'package:timezone/timezone.dart' as tz;
+
+import 'repository.dart';
+import 'theme.dart';
+
+class CatalogueAdminPanel extends StatefulWidget {
+  const CatalogueAdminPanel({super.key, required this.repository});
+  final ParticipantRepository repository;
+  @override
+  State<CatalogueAdminPanel> createState() => _CatalogueAdminPanelState();
+}
+
+class _CatalogueAdminPanelState extends State<CatalogueAdminPanel> {
+  List<Record> programs = [];
+  Record? selected;
+  String? error;
+  bool busy = false;
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> run(Future<void> Function() task) async {
+    if (busy) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await task();
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString());
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> load() => run(() async {
+    final result = await widget.repository.call('listPrograms', {});
+    if (mounted) {
+      setState(
+        () => programs = (result['programs'] as List)
+            .map((p) => Map<String, dynamic>.from(p as Map))
+            .toList(),
+      );
+    }
+  });
+  Future<void> edit([Record? program]) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) =>
+            ProgramEditor(repository: widget.repository, program: program),
+      ),
+    );
+    if (saved == true) await load();
+  }
+
+  Future<void> schedule(Record program, [Record? session]) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SessionEditor(
+          repository: widget.repository,
+          program: program,
+          session: session,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        'Programs & calendar',
+        style: Theme.of(context).textTheme.headlineMedium,
+      ),
+      const SizedBox(height: 10),
+      const Text(
+        'Publish a program, assign its coaches, then add dated sessions. Archiving keeps its records and attendance history.',
+      ),
+      const SizedBox(height: 16),
+      FilledButton(
+        onPressed: busy ? null : () => edit(),
+        child: const Text('Create program'),
+      ),
+      TextButton(
+        onPressed: busy ? null : load,
+        child: const Text('Refresh programs'),
+      ),
+      if (busy) const LinearProgressIndicator(),
+      if (error != null) Panel(color: pink, child: Text(error!)),
+      if (!busy && programs.isEmpty)
+        const Text(
+          'No programs yet. Create one or preview the bundled directory import.',
+        ),
+      for (final p in programs)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Panel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${p['name']}',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                Text('${p['status']} · ${p['venue']['state']} · ${p['sport']}'),
+                Text('${p['scheduleText']}'),
+                for (final e in widget.repository.events.where(
+                  (e) => e['programId'] == p['id'],
+                ))
+                  TextButton(
+                    onPressed: () => schedule(p, e),
+                    child: Text(
+                      'Edit ${dateOf(e['startsAt'])} · ${e['status']}',
+                    ),
+                  ),
+
+                Wrap(
+                  spacing: 12,
+                  children: [
+                    TextButton(
+                      onPressed: () => edit(p),
+                      child: const Text('Edit / archive'),
+                    ),
+                    TextButton(
+                      onPressed: p['status'] == 'active'
+                          ? () => schedule(p)
+                          : null,
+                      child: const Text('Add session'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+    ],
+  );
+}
+
+class ProgramEditor extends StatefulWidget {
+  const ProgramEditor({super.key, required this.repository, this.program});
+  final ParticipantRepository repository;
+  final Record? program;
+  @override
+  State<ProgramEditor> createState() => _ProgramEditorState();
+}
+
+class _ProgramEditorState extends State<ProgramEditor> {
+  final fields = <String, TextEditingController>{};
+  final form = GlobalKey<FormState>();
+  String status = 'draft',
+      sport = 'tennis',
+      state = 'NSW',
+      zone = 'Australia/Sydney',
+      registration = 'open';
+  List<Record> coaches = [];
+  Set<String> coachUids = {};
+  bool busy = false;
+  String? error;
+  @override
+  void initState() {
+    super.initState();
+    final p = widget.program ?? {}, v = p['venue'] as Map? ?? {};
+    status = p['status'] as String? ?? status;
+    sport = p['sport'] as String? ?? sport;
+    state = v['state'] as String? ?? state;
+    zone = p['timezone'] as String? ?? zone;
+    registration = p['registrationStatus'] as String? ?? registration;
+    coachUids = Set<String>.from(p['coachUids'] as List? ?? []);
+    final initial = {
+      'name': p['name'],
+      'venue': v['name'],
+      'address': v['address'],
+      'suburb': v['suburb'],
+      'postcode': v['postcode'],
+      'lat': v['lat'],
+      'lng': v['lng'],
+      'schedule': p['scheduleText'],
+      'coachNames': (p['coachNames'] as List? ?? []).join(', '),
+      'notes': p['notes'],
+      'photoUrl': p['photoUrl'],
+      'capacity': p['capacity'],
+      'reason': '',
+    };
+    for (final entry in initial.entries) {
+      fields[entry.key] = TextEditingController(text: '${entry.value ?? ''}');
+    }
+    loadCoaches();
+  }
+
+  Future<void> loadCoaches() async {
+    try {
+      String? cursor;
+      final users = <Record>[];
+      do {
+        final result = await widget.repository.call('listUsers', {
+          'cursor': ?cursor,
+        });
+        users.addAll(
+          (result['users'] as List).map(
+            (p) => Map<String, dynamic>.from(p as Map),
+          ),
+        );
+        cursor = result['cursor'] as String?;
+      } while (cursor != null && mounted);
+      if (mounted) {
+        setState(
+          () => coaches = users
+              .where(
+                (u) =>
+                    u['role'] == 'coach' &&
+                    u['coachEnabled'] != false &&
+                    u['mergedInto'] == null,
+              )
+              .toList(),
+        );
+      }
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString());
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in fields.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  String value(String key) => fields[key]!.text.trim();
+  Widget field(
+    String key,
+    String label, {
+    bool required = false,
+    int lines = 1,
+  }) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: TextFormField(
+      key: Key('program-$key'),
+      controller: fields[key],
+      maxLines: lines,
+      decoration: InputDecoration(labelText: label),
+      validator: required
+          ? (v) => (v?.trim().isEmpty ?? true) ? 'Required' : null
+          : null,
+    ),
+  );
+  Widget dropdown(
+    String label,
+    String value,
+    List<String> options,
+    ValueChanged<String> onChange,
+  ) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: DropdownButtonFormField<String>(
+      initialValue: value,
+      decoration: InputDecoration(labelText: label),
+      items: [
+        for (final v in options) DropdownMenuItem(value: v, child: Text(v)),
+      ],
+      onChanged: (v) => setState(() => onChange(v!)),
+    ),
+  );
+  Future<void> save() async {
+    if (!(form.currentState?.validate() ?? false) || busy) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      double? number(String key) {
+        if (value(key).isEmpty) return null;
+        final parsed = double.tryParse(value(key));
+        return parsed;
+      }
+
+      final capacity = value('capacity').isEmpty
+          ? null
+          : int.tryParse(value('capacity'));
+      if (value('capacity').isNotEmpty && capacity == null) {
+        throw const FormatException('Capacity must be a whole number.');
+      }
+      for (final key in ['lat', 'lng']) {
+        if (value(key).isNotEmpty && double.tryParse(value(key)) == null) {
+          throw const FormatException('Enter valid venue coordinates.');
+        }
+      }
+      final result = await widget.repository.call('saveProgram', {
+        if (widget.program != null) 'programId': widget.program!['id'],
+        if (widget.program != null) 'revision': widget.program!['revision'],
+        'reason': value('reason'),
+        'program': {
+          'name': value('name'),
+          'sport': sport,
+          'status': status,
+          'venue': {
+            'name': value('venue'),
+            'address': value('address'),
+            'suburb': value('suburb'),
+            'postcode': value('postcode'),
+            'state': state,
+            'lat': number('lat'),
+            'lng': number('lng'),
+          },
+          'timezone': zone,
+          'scheduleText': value('schedule'),
+          'coachUids': coachUids.toList(),
+          'coachNames': value('coachNames')
+              .split(',')
+              .map((v) => v.trim())
+              .where((v) => v.isNotEmpty)
+              .toList(),
+          'notes': value('notes'),
+          'photoUrl': value('photoUrl'),
+          'capacity': capacity,
+          'registrationStatus': registration,
+        },
+      });
+      if (result['programId'] != null && mounted) {
+        Navigator.of(context).pop(true);
+      }
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString());
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(
+      title: Text(widget.program == null ? 'New program' : 'Edit program'),
+    ),
+    body: Form(
+      key: form,
+      child: ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          field('name', 'Program name', required: true),
+          dropdown('Sport', sport, ['tennis', 'pickleball'], (v) => sport = v),
+          dropdown('Status', status, [
+            'draft',
+            'active',
+            'archived',
+          ], (v) => status = v),
+          field('venue', 'Venue name', required: true),
+          field('address', 'Street address'),
+          field('suburb', 'Suburb', required: true),
+          field('postcode', 'Postcode'),
+          dropdown(
+            'State or territory',
+            state,
+            ['ACT', 'NSW', 'NT', 'QLD', 'SA', 'TAS', 'VIC', 'WA'],
+            (v) {
+              state = v;
+              zone = const {
+                'ACT': 'Australia/Sydney',
+                'NSW': 'Australia/Sydney',
+                'NT': 'Australia/Darwin',
+                'QLD': 'Australia/Brisbane',
+                'SA': 'Australia/Adelaide',
+                'TAS': 'Australia/Hobart',
+                'VIC': 'Australia/Melbourne',
+                'WA': 'Australia/Perth',
+              }[v]!;
+            },
+          ),
+          field('lat', 'Venue latitude'),
+          field('lng', 'Venue longitude'),
+          const Text(
+            'Both coordinates are required before dated sessions can be published.',
+          ),
+          const SizedBox(height: 12),
+          dropdown('Venue timezone', zone, [
+            'Australia/Sydney',
+            'Australia/Melbourne',
+            'Australia/Brisbane',
+            'Australia/Adelaide',
+            'Australia/Perth',
+            'Australia/Darwin',
+            'Australia/Hobart',
+          ], (v) => zone = v),
+          field(
+            'schedule',
+            'Regular schedule / term dates',
+            required: true,
+            lines: 2,
+          ),
+          field('coachNames', 'Public coach names, separated by commas'),
+          const Text(
+            'Assigned coach accounts',
+            style: TextStyle(fontWeight: FontWeight.w700),
+          ),
+          if (coaches.isEmpty)
+            const Text(
+              'No active coaches loaded. Grant coach access in People & permissions first.',
+            ),
+          for (final coach in coaches)
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text('${coach['email']}'),
+              value: coachUids.contains(coach['uid']),
+              onChanged: (v) => setState(
+                () => v == true
+                    ? coachUids.add(coach['uid'] as String)
+                    : coachUids.remove(coach['uid']),
+              ),
+            ),
+          field('notes', 'What participants should know', lines: 4),
+          field('photoUrl', 'Photo URL (HTTPS)'),
+          field('capacity', 'Default session capacity (blank = unlimited)'),
+          dropdown('Reservations', registration, [
+            'open',
+            'full',
+            'closed',
+          ], (v) => registration = v),
+          field('reason', 'Reason for this change', required: true, lines: 2),
+          if (error != null) Panel(color: pink, child: Text(error!)),
+          const SizedBox(height: 16),
+          FilledButton(
+            onPressed: busy ? null : save,
+            child: Text(busy ? 'Saving…' : 'Save program'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+class SessionEditor extends StatefulWidget {
+  const SessionEditor({
+    super.key,
+    required this.repository,
+    required this.program,
+    this.session,
+  });
+  final ParticipantRepository repository;
+  final Record program;
+  final Record? session;
+  @override
+  State<SessionEditor> createState() => _SessionEditorState();
+}
+
+class _SessionEditorState extends State<SessionEditor> {
+  DateTime? start, end;
+  final reason = TextEditingController();
+  final capacity = TextEditingController(), notes = TextEditingController();
+  String registration = 'open', status = 'published';
+  @override
+  void initState() {
+    super.initState();
+    final session = widget.session;
+    if (session != null) {
+      final zone = tz.getLocation(widget.program['timezone'] as String);
+      start = tz.TZDateTime.from(dateOf(session['startsAt']), zone);
+      end = tz.TZDateTime.from(dateOf(session['endsAt']), zone);
+    }
+    capacity.text =
+        '${(session != null ? session['capacity'] : widget.program['capacity']) ?? ''}';
+    notes.text = '${session?['notes'] ?? widget.program['notes'] ?? ''}';
+    registration =
+        session?['registrationStatus'] as String? ??
+        widget.program['registrationStatus'] as String? ??
+        'open';
+    status = session?['status'] as String? ?? 'published';
+  }
+
+  String? error;
+  bool busy = false;
+  @override
+  void dispose() {
+    reason.dispose();
+    capacity.dispose();
+    notes.dispose();
+    super.dispose();
+  }
+
+  Future<void> pick(bool isStart) async {
+    final location = tz.getLocation(widget.program['timezone'] as String);
+    final now = tz.TZDateTime.from(widget.repository.now(), location);
+    final date = await showDatePicker(
+      context: context,
+      initialDate: start ?? now.add(const Duration(days: 1)),
+      firstDate: DateTime(now.year, now.month, now.day),
+      lastDate: DateTime(now.year + 2),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: const TimeOfDay(hour: 10, minute: 0),
+    );
+    if (time == null) return;
+    final selected = tz.TZDateTime(
+      location,
+      date.year,
+      date.month,
+      date.day,
+      time.hour,
+      time.minute,
+    );
+    if (selected.hour != time.hour || selected.minute != time.minute) {
+      if (mounted) {
+        setState(
+          () => error = 'That time does not occur at the venue because of daylight saving.',
+        );
+      }
+      return;
+    }
+    if (mounted) {
+      setState(() {
+        if (isStart) {
+          start = selected;
+        } else {
+          end = selected;
+        }
+      });
+    }
+  }
+
+  Future<void> save() async {
+    if (start == null ||
+        end == null ||
+        !end!.isAfter(start!) ||
+        reason.text.trim().isEmpty) {
+      setState(() => error = 'Choose a start, a later end and a reason.');
+      return;
+    }
+    setState(() => busy = true);
+    try {
+      await widget.repository.call('saveSession', {
+        'programId': widget.program['id'],
+        if (widget.session != null) 'eventId': widget.session!['id'],
+        if (widget.session != null) 'revision': widget.session!['revision'],
+        'capacity': capacity.text.trim().isEmpty
+            ? null
+            : int.parse(capacity.text.trim()),
+        'registrationStatus': registration,
+        'notes': notes.text.trim(),
+        'status': status,
+        'startsAt': start!.toUtc().toIso8601String(),
+        'endsAt': end!.toUtc().toIso8601String(),
+        'reason': reason.text.trim(),
+      });
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString());
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Add calendar session')),
+    body: ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        Text(
+          '${widget.program['name']}',
+          style: Theme.of(context).textTheme.headlineMedium,
+        ),
+        Text(
+          'All times use ${widget.program['timezone']}. Capacity and venue come from the program.',
+        ),
+        const SizedBox(height: 20),
+        OutlinedButton(
+          onPressed: () => pick(true),
+          child: Text(
+            start == null ? 'Choose start date & time' : 'Starts: $start',
+          ),
+        ),
+        OutlinedButton(
+          onPressed: () => pick(false),
+          child: Text(end == null ? 'Choose end date & time' : 'Ends: $end'),
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: capacity,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: 'Session capacity (blank = unlimited)',
+          ),
+        ),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String>(
+          initialValue: registration,
+          decoration: const InputDecoration(labelText: 'Reservations'),
+          items: [
+            for (final value in ['open', 'full', 'closed'])
+              DropdownMenuItem(value: value, child: Text(value)),
+          ],
+          onChanged: (v) => setState(() => registration = v!),
+        ),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String>(
+          initialValue: status,
+          decoration: const InputDecoration(labelText: 'Session status'),
+          items: [
+            for (final value in ['published', 'cancelled'])
+              DropdownMenuItem(value: value, child: Text(value)),
+          ],
+          onChanged: (v) => setState(() => status = v!),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: notes,
+          maxLines: 3,
+          decoration: const InputDecoration(labelText: 'Session notes'),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: reason,
+          decoration: const InputDecoration(
+            labelText: 'Reason for publishing this session',
+          ),
+        ),
+        if (error != null) Panel(color: pink, child: Text(error!)),
+        const SizedBox(height: 20),
+        FilledButton(
+          onPressed: busy ? null : save,
+          child: Text(busy ? 'Publishing…' : 'Publish session'),
+        ),
+      ],
+    ),
+  );
+}
