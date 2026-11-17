@@ -22,6 +22,7 @@ void main() {
         AppRole.participant,
       );
       expect(AppRole.resolve(), AppRole.participant);
+      expect(AppRole.resolve(profileRole: 'coach'), AppRole.participant);
     },
   );
   test(
