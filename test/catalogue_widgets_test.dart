@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:rally4ever/participant/app.dart';
 import 'package:rally4ever/participant/catalogue.dart';
 import 'package:rally4ever/participant/catalogue_admin.dart';
@@ -353,4 +354,35 @@ void main() {
     );
     await tester.pumpWidget(const SizedBox.shrink());
   });
+  testWidgets(
+    'a restored member uses their program postcode instead of the Sydney default',
+    (tester) async {
+      final perth = program(id: 'perth', state: 'WA', sport: 'pickleball');
+      (perth['venue'] as Map).addAll(<String, Object>{'lat': -31.95, 'lng': 115.86});
+      final repo = FakeParticipantRepository()
+        ..catalogueReady = true
+        ..programs = [program(), perth]
+        ..events = [];
+      repo.profile['postcode'] = '6000';
+      await tester.pumpWidget(
+        ParticipantApp(
+          repository: repo,
+          initialPage: 'map',
+          cameraEnabled: false,
+          mapTilesEnabled: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Perth 6000'), findsOneWidget);
+      expect(
+        tester
+            .widget<FlutterMap>(find.byType(FlutterMap))
+            .options
+            .initialCenter
+            .latitude,
+        closeTo(-31.95, .001),
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 }
