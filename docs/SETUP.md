@@ -2,9 +2,9 @@
 
 ## Local only — no Firebase account or billing required
 
-Use Node 24 (`.nvmrc`), Java 21, the installed Flutter SDK and package lockfiles. Install Node dependencies with `npm ci`; Flutter dependencies with `flutter pub get`. The npm CLI tooling currently has 13 moderate transitive advisories after nonbreaking audit fixes; no high advisories remain. A scoped gRPC override updates the JS Firestore client's old 1.9.x pin to compatible 1.14.x. Avoid `npm audit fix --force`, which proposes incompatible Firebase downgrades. Reassess tooling advisories before deployment. No Node package is shipped with the Flutter UI in this stage.
+Use Node 24 (`.nvmrc`), Java 21, the installed Flutter SDK and package lockfiles. Install Node dependencies with `npm ci` and `npm --prefix functions ci`; Flutter dependencies with `flutter pub get`. The npm CLI tooling currently has 13 moderate transitive advisories after nonbreaking audit fixes; no high advisories remain. A scoped gRPC override updates the JS Firestore client's old 1.9.x pin to compatible 1.14.x. Avoid `npm audit fix --force`, which proposes incompatible Firebase downgrades. Reassess tooling advisories before deployment. No Node package is shipped with the Flutter UI in this stage.
 
-Start the Auth (9099) and Firestore (8080) emulators:
+Start Auth (9099), Firestore (8080) and Functions (5001) emulators:
 
 ```sh
 npm run emulators
@@ -28,6 +28,8 @@ Run checks (the emulator command starts/stops its own emulators; stop any manual
 flutter analyze
 flutter test
 npm run test:emulator
+npm run test:functions
+npm run test:all:emulator
 ```
 
 Tests deliberately clear **local demo Firestore data** in their isolated run. Seed and tests reject absent/nonlocal emulator hosts, unexpected project IDs and Google credential-file configuration. npm scripts specify the demo project explicitly. The Firebase CLI will download emulator binaries on first run.
@@ -38,11 +40,19 @@ Current app UI remains the audited prototype; its email navigation is not real a
 
 ## Manual steps later — none required for this stage
 
-- Create/register a Firebase project/apps when deployment planning is approved. Stay on Spark for now. Configure authorized auth providers/domains deliberately; do not change a deployed provider without approval. New-account provisioning will be a trusted Function, not a Firestore client write.
+- Create/register a Firebase project/apps when deployment planning is approved. Stay on Spark for now. Configure authorized auth providers/domains deliberately; do not change a deployed provider without approval. New-account provisioning is a trusted local callable, not a Firestore client write; deployment is not authorized.
 - Review current Blaze/Functions/scheduled-job costs before any deployment; present AUD estimate and free emulator alternative, then wait for approval. Do not enable billing now. AUD $100 total cap; arrange AUD $20 budget alert with authorized billing access before billed services. Alert is not a hard spending limit.
 - Supply APNs key/capabilities and configure FCM for iOS, Android and browser push; web service worker/VAPID; test physical device delivery. Emulators do not deliver real FCM pushes.
 - Verify control of `rally4ever.org`; plan Firebase Hosting DNS/HTTPS and iOS/Android link associations. Any purchase or paid change needs advance approval. Use emulator URLs meanwhile.
 - Supply approved form content, current versions, coach assignments, exact venue coordinates, event times/timezones and published app-store links. Approximate discovery coordinates must not become trusted geofence centers.
 - For stores, supply signing/release access and authorize any account fees before payment. iOS camera usage text and native app links will be added with scanner integration.
-- For legacy import/merge, supply old Admin app source/schema or sanitized export. Review dry-run report, backup and rollback strategy; explicit approval is required before real-data writes or deletion. The old duplicate bug remains unverified.
+- For legacy import/merge, supply old Admin app source/schema or sanitized export. Review dry-run report, backup and rollback strategy; explicit approval is required before real-data writes or deletion. The old duplicate bug remains unverified. Local normalized-email concurrency and merge tests pass; see `FUNCTIONS.md` for dry-run defaults and apply safeguards.
 - Existing program JSON assets remain absolute symlinks to another local folder. Make them portable in a separate reviewed source-data change before a clean-machine app build; stage 3 does not change those assets.
+
+## Functions-stage notes
+
+See `FUNCTIONS.md` for all seven callable contracts, the Firestore trigger and the five-minute scheduler. Identity document IDs now use normalized email rather than the historical stage-3 hash; reset disposable old emulator fixtures if necessary. No production data was migrated.
+
+FCM is a deterministic local delivery double (`emulatorPushes`), with no real sends. Scheduler handler tests invoke the actual SDK `.run` handler against emulator data because CLI 15.36 cannot dispatch v2 scheduled HTTP signatures through its Pub/Sub adapter. No Pub/Sub emulator or paid Scheduler service is required for the current test command. Real push setup remains a later manual step.
+
+The Functions package passes npm audit with zero vulnerabilities at implementation time. Root local CLI-tooling advisories remain as documented above. No native UI or account provider settings changed.

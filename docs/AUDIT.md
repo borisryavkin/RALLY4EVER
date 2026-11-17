@@ -176,3 +176,9 @@ Track these in `docs/SETUP.md` during implementation:
 The findings above describe the original prototype and remain historical evidence. The app now has its own Git repository (`main` baseline `071698b`, active `feature/qr-attendance`), and the nine analyzer findings were corrected separately in `3a9b5b0`. The parent SDK repo was not changed.
 
 Stage 3 adds a local-only Firebase foundation, role/ownership rules, schema, indexes, Auth/read service contracts, seed and emulator tests; see `DATA_MODEL.md`, `PLAN.md`, `CHANGELOG.md`, `SETUP.md` and root `firestore.rules`. No UI paths have been connected or replaced yet. Production Firebase configuration, Functions, concurrent identity provisioning, merge implementation, check-in validation and live notifications remain unimplemented. No claim is made that the old backend duplicate defect is fixed. Review is required at this stage before continuing.
+
+## 11. Functions-stage status — 17 November 2026
+
+The emulator-only TypeScript backend now implements the seven requested callables plus the pending-check-in trigger and feedback scheduler. See `FUNCTIONS.md` for inputs, outputs, error codes, merge semantics and test coverage. Literal normalized-email identity keys supersede the stage-3 hash convention at the user's request; only local fixture paths changed. Concurrent registration and two-coach walk-in tests verify one profile/UID in the emulator, but the legacy backend duplicate report remains unconfirmed.
+
+No UI has been connected, no production services deployed and no paid services enabled. FCM is still a local delivery double; scheduled handler logic is tested against emulator data, with the local CLI v2 scheduler-dispatch limitation documented. Review is required before participant integration.

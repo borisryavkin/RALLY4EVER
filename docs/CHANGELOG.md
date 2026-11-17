@@ -1,5 +1,15 @@
 # Change log
 
+## 2026-11-17 — Functions stage: emulator-only backend
+
+- Added TypeScript `registerIdentity`, `rotateEventSecret`, `checkIn`, `coachDecision`, `correctAttendance`, `addWalkIn`, and `mergeProfiles`. Runtime guards refuse non-emulator execution; no UI or deployment.
+- Updated identity document IDs to literal normalized emails per the latest request (old stage-3 keys were hashes); updated fixture paths without touching real data. Transaction tests verify one profile across concurrent registration/candidate UIDs and two-coach walk-in creation. No claim about legacy backend duplicates.
+- Check-in transaction enforces server time/geofence/QR/forms/details/deterministic attendance ID. Coach/admin decisions and reasoned corrections preserve original scan fields. Manual walk-ins keep unknown location/distance null; profile decoder supports nulls.
+- Merges default to dry-run; apply requires a fresh unchanged plan by the same admin, refuses collisions/privileged profiles, preserves full originals in mergeAudits and leaves source profile with mergedInto. Added emulator-only dry-run CLI.
+- Added real Firestore pending-check-in trigger and five-minute feedback job (+40 min, confirmed only, deterministic inbox dedupe, bounded selection, retry leases). Push transport is a local test double, not real FCM.
+- Validation: Flutter analyzer clean; 6 Flutter tests, 10 Functions unit tests, 17 rules/Auth emulator tests and 20 Functions emulator tests pass under Node 24. Scheduler SDK handler is exercised against emulator data; CLI 15.36 cannot dispatch its v2 signature through Pub/Sub. No claim of automated wall-clock scheduler delivery or real device push.
+- Functions package dependency audit reports zero vulnerabilities. Existing root CLI-tooling moderate advisories remain documented in SETUP.md. No paid services enabled, no production migration, no existing UI feature removed.
+
 ## 2026-11-17 — stage 3: data/security foundation
 
 - Added `demo-rally4ever` Auth/Firestore emulator configuration, rules and composite index definitions. No deployment, billing or production access.
