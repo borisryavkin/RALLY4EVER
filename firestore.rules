@@ -1,0 +1,153 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+    function active() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.mergedInto == null;
+    }
+    // A protected profile role overrides a claim, allowing immediate demotion.
+    function role() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data
+        .get('role', request.auth.token.get('role', 'participant'));
+    }
+    function admin() { return active() && role() == 'admin'; }
+    function own(uid) { return active() && request.auth.uid == uid; }
+    function assignedCoach(eventId) {
+      return active() && role() == 'coach'
+        && request.auth.uid in get(/databases/$(database)/documents/events/$(eventId)).data.coachUids;
+    }
+    function eventExists(eventId) {
+      return exists(/databases/$(database)/documents/events/$(eventId));
+    }
+    function published(eventId) {
+      return eventExists(eventId)
+        && get(/databases/$(database)/documents/events/$(eventId)).data.status == 'published';
+    }
+    function text(value, max) { return value is string && value.size() <= max; }
+    function validProfile(d) {
+      return d.keys().hasAll(['uid', 'email', 'emailLower', 'role', 'mergedInto', 'createdAt', 'updatedAt',
+          'firstName', 'lastName', 'postcode', 'mobile', 'emergencyContact', 'injuries', 'preferences', 'about'])
+        && d.keys().hasOnly(['uid', 'email', 'emailLower', 'role', 'mergedInto', 'createdAt', 'updatedAt',
+          'firstName', 'lastName', 'postcode', 'mobile', 'emergencyContact', 'injuries', 'preferences', 'about'])
+        && text(d.firstName, 100) && text(d.lastName, 100) && text(d.postcode, 20)
+        && text(d.mobile, 40) && text(d.injuries, 2000)
+        && d.emergencyContact is map
+        && d.emergencyContact.keys().hasAll(['name', 'mobile'])
+        && d.emergencyContact.keys().hasOnly(['name', 'mobile'])
+        && text(d.emergencyContact.name, 200) && text(d.emergencyContact.mobile, 40)
+        && d.preferences is map
+        && d.preferences.keys().hasAll(['useInReports', 'wellbeingCheckIns', 'showInWhosGoing', 'marketingEmails'])
+        && d.preferences.keys().hasOnly(['useInReports', 'wellbeingCheckIns', 'showInWhosGoing', 'marketingEmails'])
+        && d.preferences.useInReports is bool && d.preferences.wellbeingCheckIns is bool
+        && d.preferences.showInWhosGoing is bool && d.preferences.marketingEmails is bool
+        && d.about is map
+        && d.about.keys().hasOnly(['ageRange', 'gender', 'accessNeed', 'currentActivity', 'referral',
+          'referralOther', 'loneliness', 'satisfaction', 'culturalBackground'])
+        && text(d.about.get('ageRange', ''), 80) && text(d.about.get('gender', ''), 80)
+        && text(d.about.get('accessNeed', ''), 500) && text(d.about.get('currentActivity', ''), 100)
+        && text(d.about.get('referral', ''), 100) && text(d.about.get('referralOther', ''), 500)
+        && text(d.about.get('loneliness', ''), 80) && text(d.about.get('satisfaction', ''), 80)
+        && text(d.about.get('culturalBackground', ''), 200);
+    }
+
+    match /users/{uid} {
+      allow read: if own(uid) || admin();
+      // Creation is server-only: reserve the verified normalized email atomically.
+      allow create, delete: if admin();
+      allow update: if admin() || (own(uid) && validProfile(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'firstName', 'lastName', 'postcode', 'mobile', 'emergencyContact', 'injuries', 'preferences', 'about', 'updatedAt'])
+        && request.resource.data.updatedAt == request.time);
+      match /devices/{deviceId} {
+        allow read, delete: if own(uid) || admin();
+        allow create, update: if admin() || (own(uid)
+          && request.resource.data.keys().hasAll(['token', 'platform', 'updatedAt'])
+          && request.resource.data.keys().hasOnly(['token', 'platform', 'updatedAt'])
+          && text(request.resource.data.token, 4096)
+          && request.resource.data.token.size() > 0
+          && request.resource.data.platform in ['android', 'ios', 'web']
+          && request.resource.data.updatedAt == request.time);
+      }
+    }
+    match /emailIdentities/{emailHash} { allow read, write: if admin(); }
+    match /events/{eventId} {
+      allow read: if active() && (resource.data.status == 'published' || assignedCoach(eventId) || admin());
+      allow write: if admin();
+    }
+    match /eventSecrets/{eventId} {
+      // No client, even an admin client, can fetch or modify QR credentials.
+      allow read, write: if false;
+    }
+    match /rsvps/{id} {
+      allow read: if own(resource.data.uid) || assignedCoach(resource.data.eventId) || admin();
+      allow create: if admin() || (own(request.resource.data.uid)
+        && id == request.resource.data.eventId + '_' + request.auth.uid
+        && request.resource.data.keys().hasAll(['uid', 'eventId', 'createdAt', 'cancelledAt', 'source'])
+        && request.resource.data.keys().hasOnly(['uid', 'eventId', 'createdAt', 'cancelledAt', 'source'])
+        && published(request.resource.data.eventId)
+        && request.time <= get(/databases/$(database)/documents/events/$(request.resource.data.eventId)).data.endsAt
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.cancelledAt == null && request.resource.data.source == 'app');
+      allow update: if admin() || (own(resource.data.uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['cancelledAt'])
+        && (request.resource.data.cancelledAt == request.time
+          || (request.resource.data.cancelledAt == null && published(resource.data.eventId)
+            && request.time <= get(/databases/$(database)/documents/events/$(resource.data.eventId)).data.endsAt)));
+      allow delete: if admin();
+    }
+    match /checkins/{id} {
+      allow read: if own(resource.data.uid) || assignedCoach(resource.data.eventId) || admin();
+      // Assigned coach/admin operations use trusted callables too, preserving scans/audit history.
+      allow write: if false;
+    }
+    match /forms/{formId} {
+      allow read: if active();
+      allow write: if admin();
+    }
+    match /consents/{id} {
+      allow read: if own(resource.data.uid) || admin();
+      allow create, update: if admin() || (own(request.resource.data.uid)
+        && request.resource.data.keys().hasAll(['uid', 'formId', 'formType', 'version', 'signedAt'])
+        && request.resource.data.keys().hasOnly(['uid', 'formId', 'formType', 'version', 'signedAt'])
+        && id == request.auth.uid + '_' + request.resource.data.formId
+        && request.resource.data.formType in ['conduct', 'waiver']
+        && request.resource.data.formType == get(/databases/$(database)/documents/forms/$(request.resource.data.formId)).data.formType
+        && request.resource.data.version == get(/databases/$(database)/documents/forms/$(request.resource.data.formId)).data.version
+        && request.resource.data.signedAt == request.time
+        && (!exists(/databases/$(database)/documents/consents/$(id))
+          || resource.data.version < request.resource.data.version));
+      allow delete: if admin();
+    }
+    function eligibleForFeedback(d) {
+      let scan = get(/databases/$(database)/documents/checkins/$(d.eventId + '_' + request.auth.uid)).data;
+      return scan.status == 'confirmed' && scan.uid == request.auth.uid
+        && request.time >= get(/databases/$(database)/documents/events/$(d.eventId)).data.endsAt;
+    }
+    match /feedback/{id} {
+      allow read: if own(resource.data.uid) || assignedCoach(resource.data.eventId) || admin();
+      allow create: if admin() || (own(request.resource.data.uid)
+        && id == request.resource.data.eventId + '_' + request.auth.uid
+        && request.resource.data.keys().hasAll(['uid', 'eventId', 'rating', 'tags', 'comment', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['uid', 'eventId', 'rating', 'tags', 'comment', 'createdAt'])
+        && request.resource.data.rating is int && request.resource.data.rating >= 1 && request.resource.data.rating <= 5
+        && request.resource.data.tags is list && request.resource.data.tags.size() <= 6
+        && request.resource.data.tags.hasOnly(['coaching', 'people', 'atmosphere', 'accessibility', 'timing', 'other'])
+        && text(request.resource.data.comment, 2000)
+        && request.resource.data.createdAt == request.time && eligibleForFeedback(request.resource.data));
+      allow update, delete: if admin();
+    }
+    match /notifications/{id} {
+      allow read: if own(resource.data.uid) || admin();
+      allow update: if admin() || (own(resource.data.uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt'])
+        && request.resource.data.readAt == request.time);
+      allow create, delete: if admin();
+    }
+    match /mergeAudits/{id} { allow read, write: if admin(); }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

@@ -67,3 +67,7 @@ database-debug.log*
 ui-debug.log*
 **/service-account*.json
 **/serviceAccount*.json
+
+# Node tools and emulator exports
+node_modules/
+.firebase-emulator-data/
