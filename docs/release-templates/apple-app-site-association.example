@@ -1,0 +1,8 @@
+{
+  "applinks": {
+    "details": [{
+      "appIDs": ["CONFIRMED_APP_PREFIX.org.rally4ever"],
+      "components": [{"/": "/c/*", "comment": "Event QR links; app validates k strictly"}]
+    }]
+  }
+}

@@ -1,0 +1,8 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "org.rally4ever",
+    "sha256_cert_fingerprints": ["PLAY_APP_SIGNING_CERTIFICATE_SHA256_NOT_UPLOAD_KEY"]
+  }
+}]
