@@ -44,6 +44,67 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets(
+    'valid app link waits for login and opens QR flow without attendance',
+    (tester) async {
+      final repo = FakeParticipantRepository(authenticated: false);
+      await show(tester, repo, 'account');
+      final link = 'https://rally4ever.org/c/EVENT-1?k=${'a' * 43}';
+      await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+        'flutter/navigation',
+        const JSONMethodCodec().encodeMethodCall(
+          MethodCall('pushRouteInformation', {'location': link}),
+        ),
+        (_) {},
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Scan coach’s QR'), findsNothing);
+      repo.uid = 'participant-1';
+      repo.ready = true;
+      repo.notifyListeners();
+      await tester.pumpAndSettle();
+      expect(find.widgetWithText(TextField, link), findsOneWidget);
+      expect(repo.checkins.where((c) => c['eventId'] == 'event-1'), isEmpty);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets('cold-start relative QR link opens the same strict scan flow', (
+    tester,
+  ) async {
+    final route = '/c/EVENT-1?k=${'a' * 43}';
+    tester.binding.platformDispatcher.defaultRouteNameTestValue = route;
+    addTearDown(
+      tester.binding.platformDispatcher.clearDefaultRouteNameTestValue,
+    );
+    final repo = FakeParticipantRepository();
+    await show(tester, repo, 'home');
+    expect(
+      find.widgetWithText(TextField, 'https://rally4ever.org$route'),
+      findsOneWidget,
+    );
+    expect(repo.checkins.where((c) => c['eventId'] == 'event-1'), isEmpty);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('unrelated app links cannot enter check-in', (tester) async {
+    final repo = FakeParticipantRepository();
+    await show(tester, repo, 'home');
+    await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
+      'flutter/navigation',
+      const JSONMethodCodec().encodeMethodCall(
+        MethodCall('pushRouteInformation', {
+          'location': 'https://evil.example/c/EVENT-1?k=${'a' * 43}',
+        }),
+      ),
+      (_) {},
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Play near you'), findsOneWidget);
+    expect(repo.checkins.where((c) => c['eventId'] == 'event-1'), isEmpty);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   final screens = [
     ('S01-intro-program', 'welcome1'),
     ('S02-intro-people', 'welcome2'),

@@ -8,7 +8,14 @@ import 'emulator_settings.dart';
 
 /// Explicit development opt-in; loopback by default, private LAN only by flag.
 /// There is deliberately no production initialization path.
-class EmulatorBackend {
+abstract interface class FirebaseBackend {
+  FirebaseAuth get auth;
+  FirebaseFirestore get firestore;
+  FirebaseFunctions get functions;
+  String get emailLinkOrigin;
+}
+
+class EmulatorBackend implements FirebaseBackend {
   EmulatorBackend._(
     this.app,
     this.auth,
@@ -16,10 +23,15 @@ class EmulatorBackend {
     this.functions,
     this.settings,
   );
+  @override
+  String get emailLinkOrigin => settings.webOrigin;
   static const projectId = EmulatorSettings.projectId;
   final FirebaseApp app;
+  @override
   final FirebaseAuth auth;
+  @override
   final FirebaseFirestore firestore;
+  @override
   final FirebaseFunctions functions;
   final EmulatorSettings settings;
 

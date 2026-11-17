@@ -34,7 +34,9 @@ class ParticipantApp extends StatefulWidget {
   State<ParticipantApp> createState() => _ParticipantAppState();
 }
 
-class _ParticipantAppState extends State<ParticipantApp> {
+class _ParticipantAppState extends State<ParticipantApp>
+    with WidgetsBindingObserver {
+  String? pendingQrLink;
   late final ParticipantRepository repo =
       widget.repository ?? DisabledParticipantRepository();
   late String page =
@@ -52,6 +54,13 @@ class _ParticipantAppState extends State<ParticipantApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    final initialLink =
+        WidgetsBinding.instance.platformDispatcher.defaultRouteName;
+    if (initialLink != '/') {
+      _queueAppLink(initialLink);
+      WidgetsBinding.instance.addPostFrameCallback((_) => changed());
+    }
     selectedId = widget.initialEventId;
     error = widget.startupError;
     repo.addListener(changed);
@@ -74,6 +83,27 @@ class _ParticipantAppState extends State<ParticipantApp> {
     });
   }
 
+  void _queueAppLink(String raw) {
+    final candidate = raw.startsWith('/c/')
+        ? 'https://rally4ever.org$raw'
+        : raw;
+    try {
+      CheckInLink.parse(candidate);
+      pendingQrLink = candidate;
+    } on FormatException {
+      // Ignore unrelated links; the same strict QR parser guards the scan flow.
+    }
+  }
+
+  @override
+  Future<bool> didPushRouteInformation(
+    RouteInformation routeInformation,
+  ) async {
+    _queueAppLink(routeInformation.uri.toString());
+    changed();
+    return true;
+  }
+
   void changed() {
     if (!mounted) return;
     setState(() {
@@ -84,6 +114,11 @@ class _ParticipantAppState extends State<ParticipantApp> {
                 (repo.profile['postcode'] as String? ?? '').isEmpty
             ? 'profile1'
             : 'home';
+      }
+      if (pendingQrLink != null && repo.uid != null && repo.ready) {
+        qrInput.text = pendingQrLink!;
+        pendingQrLink = null;
+        page = 'scan';
       }
       if (page == 'role' && !repo.canCoach && !repo.canAdmin) {
         page = 'home';
@@ -105,6 +140,7 @@ class _ParticipantAppState extends State<ParticipantApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     timer?.cancel();
     repo.removeListener(changed);
     if (widget.repository == null) repo.dispose();
@@ -246,46 +282,55 @@ class _ParticipantAppState extends State<ParticipantApp> {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
+    initialRoute: '/',
     debugShowCheckedModeBanner: false,
     title: 'RALLY4EVER',
     theme: rallyTheme(),
-    home: AnimatedBuilder(
-      animation: repo,
-      builder: (context, _) => LayoutBuilder(
-        builder: (context, constraints) => ColoredBox(
-          color: const Color(0xffe7e2de),
-          child: Center(
-            child: SizedBox(
-              width: math.min(constraints.maxWidth, 520),
-              child: Column(
-                children: [
-                  if (widget.lanTesting)
-                    Material(
-                      key: const Key('lan-testing-banner'),
-                      color: pink,
-                      child: SafeArea(
-                        bottom: false,
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Text(
-                            'LAN TESTING — DEVELOPMENT ONLY\n${widget.lanHost} · Emulators exposed to Wi-Fi. Demo data only.',
-                            style: const TextStyle(
-                              color: navy,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
+    routes: {'/': (_) => rootView()},
+    onGenerateInitialRoutes: (_) => [
+      MaterialPageRoute<void>(
+        settings: const RouteSettings(name: '/'),
+        builder: (_) => rootView(),
+      ),
+    ],
+  );
+
+  Widget rootView() => AnimatedBuilder(
+    animation: repo,
+    builder: (context, _) => LayoutBuilder(
+      builder: (context, constraints) => ColoredBox(
+        color: const Color(0xffe7e2de),
+        child: Center(
+          child: SizedBox(
+            width: math.min(constraints.maxWidth, 520),
+            child: Column(
+              children: [
+                if (widget.lanTesting)
+                  Material(
+                    key: const Key('lan-testing-banner'),
+                    color: pink,
+                    child: SafeArea(
+                      bottom: false,
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Text(
+                          'LAN TESTING — DEVELOPMENT ONLY\n${widget.lanHost} · Emulators exposed to Wi-Fi. Demo data only.',
+                          style: const TextStyle(
+                            color: navy,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
                       ),
                     ),
-                  Expanded(
-                    child: AbsorbPointer(
-                      absorbing: busy,
-                      child: buildPage(context),
-                    ),
                   ),
-                ],
-              ),
+                Expanded(
+                  child: AbsorbPointer(
+                    absorbing: busy,
+                    child: buildPage(context),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -355,6 +400,8 @@ class _ParticipantAppState extends State<ParticipantApp> {
               child: Text(
                 error ?? repo.streamError!,
                 style: const TextStyle(color: navy),
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           if (busy) const LinearProgressIndicator(minHeight: 3),

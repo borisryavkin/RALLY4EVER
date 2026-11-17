@@ -109,7 +109,7 @@ class FirebaseParticipantRepository extends ParticipantRepository {
   FirebaseParticipantRepository(this.backend) {
     enabled = true;
   }
-  final EmulatorBackend backend;
+  final FirebaseBackend backend;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   Future<void> restore() async {
     final user = backend.auth.currentUser;
@@ -242,8 +242,14 @@ class FirebaseParticipantRepository extends ParticipantRepository {
       result = await backend.auth.signInWithPopup(provider);
     } else {
       const serverId = String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
+      const iosClientId = String.fromEnvironment('FIREBASE_IOS_CLIENT_ID');
       await GoogleSignIn.instance.initialize(
         serverClientId: serverId.isEmpty ? null : serverId,
+        clientId:
+            defaultTargetPlatform == TargetPlatform.iOS &&
+                iosClientId.isNotEmpty
+            ? iosClientId
+            : null,
       );
       final account = await GoogleSignIn.instance.authenticate();
       final idToken = account.authentication.idToken;
@@ -280,7 +286,7 @@ class FirebaseParticipantRepository extends ParticipantRepository {
   Future<void> sendLink(String email) => backend.auth.sendSignInLinkToEmail(
     email: normalizeEmail(email),
     actionCodeSettings: ActionCodeSettings(
-      url: backend.settings.webOrigin,
+      url: backend.emailLinkOrigin,
       handleCodeInApp: true,
     ),
   );
