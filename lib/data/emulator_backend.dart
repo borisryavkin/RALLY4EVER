@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 
@@ -7,11 +8,12 @@ import '../models/attendance_models.dart';
 /// Explicit opt-in; not wired into the prototype UI until the participant stage.
 /// There is deliberately no production initialization path.
 class EmulatorBackend {
-  EmulatorBackend._(this.app, this.auth, this.firestore);
+  EmulatorBackend._(this.app, this.auth, this.firestore, this.functions);
   static const projectId = 'demo-rally4ever';
   final FirebaseApp app;
   final FirebaseAuth auth;
   final FirebaseFirestore firestore;
+  final FirebaseFunctions functions;
 
   static String validateHost(String host) {
     // Android emulator uses 10.0.2.2 to reach the machine's loopback interface.
@@ -41,6 +43,7 @@ class EmulatorBackend {
         appId: '1:123456789:web:rally4ever-demo',
         messagingSenderId: '123456789',
         projectId: projectId,
+        authDomain: 'demo-rally4ever.firebaseapp.com',
       ),
     );
     final auth = FirebaseAuth.instanceFor(app: app);
@@ -49,7 +52,12 @@ class EmulatorBackend {
     await auth.useAuthEmulator(host, 9099);
     firestore.settings = const Settings(persistenceEnabled: false);
     firestore.useFirestoreEmulator(host, 8080);
-    return EmulatorBackend._(app, auth, firestore);
+    final functions = FirebaseFunctions.instanceFor(
+      app: app,
+      region: 'australia-southeast1',
+    );
+    functions.useFunctionsEmulator(host, 5001);
+    return EmulatorBackend._(app, auth, firestore, functions);
   }
 }
 

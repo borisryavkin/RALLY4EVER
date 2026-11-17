@@ -6,6 +6,8 @@
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Rally4Ever uses your camera to scan the current session QR code from your coach.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Rally4ever uses your location to find nearby Rally4ever events.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

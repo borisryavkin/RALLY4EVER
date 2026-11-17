@@ -10,11 +10,15 @@ enum AppRole {
   admin;
 
   /// Unknown roles never gain privileges. A profile role overrides stale claims.
-  static AppRole resolve({String? profileRole, String? claimRole}) =>
-      AppRole.values.firstWhere(
-        (role) => role.name == (profileRole ?? claimRole),
-        orElse: () => AppRole.participant,
-      );
+  static AppRole resolve({String? profileRole, String? claimRole}) {
+    final role = AppRole.values.firstWhere(
+      (role) => role.name == (profileRole ?? claimRole),
+      orElse: () => AppRole.participant,
+    );
+    return role == AppRole.coach && claimRole != 'coach'
+        ? AppRole.participant
+        : role;
+  }
 }
 
 enum CheckInStatus { pending, confirmed, rejected }
@@ -47,7 +51,9 @@ class UserProfile {
         uid: data['uid'] as String,
         emailLower: data['emailLower'] as String,
         role: AppRole.resolve(
-          profileRole: data['role'] as String?,
+          profileRole: data['coachEnabled'] == false && data['role'] == 'coach'
+              ? 'participant'
+              : data['role'] as String?,
           claimRole: claimRole,
         ),
         firstName: data['firstName'] as String,

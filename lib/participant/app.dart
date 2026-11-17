@@ -1,0 +1,1892 @@
+import 'dart:async';
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:timezone/timezone.dart' as tz;
+
+import '../shared_widgets.dart' as shared;
+import 'forms.dart';
+import 'access.dart';
+import 'repository.dart';
+import 'theme.dart';
+
+class ParticipantApp extends StatefulWidget {
+  const ParticipantApp({
+    super.key,
+    this.repository,
+    this.startupError,
+    this.initialPage,
+    this.initialEventId,
+    this.cameraEnabled = true,
+    this.mapTilesEnabled = true,
+  });
+  final ParticipantRepository? repository;
+  final String? startupError, initialPage, initialEventId;
+  final bool cameraEnabled, mapTilesEnabled;
+  @override
+  State<ParticipantApp> createState() => _ParticipantAppState();
+}
+
+class _ParticipantAppState extends State<ParticipantApp> {
+  late final ParticipantRepository repo =
+      widget.repository ?? DisabledParticipantRepository();
+  late String page =
+      widget.initialPage ?? (repo.uid == null ? 'welcome1' : 'home');
+  String? selectedId, error;
+  bool busy = false, agreed = false, pendingSubmission = false;
+  int tab = 0;
+  CheckInLink? scanned;
+  Record? scanLocation;
+  Record? people;
+  double? previewDistance;
+  final qrInput = TextEditingController();
+  Timer? timer;
+  MobileScannerController? scanner;
+  @override
+  void initState() {
+    super.initState();
+    selectedId = widget.initialEventId;
+    error = widget.startupError;
+    repo.addListener(changed);
+    tab = switch (page) {
+      'map' => 1,
+      'profile' => 3,
+      'help' => 4,
+      _ => 0,
+    };
+    if (page == 'people' && event != null) {
+      unawaited(
+        repo.countedPeople(eid(event!)).then((value) {
+          if (mounted) setState(() => people = value);
+        }),
+      );
+    }
+
+    timer = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  void changed() {
+    if (!mounted) return;
+    setState(() {
+      if (repo.uid != null &&
+          ['account', 'welcome1', 'welcome2', 'welcome3'].contains(page)) {
+        page =
+            (repo.profile['firstName'] as String? ?? '').isEmpty ||
+                (repo.profile['postcode'] as String? ?? '').isEmpty
+            ? 'profile1'
+            : 'home';
+      }
+      if (page == 'role' && !repo.canCoach && !repo.canAdmin) {
+        page = 'home';
+        error =
+            'Coach access was revoked. You can keep using participant tools.';
+      }
+      if (repo.uid == null &&
+          ![
+            'account',
+            'welcome1',
+            'welcome2',
+            'welcome3',
+            'noapp',
+          ].contains(page)) {
+        page = 'account';
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    timer?.cancel();
+    repo.removeListener(changed);
+    if (widget.repository == null) repo.dispose();
+    qrInput.dispose();
+    unawaited(scanner?.dispose() ?? Future<void>.value());
+    super.dispose();
+  }
+
+  Record? get event =>
+      repo.events.where((e) => eid(e) == selectedId).firstOrNull ??
+      repo.events
+          .where(
+            (e) =>
+                dateOf(e['endsAt']).isAfter(repo.now()) &&
+                (sport == 'All' ||
+                    (e['sport'] as String? ?? '').toLowerCase() ==
+                        sport.toLowerCase()),
+          )
+          .firstOrNull ??
+      repo.events.firstOrNull;
+  String eid(Record e) => e['id'] as String? ?? e['eventId'] as String;
+  void go(String next) {
+    setState(() {
+      page = next;
+      if (next == 'home' || next == 'profile') {
+        scanned = null;
+        scanLocation = null;
+        pendingSubmission = false;
+      }
+      error = null;
+      agreed = false;
+    });
+  }
+
+  Future<void> action(Future<void> Function() work) async {
+    if (busy) return;
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await work();
+    } catch (e) {
+      if (mounted) setState(() => error = readableError(e));
+    } finally {
+      if (mounted) {
+        setState(() => busy = false);
+        if (pendingSubmission) {
+          pendingSubmission = false;
+          unawaited(submitScan());
+        }
+      }
+    }
+  }
+
+  String readableError(Object e) {
+    if (e is FormatException) return e.message;
+    final value = e.toString();
+    return value
+        .replaceFirst(RegExp(r'^\[[^\]]+\]\s*'), '')
+        .replaceFirst('Bad state: ', '');
+  }
+
+  void select(Record e, String next) {
+    selectedId = eid(e);
+    previewDistance = null;
+    go(next);
+  }
+
+  bool detailsComplete() =>
+      [
+        'firstName',
+        'mobile',
+      ].every((k) => (repo.profile[k] as String? ?? '').trim().isNotEmpty) &&
+      ((repo.profile['emergencyContact'] as Map?)?['name'] as String? ?? '')
+          .trim()
+          .isNotEmpty &&
+      ((repo.profile['emergencyContact'] as Map?)?['mobile'] as String? ?? '')
+          .trim()
+          .isNotEmpty;
+  void nextAfterScan() {
+    if (!mounted) return;
+    if (!detailsComplete()) {
+      go('details');
+      return;
+    }
+    if (event != null && repo.missingForms(event!).isNotEmpty) {
+      go('agreements');
+      return;
+    }
+    if (busy) {
+      pendingSubmission = true;
+    } else {
+      unawaited(submitScan());
+    }
+  }
+
+  Future<void> acceptQr(String raw) async {
+    final link = CheckInLink.parse(raw);
+    final target = repo.events
+        .where((e) => e['code'] == link.eventCode)
+        .firstOrNull;
+    if (target == null) {
+      throw const FormatException(
+        'This event is not available. Ask your coach to refresh the QR.',
+      );
+    }
+    final position = await repo.location();
+    if (!mounted) return;
+    scanned = link;
+    scanLocation = position;
+    selectedId = eid(target);
+    nextAfterScan();
+  }
+
+  Future<void> submitScan() async {
+    if (scanned == null) {
+      go('scan');
+      return;
+    }
+    await action(() async {
+      try {
+        await repo.call('checkIn', {
+          'eventCode': scanned!.eventCode,
+          'secret': scanned!.secret,
+          ...?scanLocation,
+          'method': 'app',
+        });
+        go('waiting');
+      } catch (e) {
+        if (e.toString().contains('already checked in')) {
+          go('waiting');
+        } else {
+          rethrow;
+        }
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+    debugShowCheckedModeBanner: false,
+    title: 'RALLY4EVER',
+    theme: rallyTheme(),
+    home: AnimatedBuilder(
+      animation: repo,
+      builder: (context, _) => LayoutBuilder(
+        builder: (context, constraints) => ColoredBox(
+          color: const Color(0xffe7e2de),
+          child: Center(
+            child: SizedBox(
+              width: math.min(constraints.maxWidth, 520),
+              child: AbsorbPointer(absorbing: busy, child: buildPage(context)),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+  Widget brand({bool light = false}) => Row(
+    children: [
+      Icon(
+        Icons.grid_view_rounded,
+        color: light ? Colors.white : pink,
+        size: 22,
+      ),
+      const SizedBox(width: 8),
+      Text(
+        'RALLY4EVER',
+        style: TextStyle(
+          fontFamily: 'Figtree',
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 1,
+          color: light ? Colors.white : navy,
+        ),
+      ),
+    ],
+  );
+  Widget frame(
+    BuildContext context, {
+    String? title,
+    required List<Widget> children,
+    Widget? bottom,
+    bool dark = false,
+    bool navigation = false,
+    VoidCallback? back,
+  }) => Scaffold(
+    backgroundColor: dark ? navy : cream,
+    appBar: AppBar(
+      backgroundColor: dark ? navy : cream,
+      foregroundColor: dark ? Colors.white : navy,
+      leading: back != null ? BackButton(onPressed: back) : null,
+      automaticallyImplyLeading: false,
+      title: title != null
+          ? Text(title, style: TextStyle(color: dark ? Colors.white : navy))
+          : brand(light: dark),
+      actions: [
+        if (title != null)
+          Padding(
+            padding: const EdgeInsets.only(right: 20),
+            child: Icon(
+              Icons.sports_tennis,
+              color: dark ? pink : coral,
+              size: 19,
+            ),
+          ),
+      ],
+    ),
+    body: SafeArea(
+      top: false,
+      child: Column(
+        children: [
+          if (error != null || repo.streamError != null)
+            Container(
+              key: const Key('error-banner'),
+              width: double.infinity,
+              color: pink,
+              padding: const EdgeInsets.all(14),
+              child: Text(
+                error ?? repo.streamError!,
+                style: const TextStyle(color: navy),
+              ),
+            ),
+          if (busy) const LinearProgressIndicator(minHeight: 3),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+              children: children,
+            ),
+          ),
+          if (bottom != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
+              child: bottom,
+            ),
+        ],
+      ),
+    ),
+    bottomNavigationBar: navigation ? bottomNav() : null,
+  );
+  Widget bottomNav() => NavigationBar(
+    selectedIndex: tab,
+    onDestinationSelected: (i) {
+      tab = i;
+      go(['home', 'map', 'checkin', 'profile', 'help'][i]);
+    },
+    destinations: const [
+      NavigationDestination(icon: Icon(Icons.sports_tennis), label: 'Play'),
+      NavigationDestination(icon: Icon(Icons.map_outlined), label: 'Map'),
+      NavigationDestination(
+        icon: Icon(Icons.qr_code_scanner),
+        label: 'Check in',
+      ),
+      NavigationDestination(icon: Icon(Icons.person_outline), label: 'Me'),
+      NavigationDestination(icon: Icon(Icons.favorite_border), label: 'Help'),
+    ],
+  );
+
+  Widget buildPage(BuildContext context) {
+    if (page.startsWith('welcome')) {
+      return intro(
+        context,
+        int.tryParse(page.replaceFirst('welcome', '')) ?? 1,
+      );
+    }
+    if (page == 'account') {
+      return frame(
+        context,
+        back: () => go('welcome1'),
+        children: [
+          AccountForm(repository: repo, onAction: action, busy: busy),
+          TextButton(
+            onPressed: () => go('noapp'),
+            child: const Text('Check in without an app account'),
+          ),
+        ],
+      );
+    }
+    if (page == 'noapp') {
+      return frame(
+        context,
+        title: 'Check in with your coach',
+        back: () => go('account'),
+        children: [NoAppCheckInForm(repository: repo)],
+      );
+    }
+    if (repo.uid == null) {
+      return frame(
+        context,
+        children: [
+          const Text('Sign in to join a session.'),
+          FilledButton(
+            onPressed: () => go('account'),
+            child: const Text('Sign in'),
+          ),
+        ],
+      );
+    }
+    if (!repo.ready) {
+      return frame(
+        context,
+        children: [
+          Text(
+            'Finding your next rally…',
+            style: Theme.of(context).textTheme.headlineMedium,
+          ),
+          const SizedBox(height: 24),
+          for (var i = 0; i < 3; i++)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Panel(
+                color: Colors.white.withValues(alpha: .6),
+                child: const SizedBox(height: 70),
+              ),
+            ),
+        ],
+      );
+    }
+    if (page.startsWith('profile') && page != 'profile') {
+      final step = int.tryParse(page.replaceFirst('profile', '')) ?? 1;
+      return frame(
+        context,
+        title: 'About you',
+        back: () => go('profile'),
+        children: [
+          ProfileStep(
+            key: ValueKey(page),
+            step: step,
+            profile: repo.profile,
+            onSave: (changes) => action(() async {
+              await repo.saveProfile(changes);
+              go(step == 5 ? 'home' : 'profile${step + 1}');
+            }),
+            onSkip: () => go(step == 5 ? 'home' : 'profile${step + 1}'),
+          ),
+        ],
+      );
+    }
+    return switch (page) {
+      'home' => home(context),
+      'map' => map(context),
+      'location' => shared.LocationPicker(
+        currentLocation: area,
+        back: () => go('home'),
+        select: (value) {
+          setState(() => area = value);
+          go('home');
+        },
+      ),
+      'programs' => programs(context),
+      'session' => session(context),
+      'people' => who(context),
+      'checkin' => checkInState(context),
+      'scan' => scan(context),
+      'details' => frame(
+        context,
+        title: 'Before you play',
+        back: () => go('scan'),
+        children: [
+          DetailsForm(
+            profile: repo.profile,
+            onSave: (changes) => action(() async {
+              await repo.saveProfile(changes);
+              if (event != null && repo.missingForms(event!).isNotEmpty) {
+                go('agreements');
+              } else {
+                go('scan');
+                nextAfterScan();
+              }
+            }),
+          ),
+        ],
+      ),
+      'agreements' => agreements(context),
+      'waiting' || 'confirmed' => attendance(context),
+      'feedbackReminder' => feedbackReminder(context),
+      'feedback' => feedback(context),
+      'profile' => profile(context),
+      'help' => help(context),
+      'role' => roleScreen(context),
+      'adminAccess' => frame(
+        context,
+        title: 'Admin · people & access',
+        back: () => go('role'),
+        children: [
+          if (repo.canAdmin)
+            AdminAccessPanel(repository: repo)
+          else
+            const Text('Admin access required.'),
+        ],
+      ),
+      _ => home(context),
+    };
+  }
+
+  String area = 'Bondi Junction 2022';
+  String sport = 'All';
+  Widget intro(BuildContext context, int step) {
+    final colors = [coral, navy, pink],
+        titles = [
+          'Find your\nprogram',
+          'Find your\npeople',
+          'Play. Connect.\nFeel better.',
+        ];
+    final light = step < 3;
+    return Scaffold(
+      backgroundColor: colors[step - 1],
+      body: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: brand(light: light)),
+                  TextButton(
+                    onPressed: () => go('account'),
+                    child: Text(
+                      'Skip',
+                      style: TextStyle(color: light ? Colors.white : navy),
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: Image.asset(
+                  [
+                    'assets/candid_photo.jpg.webp',
+                    'assets/group.jpg.webp',
+                    'assets/lmfo.jpg.webp',
+                  ][step - 1],
+                  height: 230,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                titles[step - 1],
+                style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                  color: light ? Colors.white : navy,
+                  fontSize: 38,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                [
+                  'Free social tennis and pickleball in 50+ places across Australia.',
+                  'No experience needed. Rackets and balls are provided. Just come along and have a hit.',
+                  'A regular, low-pressure way to get moving and meet people near you.',
+                ][step - 1],
+                style: TextStyle(
+                  color: light ? Colors.white : navy,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 22),
+              Row(
+                children: List.generate(
+                  3,
+                  (i) => Container(
+                    width: i == step - 1 ? 22 : 6,
+                    height: 5,
+                    margin: const EdgeInsets.only(right: 5),
+                    decoration: BoxDecoration(
+                      color: (light ? Colors.white : navy).withValues(
+                        alpha: i == step - 1 ? 1 : .35,
+                      ),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ),
+              const Spacer(),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: step == 2 ? coral : navy,
+                ),
+                onPressed: () =>
+                    go(step == 3 ? 'account' : 'welcome${step + 1}'),
+                child: Text(step == 3 ? 'Get started' : 'Continue'),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String stateFor(Record e) {
+    final scan = repo.checkin(eid(e));
+    if (scan != null) {
+      return switch (scan['status']) {
+        'confirmed' => 'Confirmed',
+        'pending' => 'Checked in · waiting for coach',
+        'rejected' => 'Check-in needs review',
+        _ => 'Checked in',
+      };
+    }
+    return repo.countedIn(eid(e)) ? 'Counted in' : 'Spots available';
+  }
+
+  Widget eventCard(BuildContext context, Record e, {bool highlight = false}) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: 14),
+        child: InkWell(
+          key: Key('event-${eid(e)}'),
+          onTap: () => select(e, 'session'),
+          borderRadius: BorderRadius.circular(18),
+          child: Panel(
+            color: highlight ? navy : Colors.white,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                StatusPill(stateFor(e)),
+                const SizedBox(height: 10),
+                Text(
+                  e['name'] as String,
+                  style: Theme.of(context).textTheme.titleLarge
+                      ?.copyWith(color: highlight ? Colors.white : navy),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  '${eventDate(e)} · ${timeOf(e['startsAt'], e)}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: highlight ? Colors.white : slate,
+                  ),
+                ),
+                Text(
+                  e['venue']['name'] as String,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: highlight ? Colors.white70 : slate,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Icon(
+                      repo.checkin(eid(e))?['status'] == 'confirmed'
+                          ? Icons.check_circle_outline
+                          : Icons.arrow_forward,
+                      size: 16,
+                      color: highlight ? pink : coral,
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      repo.checkin(eid(e))?['status'] == 'confirmed'
+                          ? 'Attendance confirmed'
+                          : 'View session',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                        color: highlight ? Colors.white : coral,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+  Widget home(BuildContext context) {
+    final active = repo.events
+        .where(
+          (e) =>
+              dateOf(e['endsAt']).isAfter(repo.now()) &&
+              (sport == 'All' ||
+                  (e['sport'] as String? ?? '').toLowerCase() ==
+                      sport.toLowerCase()),
+        )
+        .toList();
+    return frame(
+      context,
+      navigation: true,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Hi ${repo.profile['firstName'] ?? 'there'}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  Text(
+                    'Play near you',
+                    style: Theme.of(context).textTheme.headlineMedium,
+                  ),
+                ],
+              ),
+            ),
+            CircleAvatar(
+              backgroundColor: navy,
+              child: Text(
+                initials,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        InkWell(
+          onTap: () => go('location'),
+          child: Panel(
+            padding: 12,
+            child: Row(
+              children: [
+                const Icon(Icons.location_on_outlined, color: coral, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Near $area',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+                const Text(
+                  'Change',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+        Wrap(
+          spacing: 8,
+          children: ['All', 'Tennis', 'Pickleball']
+              .map(
+                (value) => ChoiceChip(
+                  label: Text(value),
+                  selected: sport == value,
+                  onSelected: (_) => setState(() => sport = value),
+                  showCheckmark: false,
+                ),
+              )
+              .toList(),
+        ),
+        const SizedBox(height: 16),
+        if (repo.googleUser && !repo.canCoach && !repo.canAdmin) ...[
+          const Panel(
+            color: pink,
+            child: Text(
+              'Ask your admin for coach access. Your participant profile is ready.',
+            ),
+          ),
+          TextButton(
+            onPressed: () => action(repo.refreshAccess),
+            child: const Text('Refresh access'),
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (repo.role != 'participant') ...[
+          OutlinedButton(
+            onPressed: () => go('role'),
+            child: Text('${repo.role == 'admin' ? 'Admin' : 'Coach'} view'),
+          ),
+          const SizedBox(height: 16),
+        ],
+        if (active.isEmpty)
+          const Panel(
+            child: Text(
+              'No upcoming sessions yet. Explore programs or check back soon.',
+            ),
+          ),
+        for (final e in active)
+          eventCard(
+            context,
+            e,
+            highlight: repo.countedIn(eid(e)) || repo.checkin(eid(e)) != null,
+          ),
+        TextButton(
+          onPressed: () => go('programs'),
+          child: const Text('Explore all programs'),
+        ),
+        if (repo.checkins.any(
+          (c) =>
+              c['status'] == 'confirmed' &&
+              !repo.feedbackRecords.any((f) => f['eventId'] == c['eventId']) &&
+              repo.events.any(
+                (e) =>
+                    eid(e) == c['eventId'] &&
+                    dateOf(e['endsAt']).isBefore(repo.now()),
+              ),
+        ))
+          OutlinedButton(
+            onPressed: () {
+              selectedId =
+                  repo.checkins.firstWhere(
+                        (c) => c['status'] == 'confirmed',
+                      )['eventId']
+                      as String;
+              go('feedbackReminder');
+            },
+            child: const Text('How was your last session?'),
+          ),
+        const SizedBox(height: 12),
+        const Text(
+          'Turn up as you are. Equipment and friendly faces provided.',
+          style: TextStyle(fontSize: 12),
+        ),
+      ],
+    );
+  }
+
+  String get initials => (repo.profile['firstName'] as String? ?? 'M').isEmpty
+      ? 'M'
+      : (repo.profile['firstName'] as String).substring(0, 1).toUpperCase();
+  DateTime zoned(dynamic value, Record e) {
+    try {
+      return tz.TZDateTime.from(
+        dateOf(value),
+        tz.getLocation(e['timezone'] as String? ?? 'Australia/Sydney'),
+      );
+    } catch (_) {
+      return dateOf(value).toLocal();
+    }
+  }
+
+  String timeOf(dynamic value, Record e) {
+    final t = zoned(value, e);
+    return '${t.hour % 12 == 0 ? 12 : t.hour % 12}:${t.minute.toString().padLeft(2, '0')}${t.hour >= 12 ? 'pm' : 'am'}';
+  }
+
+  String eventDate(Record e) {
+    final d = zoned(e['startsAt'], e);
+    return '${['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'][d.weekday - 1]} ${d.day} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][d.month - 1]}';
+  }
+
+  Widget session(BuildContext context) {
+    final e = event;
+    if (e == null) {
+      return frame(
+        context,
+        title: 'Session',
+        back: () => go('home'),
+        children: [const Text('This session is unavailable.')],
+      );
+    }
+    final scanned = repo.checkin(eid(e));
+    return frame(
+      context,
+      title: 'Come as you are',
+      back: () => go('home'),
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: Image.asset(
+            'assets/wavley.jpg',
+            height: 200,
+            fit: BoxFit.cover,
+          ),
+        ),
+        const SizedBox(height: 18),
+        StatusPill(stateFor(e)),
+        const SizedBox(height: 12),
+        Text(
+          e['name'] as String,
+          style: Theme.of(context).textTheme.headlineMedium,
+        ),
+        const SizedBox(height: 16),
+        shared.Info(
+          Icons.calendar_today_outlined,
+          '${eventDate(e)} · ${timeOf(e['startsAt'], e)}–${timeOf(e['endsAt'], e)}',
+        ),
+        shared.Info(Icons.location_on_outlined, e['venue']['name'] as String),
+        shared.Info(Icons.sports_tennis, (e['sport'] as String? ?? 'Tennis')),
+        const SizedBox(height: 18),
+        const Panel(
+          child: Text(
+            'Just bring yourself\n\nRackets and balls provided. Wear comfy clothes and joggers. New player? Perfect.',
+          ),
+        ),
+        const SizedBox(height: 16),
+        OutlinedButton(
+          onPressed: () => action(() async {
+            people = await repo.countedPeople(eid(e));
+            go('people');
+          }),
+          child: const Text("Who's counted in"),
+        ),
+        if (repo.countedIn(eid(e)))
+          TextButton(
+            onPressed: () => action(() => repo.countMeIn(eid(e), cancel: true)),
+            child: const Text('Cancel my intent'),
+          ),
+        const Text(
+          '“Count me in” tells us you plan to come. Check in at the court when you arrive.',
+          style: TextStyle(fontSize: 12),
+        ),
+      ],
+      bottom: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (!repo.countedIn(eid(e)))
+            FilledButton(
+              key: const Key('count-me-in'),
+              onPressed: () => action(() => repo.countMeIn(eid(e))),
+              child: const Text('Count me in'),
+            )
+          else
+            const Padding(
+              padding: EdgeInsets.only(bottom: 8),
+              child: Text(
+                'You’re counted in',
+                style: TextStyle(fontWeight: FontWeight.w700, color: navy),
+              ),
+            ),
+          if (repo.countedIn(eid(e)) || scanned != null) ...[
+            const SizedBox(height: 8),
+            FilledButton(
+              key: const Key('open-checkin'),
+              style: FilledButton.styleFrom(backgroundColor: navy),
+              onPressed: () => go(scanned != null ? 'waiting' : 'checkin'),
+              child: Text(
+                scanned != null ? 'View attendance' : 'Check in at the court',
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget who(BuildContext context) => frame(
+    context,
+    title: "Who's counted in",
+    back: () => go('session'),
+    children: [
+      Text(
+        event?['name'] as String? ?? 'Your session',
+        style: Theme.of(context).textTheme.titleLarge,
+      ),
+      const SizedBox(height: 18),
+      const Panel(
+        color: pink,
+        child: Text(
+          'Counted in means planning to come. Your coach confirms who actually turns up.',
+        ),
+      ),
+      const SizedBox(height: 16),
+      for (final person in people?['people'] as List? ?? [])
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Panel(
+            child: Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: navy,
+                  foregroundColor: Colors.white,
+                  child: Text(person['initials'] as String),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    person['label'] as String,
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                StatusPill(person['isYou'] == true ? 'You' : 'Say hi'),
+              ],
+            ),
+          ),
+        ),
+      Text(
+        '${people?['count'] ?? repo.rsvps.where((r) => r['eventId'] == selectedId && r['cancelledAt'] == null).length} counted in. Only members who choose to share their first name are listed.',
+        style: const TextStyle(fontSize: 12),
+      ),
+    ],
+  );
+  Widget checkInState(BuildContext context) {
+    final e = event;
+    if (e == null) {
+      return frame(
+        context,
+        title: 'Check in',
+        children: [const Text('Choose an upcoming session from Play.')],
+        navigation: true,
+      );
+    }
+    final scan = repo.checkin(eid(e));
+    if (scan != null) return attendance(context);
+    final opens = dateOf(e['startsAt']).subtract(const Duration(minutes: 10)),
+        open = !repo.now().isBefore(opens),
+        closed = repo.now().isAfter(dateOf(e['endsAt']));
+    return frame(
+      context,
+      dark: true,
+      title: 'At the court',
+      back: () => go('home'),
+      children: [
+        const SizedBox(height: 34),
+        Text(
+          e['name'] as String,
+          style: const TextStyle(color: pink, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          closed
+              ? 'Check-in has\nclosed'
+              : open
+              ? 'Ready to play?\nScan to check in'
+              : 'Check-in opens\nat ${timeOf(opens, e)}',
+          style: Theme.of(context).textTheme.headlineLarge
+              ?.copyWith(color: Colors.white),
+        ),
+        const SizedBox(height: 32),
+        Center(
+          child: Container(
+            width: 190,
+            height: 190,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.white.withValues(alpha: .08),
+              border: Border.all(color: Colors.white24),
+            ),
+            child: const Icon(Icons.qr_code_scanner, color: pink, size: 78),
+          ),
+        ),
+        const SizedBox(height: 32),
+        Text(
+          'Check in from 10 minutes before the session starts. Stay within ${e['geofenceRadiusM'] ?? 150} m of ${e['venue']['name']}.',
+          style: const TextStyle(color: Colors.white70),
+        ),
+        const SizedBox(height: 18),
+        OutlinedButton(
+          key: const Key('preview-distance'),
+          style: OutlinedButton.styleFrom(foregroundColor: Colors.white),
+          onPressed: () => action(() async {
+            final p = await repo.location();
+            final distance = const Distance().as(
+              LengthUnit.Meter,
+              LatLng(
+                (p['lat'] as num).toDouble(),
+                (p['lng'] as num).toDouble(),
+              ),
+              LatLng(
+                (e['venue']['lat'] as num).toDouble(),
+                (e['venue']['lng'] as num).toDouble(),
+              ),
+            );
+            if (mounted) setState(() => previewDistance = distance);
+          }),
+          child: const Text('Check my distance'),
+        ),
+        if (previewDistance != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Panel(
+              color: pink,
+              child: Text(
+                'You are ${previewDistance!.round()} m from the venue. ${previewDistance! > (e['geofenceRadiusM'] as num? ?? 150) ? "Move closer before scanning." : "Your coach will still confirm you in person."}',
+              ),
+            ),
+          ),
+        const Text(
+          'Your location and scan time go to the coach. Attendance stays pending until the coach confirms.',
+          style: TextStyle(color: Colors.white70, fontSize: 12),
+        ),
+      ],
+      bottom: FilledButton(
+        key: const Key('start-scan'),
+        onPressed: open && !closed ? () => go('scan') : null,
+        child: Text(
+          open && !closed
+              ? 'Scan the coach’s QR'
+              : 'Opens at ${timeOf(opens, e)}',
+        ),
+      ),
+    );
+  }
+
+  Widget scan(BuildContext context) {
+    if (widget.cameraEnabled) scanner ??= MobileScannerController();
+    return frame(
+      context,
+      dark: true,
+      title: 'Scan the coach’s QR',
+      back: () => go('checkin'),
+      children: [
+        const Text(
+          'Only the current Rally4Ever session code will work.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        const SizedBox(height: 20),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: SizedBox(
+            height: 270,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (widget.cameraEnabled)
+                  MobileScanner(
+                    controller: scanner!,
+                    onDetect: (capture) {
+                      if (busy) return;
+                      final value = capture.barcodes.firstOrNull?.rawValue;
+                      if (value != null) {
+                        unawaited(
+                          action(() async {
+                            await scanner!.stop();
+                            try {
+                              await acceptQr(value);
+                            } finally {
+                              if (mounted && page == 'scan') {
+                                await scanner!.start();
+                              }
+                            }
+                          }),
+                        );
+                      }
+                    },
+                    errorBuilder: (context, error) => const ColoredBox(
+                      color: Color(0xff15295e),
+                      child: Center(
+                        child: Text(
+                          'Allow camera access, or paste the QR link below.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  const ColoredBox(color: Color(0xff15295e)),
+                Center(
+                  child: Container(
+                    width: 200,
+                    height: 200,
+                    decoration: BoxDecoration(
+                      border: Border.all(color: coral, width: 3),
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        TextField(
+          key: const Key('qr-link'),
+          controller: qrInput,
+          decoration: const InputDecoration(
+            labelText: 'Or paste the QR link',
+            hintText: 'https://rally4ever.org/c/…',
+          ),
+        ),
+        const SizedBox(height: 16),
+        FilledButton(
+          key: const Key('use-qr'),
+          onPressed: () => action(() => acceptQr(qrInput.text)),
+          child: const Text('Use this session code'),
+        ),
+        const SizedBox(height: 14),
+        const Text(
+          'We check the event, time window, code, forms and distance on the server.',
+          style: TextStyle(color: Colors.white70, fontSize: 12),
+        ),
+      ],
+    );
+  }
+
+  Widget agreements(BuildContext context) {
+    final missing = event == null
+        ? repo.forms.where((f) => !repo.signed(f)).toList()
+        : repo.missingForms(event!);
+    if (missing.isEmpty) {
+      return frame(
+        context,
+        title: 'Quick agreements',
+        back: () => go('profile'),
+        children: [
+          const Panel(
+            child: Text(
+              'You’re up to date. We only ask again when a form changes.',
+            ),
+          ),
+        ],
+        bottom: FilledButton(
+          onPressed: () => go(scanned == null ? 'profile' : 'scan'),
+          child: const Text('Continue'),
+        ),
+      );
+    }
+    return frame(
+      context,
+      title: 'Quick agreements',
+      back: () => go('details'),
+      children: [
+        Text(
+          'Before you play',
+          style: Theme.of(context).textTheme.headlineMedium,
+        ),
+        const Text(
+          'Read each current form once. Your agreement stays with your profile.',
+        ),
+        const SizedBox(height: 20),
+        for (final form in missing) ...[
+          Panel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        form['title'] as String,
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    StatusPill('v${form['version']}', dark: true),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  form['content'] as String,
+                  style: const TextStyle(fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+        CheckboxListTile(
+          key: const Key('accept-forms'),
+          contentPadding: EdgeInsets.zero,
+          value: agreed,
+          onChanged: (v) => setState(() => agreed = v ?? false),
+          title: const Text(
+            'I have read and agree to these forms.',
+            style: TextStyle(fontSize: 13),
+          ),
+        ),
+      ],
+      bottom: FilledButton(
+        key: const Key('sign-and-checkin'),
+        onPressed: agreed
+            ? () => action(() async {
+                for (final f in missing) {
+                  await repo.signForm(f);
+                }
+                if (scanned != null) {
+                  go('scan');
+                  nextAfterScan();
+                } else {
+                  go('profile');
+                }
+              })
+            : null,
+        child: Text(scanned != null ? 'Agree and check in' : 'Save agreements'),
+      ),
+    );
+  }
+
+  Widget attendance(BuildContext context) {
+    final e = event;
+    final scan = e == null ? null : repo.checkin(eid(e));
+    final status = scan?['status'] as String? ?? 'pending',
+        confirmed = status == 'confirmed',
+        rejected = status == 'rejected';
+    return frame(
+      context,
+      title: 'Your attendance',
+      back: () => go('home'),
+      children: [
+        const SizedBox(height: 40),
+        Center(
+          child: CircleAvatar(
+            radius: 40,
+            backgroundColor: confirmed
+                ? const Color(0xffdff2e6)
+                : rejected
+                ? pink
+                : const Color(0xffffefcf),
+            child: Icon(
+              confirmed
+                  ? Icons.check
+                  : rejected
+                  ? Icons.info_outline
+                  : Icons.schedule,
+              color: navy,
+              size: 36,
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        Text(
+          confirmed
+              ? "You’re in,\n${repo.profile['firstName'] ?? 'friend'}"
+              : rejected
+              ? 'Let’s check\nwith your coach'
+              : 'Checked in.\nWaiting for your coach',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.headlineMedium,
+        ),
+        const SizedBox(height: 14),
+        Text(
+          confirmed
+              ? 'Your attendance is confirmed. Enjoy the session.'
+              : rejected
+              ? 'The coach has marked this check-in for review. Speak to them at the court.'
+              : 'Your scan is saved. Your coach will confirm you when you arrive.',
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 24),
+        Panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              StatusPill(
+                confirmed
+                    ? 'Confirmed'
+                    : rejected
+                    ? 'Needs review'
+                    : 'Pending confirmation',
+              ),
+              const SizedBox(height: 12),
+              Text(
+                e?['name'] as String? ?? 'Your session',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 6),
+              Text(e?['venue']['name'] as String? ?? 'At the court'),
+              if (scan != null && e != null) ...[
+                const Divider(height: 28),
+                Text(
+                  'Scan time  ${timeOf(scan['scannedAt'], e)}',
+                  style: const TextStyle(fontSize: 12),
+                ),
+                Text(
+                  scan['distanceM'] == null
+                      ? 'Manual check-in'
+                      : 'Distance  ${(scan['distanceM'] as num).round()} m from venue',
+                  style: const TextStyle(fontSize: 12),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        const Panel(
+          color: pink,
+          child: Text(
+            'We keep the original scan. Only your assigned coach or an admin can correct attendance, with a recorded reason.',
+            style: TextStyle(fontSize: 12),
+          ),
+        ),
+      ],
+      bottom: FilledButton(
+        onPressed: () => go('home'),
+        child: Text(confirmed ? 'Done' : 'Back to Play'),
+      ),
+    );
+  }
+
+  Widget feedbackReminder(BuildContext context) => frame(
+    context,
+    dark: true,
+    back: () => go('home'),
+    children: [
+      const SizedBox(height: 70),
+      const Icon(Icons.favorite_border, color: pink, size: 50),
+      const SizedBox(height: 22),
+      Text(
+        'A little reflection.\nA better next rally.',
+        style: Theme.of(context).textTheme.headlineLarge
+            ?.copyWith(color: Colors.white),
+      ),
+      const SizedBox(height: 26),
+      Panel(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'How was your session?',
+              style: TextStyle(fontWeight: FontWeight.w700, color: navy),
+            ),
+            const SizedBox(height: 8),
+            Text(event?['name'] as String? ?? 'Your last rally'),
+            const Text(
+              'It takes about 20 seconds. Your feedback helps us improve.',
+              style: TextStyle(fontSize: 12),
+            ),
+          ],
+        ),
+      ),
+    ],
+    bottom: FilledButton(
+      onPressed: () => go('feedback'),
+      child: const Text('Share feedback'),
+    ),
+  );
+  Widget feedback(BuildContext context) {
+    final e = event;
+    final eligible =
+        e != null &&
+        repo.checkin(eid(e))?['status'] == 'confirmed' &&
+        !dateOf(e['endsAt']).isAfter(repo.now());
+    return frame(
+      context,
+      title: 'Your feedback',
+      back: () => go('home'),
+      children: [
+        if (!eligible)
+          const Panel(
+            child: Text(
+              'Feedback opens after the session for confirmed attendees.',
+            ),
+          )
+        else
+          FeedbackForm(
+            eventName: e['name'] as String,
+            onSend: (rating, tags, comment) => action(() async {
+              await repo.feedback(eid(e), rating, tags, comment);
+              go('home');
+            }),
+          ),
+      ],
+    );
+  }
+
+  Widget profile(BuildContext context) => frame(
+    context,
+    title: 'Profile & preferences',
+    navigation: true,
+    children: [
+      Row(
+        children: [
+          CircleAvatar(
+            radius: 28,
+            backgroundColor: navy,
+            foregroundColor: Colors.white,
+            child: Text(
+              initials,
+              style: const TextStyle(fontFamily: 'Figtree', fontSize: 24),
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  repo.profile['firstName'] as String? ?? 'Member',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                Text(repo.email ?? '', style: const TextStyle(fontSize: 11)),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: () => go('profile1'),
+            icon: const Icon(Icons.edit_outlined),
+            tooltip: 'Edit details',
+          ),
+        ],
+      ),
+      const SizedBox(height: 22),
+      Row(
+        children: [
+          Expanded(
+            child: Panel(
+              child: Column(
+                children: [
+                  Text(
+                    '${repo.checkins.where((c) => c['status'] == 'confirmed').length}',
+                    style: Theme.of(context).textTheme.headlineMedium,
+                  ),
+                  const Text(
+                    'Confirmed sessions',
+                    style: TextStyle(fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Panel(
+              child: Column(
+                children: [
+                  Text(
+                    '${repo.rsvps.where((r) => r['cancelledAt'] == null).length}',
+                    style: Theme.of(context).textTheme.headlineMedium,
+                  ),
+                  const Text('Counted in', style: TextStyle(fontSize: 11)),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 24),
+      Text('Forms', style: Theme.of(context).textTheme.titleLarge),
+      const SizedBox(height: 10),
+      for (final f in repo.forms)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: InkWell(
+            onTap: () => go('agreements'),
+            child: Panel(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          f['title'] as String,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                        Text(
+                          'Version ${f['version']}',
+                          style: const TextStyle(fontSize: 11),
+                        ),
+                      ],
+                    ),
+                  ),
+                  StatusPill(
+                    repo.signed(f) ? 'Signed' : 'Needs signing',
+                    dark: !repo.signed(f),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      const SizedBox(height: 16),
+      Text('Your sessions', style: Theme.of(context).textTheme.titleLarge),
+      const SizedBox(height: 10),
+      if (repo.checkins.isEmpty)
+        const Text(
+          'Your attendance history will appear after your first check-in.',
+        ),
+      for (final c in repo.checkins) ...[
+        Builder(
+          builder: (context) {
+            final e = repo.events
+                .where((e) => eid(e) == c['eventId'])
+                .firstOrNull;
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: InkWell(
+                onTap: () {
+                  selectedId = c['eventId'] as String;
+                  go('waiting');
+                },
+                child: Panel(
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              e?['name'] as String? ??
+                                  'Session ${c['eventId']}',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            Text(
+                              e == null ? '' : eventDate(e),
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          ],
+                        ),
+                      ),
+                      StatusPill(c['status'] as String),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ],
+      const SizedBox(height: 18),
+      OutlinedButton(
+        onPressed: () => go('details'),
+        child: const Text('Update safety details'),
+      ),
+      TextButton(
+        onPressed: () => action(repo.refreshAccess),
+        child: const Text('Refresh roles & access'),
+      ),
+      TextButton(
+        onPressed: () => action(() async {
+          await repo.signOut();
+          go('account');
+        }),
+        child: const Text('Sign out'),
+      ),
+    ],
+  );
+  Widget help(BuildContext context) => frame(
+    context,
+    title: 'Help',
+    navigation: true,
+    children: [
+      Text(
+        'A little help\ngoes a long way.',
+        style: Theme.of(context).textTheme.headlineMedium,
+      ),
+      const SizedBox(height: 22),
+      for (final item in [
+        (
+          'What does “Count me in” do?',
+          'It records your plan to come. A check-in records arrival, and your coach confirms attendance.',
+        ),
+        (
+          'How do I check in at the court?',
+          'Scan the current QR shown by your coach. Allow location, complete your details and sign any updated forms.',
+        ),
+        (
+          'My coach added me. Where is my event?',
+          'Sign in using the email you gave your coach. Your intent and attendance are linked to the same profile.',
+        ),
+        (
+          'I’m new. Can I play?',
+          'Yes. Bring yourself, comfortable shoes and water. Equipment and a warm welcome are provided.',
+        ),
+        (
+          'Can I change my privacy choices?',
+          'Open Me, then Edit details. The optional profile steps include your privacy preferences.',
+        ),
+      ])
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Panel(
+            padding: 4,
+            child: ExpansionTile(
+              title: Text(
+                item.$1,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              childrenPadding: const EdgeInsets.all(16),
+              children: [Text(item.$2)],
+            ),
+          ),
+        ),
+      const SizedBox(height: 18),
+      const Panel(
+        color: pink,
+        child: Text(
+          'At the court? Ask your coach for help with a code, your forms or a check-in.',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
+      const SizedBox(height: 18),
+      const Panel(
+        color: coral,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Need to talk to someone now?',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 17,
+              ),
+            ),
+            SizedBox(height: 10),
+            shared.Support('Lifeline', '13 11 14'),
+            SizedBox(height: 8),
+            shared.Support('Beyond Blue', '1300 22 4636'),
+          ],
+        ),
+      ),
+    ],
+  );
+  Widget roleScreen(BuildContext context) => frame(
+    context,
+    title: '${repo.role == 'admin' ? 'Admin' : 'Coach'} view',
+    back: () => go('home'),
+    children: [
+      OutlinedButton(
+        onPressed: () => go('home'),
+        child: const Text('Switch to participant view'),
+      ),
+      if (repo.canAdmin)
+        FilledButton(
+          onPressed: () => go('adminAccess'),
+          child: const Text('Manage users & event coaches'),
+        ),
+      if (repo.canCoach) CoachOverviewPanel(repository: repo),
+      Text(
+        'Your role is ${repo.role}.',
+        style: Theme.of(context).textTheme.headlineMedium,
+      ),
+      const SizedBox(height: 14),
+      const Text(
+        'You’re signed in with your shared account. The full console is the next review stage; participant tools are available now.',
+      ),
+      const SizedBox(height: 20),
+      for (final e in repo.events.where(
+        (e) => (e['coachUids'] as List? ?? []).contains(repo.uid),
+      ))
+        eventCard(context, e),
+      for (final note in repo.notifications.where(
+        (n) => (n['type'] as String? ?? '').startsWith('checkin-'),
+      ))
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Panel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Pending check-in',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+                Text('Scan: ${dateOf(note['scannedAt']).toLocal()}'),
+                Text(
+                  note['distanceM'] == null
+                      ? 'Distance: manual'
+                      : "Distance: ${note['distanceM']} m",
+                ),
+                if (note['identityVerification'] == 'email-only')
+                  const StatusPill('Email not verified', dark: true),
+              ],
+            ),
+          ),
+        ),
+      const Panel(
+        color: pink,
+        child: Text(
+          'A scan stays pending until an assigned coach confirms. The coach receives its distance and scan time.',
+        ),
+      ),
+    ],
+  );
+  Widget programs(BuildContext context) => frame(
+    context,
+    title: 'Explore programs',
+    back: () => go('home'),
+    children: [
+      FutureBuilder<List<shared.RallyProgram>>(
+        future: shared.RallyProgram.load(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return const Text('Loading programs…');
+          return Column(
+            children: snapshot.data!
+                .map(
+                  (p) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Panel(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            p.name,
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          Text('${p.venue} · ${p.suburb}'),
+                          Text(
+                            '${p.schedule} ${p.time}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                          TextButton(
+                            onPressed: () => go('home'),
+                            child: const Text('Find an upcoming session'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                )
+                .toList(),
+          );
+        },
+      ),
+    ],
+  );
+  Widget map(BuildContext context) => Scaffold(
+    bottomNavigationBar: bottomNav(),
+    appBar: AppBar(
+      title: const Text('Play near you'),
+      leading: BackButton(onPressed: () => go('home')),
+    ),
+    body: Stack(
+      children: [
+        Positioned.fill(
+          child: FlutterMap(
+            options: MapOptions(
+              initialCenter:
+                  shared.playAreaCoordinates[area] ??
+                  const LatLng(-33.8926, 151.2511),
+              initialZoom: 12,
+            ),
+            children: [
+              if (widget.mapTilesEnabled)
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'org.rally4ever.app',
+                ),
+              MarkerLayer(
+                markers: repo.events
+                    .map(
+                      (e) => Marker(
+                        point: LatLng(
+                          (e['venue']['lat'] as num).toDouble(),
+                          (e['venue']['lng'] as num).toDouble(),
+                        ),
+                        width: 50,
+                        height: 50,
+                        child: IconButton(
+                          onPressed: () => select(e, 'session'),
+                          tooltip: e['name'] as String,
+                          icon: const Icon(
+                            Icons.location_on,
+                            color: coral,
+                            size: 38,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+              const RichAttributionWidget(
+                attributions: [
+                  TextSourceAttribution('OpenStreetMap contributors'),
+                ],
+              ),
+            ],
+          ),
+        ),
+        Positioned(
+          left: 20,
+          right: 20,
+          top: 20,
+          child: Panel(
+            child: Row(
+              children: [
+                const Icon(Icons.search, size: 18),
+                const SizedBox(width: 8),
+                Expanded(child: Text(area)),
+                TextButton(
+                  onPressed: () => go('location'),
+                  child: const Text('Change'),
+                ),
+              ],
+            ),
+          ),
+        ),
+        Positioned(
+          left: 20,
+          right: 20,
+          bottom: 24,
+          child: Panel(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '${repo.events.length} sessions nearby',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 8),
+                const Text('Tap a marker to see its session.'),
+                TextButton(
+                  onPressed: () => go('home'),
+                  child: const Text('List view'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
+}

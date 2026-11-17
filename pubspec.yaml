@@ -1,5 +1,5 @@
 name: rally4ever
-description: "A new Flutter project."
+description: "Rally4Ever member app with local Firebase emulator development."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -44,8 +44,16 @@ dependencies:
   firebase_core: ^5.2.0
   firebase_auth: ^7.1.0
   cloud_firestore: ^7.2.0
+  cloud_functions: ^7.1.0
+  google_sign_in: ^7.2.0
 
 dev_dependencies:
+  firebase_core_web: ^4.2.0
+  firebase_auth_web: ^6.4.0
+  cloud_firestore_web: ^5.9.0
+  cloud_functions_web: ^5.2.0
+  flutter_web_plugins:
+    sdk: flutter
   flutter_test:
     sdk: flutter
 
@@ -76,6 +84,13 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter.ttf
+    - family: Figtree
+      fonts:
+        - asset: assets/fonts/Figtree.ttf
 
   assets:
     - assets/icon/icon.png
