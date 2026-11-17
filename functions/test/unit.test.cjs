@@ -1,0 +1,193 @@
+const { test } = require("node:test");
+const assert = require("node:assert/strict");
+const {
+  normalizeEmail,
+  authIdentity,
+  checkWindow,
+  coordinate,
+  checkDistance,
+  distanceM,
+  hash,
+  secretMatches,
+  input,
+} = require("../lib/domain");
+const rejects = (fn, reason, code) =>
+  assert.throws(fn, (e) => e.code === code && e.details.reason === reason);
+
+test("normalized email is safe as exact identity document key", () => {
+  assert.equal(
+    normalizeEmail("  MeMber@EXAMPLE.TEST  "),
+    "member@example.test",
+  );
+  for (const v of [
+    "a/b@example.test",
+    "not-an-email",
+    "a@b",
+    "a b@example.test",
+    "",
+    null,
+  ])
+    rejects(
+      () => normalizeEmail(v),
+      v === null || v === "" ? "invalid-input" : "invalid-email",
+      "invalid-argument",
+    );
+});
+test("only verified authenticated email contexts are accepted", () => {
+  rejects(() => authIdentity(undefined), "sign-in-required", "unauthenticated");
+  rejects(
+    () =>
+      authIdentity({
+        uid: "p1",
+        token: { email: "p@example.test", email_verified: false },
+      }),
+    "email-unverified",
+    "permission-denied",
+  );
+  assert.equal(
+    authIdentity({
+      uid: "p1",
+      token: { email: "P@example.test", email_verified: true },
+    }).email,
+    "p@example.test",
+  );
+});
+test("window includes opening and closing boundaries, rejects too early/late", () => {
+  const start = Date.UTC(2026, 10, 17, 7, 30),
+    end = start + 3600000;
+  rejects(
+    () => checkWindow(start - 600001, start, end, "Australia/Sydney"),
+    "too-early",
+    "failed-precondition",
+  );
+  checkWindow(start - 600000, start, end, "Australia/Sydney");
+  checkWindow(end, start, end, "Australia/Sydney");
+  rejects(
+    () => checkWindow(end + 1, start, end, "Australia/Sydney"),
+    "too-late",
+    "failed-precondition",
+  );
+});
+test("geofence zero/boundary distance, too far and invalid coordinates", () => {
+  assert.equal(distanceM(-33.89, 151.25, -33.89, 151.25), 0);
+  const latDelta = ((150 / 6371000) * 180) / Math.PI;
+  assert.ok(Math.abs(distanceM(0, 0, latDelta, 0) - 150) < 0.00001);
+  checkDistance(0, 0, latDelta, 0, 150.00001);
+  rejects(
+    () => checkDistance(0, 0, latDelta * 2, 0, 150),
+    "too-far",
+    "failed-precondition",
+  );
+  for (const x of [NaN, Infinity, 91, "0"])
+    rejects(() => coordinate(x, "lat"), "invalid-location", "invalid-argument");
+});
+test("secret comparison validates hashes, and rejects old/wrong secret", () => {
+  assert.equal(secretMatches("correct", hash("correct")), true);
+  assert.equal(secretMatches("wrong", hash("correct")), false);
+  assert.equal(secretMatches("correct", "invalid"), false);
+});
+test("callable input rejects unknown fields to prevent role/status injection", () => {
+  rejects(
+    () => input({ role: "admin" }, ["email"]),
+    "unknown-field",
+    "invalid-argument",
+  );
+  rejects(() => input([], []), "invalid-input", "invalid-argument");
+});
+
+test("all seven callables reject malformed/forged inputs before touching persistence", async () => {
+  const { AttendanceService } = require("../lib/service");
+  const { MergeService } = require("../lib/merge");
+  const blocked = new Proxy(
+    {},
+    {
+      get() {
+        throw new Error("Unexpected persistence access");
+      },
+    },
+  );
+  const s = new AttendanceService({ db: blocked, auth: blocked });
+  const who = { uid: "participant-1", email: "one@example.test" };
+  for (const promise of [
+    s.registerIdentity(who, { email: "other@example.test" }),
+    s.rotateEventSecret(who, { eventId: "../../secret" }),
+    s.checkIn(who, {
+      eventCode: "arbitrary barcode",
+      secret: "x",
+      lat: 0,
+      lng: 0,
+    }),
+    s.coachDecision(who, {
+      eventId: "event-1",
+      uid: "participant-1",
+      decision: "promote",
+    }),
+    s.correctAttendance(who, {
+      eventId: "event-1",
+      uid: "participant-1",
+      status: "confirmed",
+      reason: " ",
+    }),
+    s.addWalkIn(who, { eventId: "event-1", email: "invalid" }),
+    new MergeService(s).mergeProfiles(who, {
+      sourceUid: "one",
+      targetUid: "two",
+      reason: "review",
+      dryRun: "false",
+    }),
+  ])
+    await assert.rejects(promise, (e) =>
+      ["invalid-argument", "permission-denied"].includes(e.code),
+    );
+});
+test("notification delivery is idempotent for sent records and missing trigger scans are harmless", async () => {
+  const { AttendanceService } = require("../lib/service");
+  const { NotificationService } = require("../lib/notifications");
+  const db = {
+    doc: () => ({ get: async () => ({ exists: false }) }),
+    runTransaction: (fn) =>
+      fn({ get: async () => ({ data: () => ({ deliveryStatus: "sent" }) }) }),
+  };
+  const n = new NotificationService(
+    new AttendanceService({ db, auth: {} }),
+    async () => assert.fail("Already sent"),
+  );
+  assert.equal(await n.deliver("already-sent"), false);
+  assert.equal(await n.notifyCoaches("missing"), 0);
+});
+test("functions entry point fails closed outside the demo emulators", () => {
+  const { assertLocal } = require("../lib/index");
+  const previous = process.env.FUNCTIONS_EMULATOR;
+  try {
+    delete process.env.FUNCTIONS_EMULATOR;
+    rejects(assertLocal, "emulator-only", "failed-precondition");
+  } finally {
+    if (previous === undefined) delete process.env.FUNCTIONS_EMULATOR;
+    else process.env.FUNCTIONS_EMULATOR = previous;
+  }
+});
+
+test("transient Auth lookup failures retry the coach trigger instead of silently dropping alerts", async () => {
+  const { AttendanceService } = require("../lib/service");
+  const { NotificationService } = require("../lib/notifications");
+  const snapshots = {
+    "checkins/e_p": { status: "pending", eventId: "e", uid: "p" },
+    "events/e": { coachUids: ["coach"] },
+    "users/coach": { mergedInto: null },
+  };
+  const db = {
+    doc: (path) => ({
+      get: async () => ({ exists: true, data: () => snapshots[path] }),
+    }),
+  };
+  const auth = {
+    getUser: async () => {
+      throw new Error("Temporary Auth outage");
+    },
+  };
+  const jobs = new NotificationService(
+    new AttendanceService({ db, auth }),
+    async () => assert.fail("No premature send"),
+  );
+  await assert.rejects(jobs.notifyCoaches("e_p"), /Temporary Auth outage/);
+});

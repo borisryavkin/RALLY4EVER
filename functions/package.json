@@ -1,0 +1,21 @@
+{
+  "name": "rally4ever-functions",
+  "private": true,
+  "main": "lib/index.js",
+  "engines": {
+    "node": "24"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test test/unit.test.cjs",
+    "test:emulator": "node --test --test-concurrency=1 test/emulator.test.cjs"
+  },
+  "dependencies": {
+    "firebase-admin": "^14.5.1",
+    "firebase-functions": "^7.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "^7.0.2"
+  }
+}

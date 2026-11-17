@@ -71,3 +71,4 @@ ui-debug.log*
 # Node tools and emulator exports
 node_modules/
 .firebase-emulator-data/
+/functions/lib/
