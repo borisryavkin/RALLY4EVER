@@ -78,6 +78,7 @@ class EmulatorBackend implements FirebaseBackend {
         appId: '1:123456789:web:rally4ever-demo',
         messagingSenderId: '123456789',
         projectId: projectId,
+        storageBucket: 'demo-rally4ever.appspot.com',
         authDomain: 'demo-rally4ever.firebaseapp.com',
       ),
     );

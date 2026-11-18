@@ -1,3 +1,10 @@
+## Fix build 7 sign-in startup failure — 19 November 2026
+
+- Identified the runtime failure after the compile-time config guard: StagingBackend eagerly constructed FirebaseStorage with no storageBucket in FirebaseOptions. The installed SDK throws immediately, leaving main's DisabledParticipantRepository in place. Its generic emulator instruction appeared even though the real staging config was supplied; navigation cleared the actual startup error.
+- Made staging Storage lazy/optional; optional FIREBASE_STORAGE_BUCKET uses an existing configured bucket, while missing photos never disable Auth/Firestore/Functions. Photo actions give a separate not-configured error. Set an explicit demo-only bucket for the Storage emulator.
+- Replaced main's silent disabled-backend fallback after errors with AppBootstrap: persistent support code and Retry, loading state, and recovery into the participant app. Release builds never display developer emulator instructions in the account form.
+- Regression tests reproduce the SDK's missing-bucket exception, verify enabled repository startup without a bucket, preserve configured Storage, and exercise repeated initialization failure/retry/recovery. Analyzer clean, 88 Flutter tests passed (one browser-only skip), eight build-guard tests passed. No backend deployment, paid Storage, or real-data writes.
+
 ## Fail-closed release/profile Firebase configuration — 19 November 2026
 
 - Native build validation now receives the build mode: release/profile require explicit staging plus registered Firebase config, and can never select emulator. Xcode derives mode from its configuration; Android passes the variant build type. Debug emulator behavior is retained.

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 
@@ -130,7 +131,9 @@ class _AccountFormState extends State<AccountForm> {
         const Panel(
           color: pink,
           child: Text(
-            'Start the local emulators and run with USE_FIREBASE_EMULATORS=true to sign in.',
+            kDebugMode
+                ? 'Start the local emulators and run with USE_FIREBASE_EMULATORS=true to sign in.'
+                : 'Sign-in is unavailable. Please close and reopen the app, or contact Rally4Ever.',
           ),
         ),
       const SizedBox(height: 16),

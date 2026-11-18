@@ -3,6 +3,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 
 import 'build_environment.dart';
 import 'emulator_backend.dart';
@@ -10,17 +11,35 @@ import 'emulator_backend.dart';
 /// Real staging transport; deliberately has no emulator connection calls.
 /// Deploying its backend is a separate, approval-gated release step.
 class StagingBackend implements FirebaseBackend {
-  StagingBackend._(this.auth, this.firestore, this.functions, this.storage);
+  StagingBackend._(this.auth, this.firestore, this.functions, this._app);
+
+  @visibleForTesting
+  static StagingBackend fromInitializedApp(FirebaseApp app) => StagingBackend._(
+    FirebaseAuth.instanceFor(app: app),
+    FirebaseFirestore.instanceFor(app: app),
+    FirebaseFunctions.instanceFor(app: app, region: 'australia-southeast1'),
+    app,
+  );
   @override
   final FirebaseAuth auth;
   @override
   final FirebaseFirestore firestore;
   @override
   final FirebaseFunctions functions;
-  // Storage is not enabled on rally4ever-3adaf yet -- constructing this
-  // reference is harmless, but any actual read/write will fail until it is.
+  final FirebaseApp _app;
+  // Optional photos must never prevent Auth/Firestore from starting. Creating
+  // FirebaseStorage itself throws when FirebaseOptions has no default bucket.
   @override
-  final FirebaseStorage storage;
+  FirebaseStorage get storage {
+    if ((_app.options.storageBucket ?? '').isEmpty) {
+      throw FirebaseException(
+        plugin: 'firebase_storage',
+        code: 'not-configured',
+        message: 'Profile photos are not available yet. You can still sign in and use sessions.',
+      );
+    }
+    return FirebaseStorage.instanceFor(app: _app);
+  }
 
   static Future<StagingBackend> connect() async {
     if (BuildEnvironment.validate() != 'staging') {
@@ -30,6 +49,7 @@ class StagingBackend implements FirebaseBackend {
     const appId = String.fromEnvironment('FIREBASE_APP_ID');
     const senderId = String.fromEnvironment('FIREBASE_MESSAGING_SENDER_ID');
     const project = String.fromEnvironment('FIREBASE_PROJECT_ID');
+    const bucket = String.fromEnvironment('FIREBASE_STORAGE_BUCKET');
     if (apiKey.isEmpty || appId.isEmpty || senderId.isEmpty) {
       throw StateError(
         'Supply the registered staging app Firebase client config',
@@ -47,6 +67,7 @@ class StagingBackend implements FirebaseBackend {
         appId: appId,
         messagingSenderId: senderId,
         projectId: project,
+        storageBucket: bucket == '' ? null : bucket,
         iosBundleId: 'org.rally4ever',
         iosClientId: String.fromEnvironment('FIREBASE_IOS_CLIENT_ID'),
         authDomain: String.fromEnvironment('FIREBASE_AUTH_DOMAIN'),
@@ -56,7 +77,7 @@ class StagingBackend implements FirebaseBackend {
       FirebaseAuth.instanceFor(app: app),
       FirebaseFirestore.instanceFor(app: app),
       FirebaseFunctions.instanceFor(app: app, region: 'australia-southeast1'),
-      FirebaseStorage.instanceFor(app: app),
+      app,
     );
   }
 }

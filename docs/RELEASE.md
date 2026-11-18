@@ -94,7 +94,9 @@ Use the scripts so flavor/config flags cannot be forgotten. They validate the ig
 ./scripts/build-android-staging.sh --build-number 7 --mode profile
 ```
 
-Defaults: release mode, version `1.0.1`, and `config/staging.ios.json` or `config/staging.android.json`. Use `--config /private/path/config.json` for another local config, `--build-name` for an approved version, and `FLUTTER_BIN=/path/to/flutter` for a specific SDK. Keep config and signing keys out of git. Required defines: `APP_ENV=staging`, `STAGING_PROJECT_ID=rally4ever-3adaf`, `FIREBASE_PROJECT_ID=rally4ever-3adaf`, `FIREBASE_API_KEY`, `FIREBASE_APP_ID`, and `FIREBASE_MESSAGING_SENDER_ID`. Supply the registered client for each platform. Emulator/LAN settings must be absent or disabled.
+Defaults: release mode, version `1.0.1`, and `config/staging.ios.json` or `config/staging.android.json`. Use `--config /private/path/config.json` for another local config, `--build-name` for an approved version, and `FLUTTER_BIN=/path/to/flutter` for a specific SDK. Keep config and signing keys out of git. Profile photos are optional: `FIREBASE_STORAGE_BUCKET` may name an existing configured bucket, but must not be guessed. Without it, Auth/Firestore/Functions still start; photo actions report that photos are unavailable. Do not enable paid Storage just to unblock sign-in. Startup failures now stay on a retryable connection screen with a support code, rather than displaying emulator instructions in TestFlight.
+
+Required defines: `APP_ENV=staging`, `STAGING_PROJECT_ID=rally4ever-3adaf`, `FIREBASE_PROJECT_ID=rally4ever-3adaf`, `FIREBASE_API_KEY`, `FIREBASE_APP_ID`, and `FIREBASE_MESSAGING_SENDER_ID`. Supply the registered client for each platform. Emulator/LAN settings must be absent or disabled.
 
 Equivalent explicit release commands (the native guard still runs):
 
