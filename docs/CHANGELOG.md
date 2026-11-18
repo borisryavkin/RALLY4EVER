@@ -1,3 +1,10 @@
+## Fail-closed release/profile Firebase configuration — 19 November 2026
+
+- Native build validation now receives the build mode: release/profile require explicit staging plus registered Firebase config, and can never select emulator. Xcode derives mode from its configuration; Android passes the variant build type. Debug emulator behavior is retained.
+- Added a constant-evaluation Dart guard so invalid non-debug compilation fails before startup, including web. Runtime selection also refuses the emulator fallback outside debug.
+- Added guarded iOS/Android staging build scripts with required unused build numbers, config validation, fixed flavor/config/mode flags, internal-only IPA export, and a check-only option. Updated RELEASE.md with commands for build 7 or higher; no upload/deploy/signing changes.
+- Validation: analyzer clean; 85 Flutter tests passed (one browser-only skip); eight release-guard tests passed, including real Dart compiler rejection for release/profile, native hooks, missing config and script forwarding. Both local platform configs passed script check-only validation. No store artifact rebuilt or uploaded. Unrelated working changes are preserved.
+
 ## Build 6 uploaded to internal stores — 18 November 2026
 
 - Owner authorized TestFlight first, then Android. Delivered the validated `1.0.1 (6)` IPA through signed-in Transporter; App Store Connect confirms Build 6 Internal, Missing Compliance. Compliance and internal-group assignment remain manual; the external `rally4ever` group was untouched.

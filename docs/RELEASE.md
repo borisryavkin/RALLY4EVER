@@ -1,5 +1,7 @@
 # Tester release preparation
 
+Builds through 6 have now been uploaded to internal testing; see [UPLOADS.md](UPLOADS.md). Use the guarded scripts below for the next build (7 or higher, after checking both consoles). Earlier sections retain historical preparation details.
+
 ## Upload update — 17 November 2026
 
 Both uploads are now confirmed; see [UPLOADS.md](UPLOADS.md) for the delivery record and remaining tester setup.
@@ -76,20 +78,38 @@ flutter run --flavor emulator --dart-define=USE_FIREBASE_EMULATORS=true \
 
 Use the opt-in phone-web commands in [SETUP.md](SETUP.md) for LAN. Emulator builds are not the tester-store artifact.
 
-After all blockers are resolved, compile staging with platform-specific local config, NO emulator flags, and a build number rechecked against both consoles immediately before build:
+Release and profile builds now fail at build time without explicit staging Firebase configuration. Emulator mode is debug-only: an unflavored release/profile build cannot fall back to it. Xcode validates before Flutter compilation; Gradle passes each variant's build mode to the same guard. A constant-evaluation check also rejects invalid non-debug Dart compilations, including web. Missing config, mixed emulator/LAN flags, and the wrong project are rejected without contacting Firebase.
+
+Use the scripts so flavor/config flags cannot be forgotten. They validate the ignored platform JSON before invoking Flutter, require an unused build number, and never upload or deploy. Builds through **6** have been uploaded; recheck both stores before choosing **7 or higher**:
 
 ```sh
-unset LAN_TESTING LAN_HOST FIRESTORE_EMULATOR_HOST FIREBASE_AUTH_EMULATOR_HOST
-# Confirm 6 is still unused; substitute a larger approved number if necessary.
+./scripts/build-ios-staging.sh --build-number 7
+./scripts/build-android-staging.sh --build-number 7
+
+# Validate configuration only; no compilation, signing or upload:
+./scripts/build-ios-staging.sh --build-number 7 --check-only
+
+# Local profile build (not a TestFlight artifact):
+./scripts/build-ios-staging.sh --build-number 7 --mode profile
+./scripts/build-android-staging.sh --build-number 7 --mode profile
+```
+
+Defaults: release mode, version `1.0.1`, and `config/staging.ios.json` or `config/staging.android.json`. Use `--config /private/path/config.json` for another local config, `--build-name` for an approved version, and `FLUTTER_BIN=/path/to/flutter` for a specific SDK. Keep config and signing keys out of git. Required defines: `APP_ENV=staging`, `STAGING_PROJECT_ID=rally4ever-3adaf`, `FIREBASE_PROJECT_ID=rally4ever-3adaf`, `FIREBASE_API_KEY`, `FIREBASE_APP_ID`, and `FIREBASE_MESSAGING_SENDER_ID`. Supply the registered client for each platform. Emulator/LAN settings must be absent or disabled.
+
+Equivalent explicit release commands (the native guard still runs):
+
+```sh
 flutter build ipa --release --flavor staging \
   --dart-define-from-file=config/staging.ios.json \
-  --build-name=1.0.1 --build-number=6 \
+  --build-name=1.0.1 --build-number=7 \
   --export-options-plist=ios/ExportOptions.internal.plist
 
 flutter build appbundle --release --flavor staging \
   --dart-define-from-file=config/staging.android.json \
-  --build-name=1.0.1 --build-number=6
+  --build-name=1.0.1 --build-number=7
 ```
+
+Run guard regressions with `python3 -m unittest discover -s tests/release_guard -v`. They exercise the Dart compiler in release/profile modes, native build hooks, missing/mixed config, and script flag forwarding without building/uploading store artifacts.
 
 `ios/ExportOptions.internal.plist` exports locally (`destination=export`) and sets `testFlightInternalTestingOnly=true`: Xcode marks this build ineligible for external TestFlight or App Store distribution. It follows the current local project/export team; actual app ownership still needs confirmation.
 
@@ -127,7 +147,7 @@ This is an optional faster feedback path, not an enabled replacement for the req
 ```sh
 flutter build apk --release --flavor staging \
   --dart-define-from-file=config/staging.android.json \
-  --build-name=1.0.1 --build-number=6
+  --build-name=1.0.1 --build-number=7
 # UPLOAD ONLY AFTER APPROVAL; use the actual registered Android Firebase app ID.
 firebase appdistribution:distribute build/app/outputs/flutter-apk/app-staging-release.apk \
   --project rally4ever-3adaf --app "$STAGING_ANDROID_FIREBASE_APP_ID" \
@@ -139,7 +159,7 @@ For iOS, an App Store signed IPA cannot simply be installed through App Distribu
 ```sh
 flutter build ipa --release --flavor staging \
   --dart-define-from-file=config/staging.ios.json \
-  --build-name=1.0.1 --build-number=6 --export-method=ad-hoc
+  --build-name=1.0.1 --build-number=7 --export-method=ad-hoc
 # UPLOAD ONLY AFTER APPROVAL; actual registered iOS Firebase app ID required.
 firebase appdistribution:distribute build/ios/ipa/rally4ever.ipa \
   --project rally4ever-3adaf --app "$STAGING_IOS_FIREBASE_APP_ID" \

@@ -17,6 +17,22 @@ void main() {
       throwsStateError,
     );
   });
+  test('non-debug never falls back to emulator', () {
+    expect(() => BuildEnvironment.validate(debug: false), throwsStateError);
+    expect(
+      () => BuildEnvironment.validate(debug: false, nativeFlavor: 'emulator'),
+      throwsStateError,
+    );
+    expect(
+      BuildEnvironment.validate(
+        debug: false,
+        nativeFlavor: 'staging',
+        project: 'rally4ever-3adaf',
+        approvedStagingProject: 'rally4ever-3adaf',
+      ),
+      'staging',
+    );
+  });
   test(
     'staging requires explicit matching project and refuses emulator flags',
     () {

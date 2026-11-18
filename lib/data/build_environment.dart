@@ -1,9 +1,14 @@
 import 'package:flutter/services.dart' show appFlavor;
 
+import 'build_configuration_guard.dart';
+
 /// Flavor selection fails closed before any Firebase SDK request.
 class BuildEnvironment {
   static String validate({
     String? nativeFlavor,
+    bool debug =
+        !const bool.fromEnvironment('dart.vm.product') &&
+        !const bool.fromEnvironment('dart.vm.profile'),
     String flavor = const String.fromEnvironment('APP_ENV'),
     bool emulators = const bool.fromEnvironment('USE_FIREBASE_EMULATORS'),
     bool lan = const bool.fromEnvironment('LAN_TESTING'),
@@ -21,8 +26,17 @@ class BuildEnvironment {
       'STAGING_PROJECT_ID',
     ),
   }) {
+    // Referencing this const forces a compiler error for invalid non-debug builds.
+    backendBuildConfiguration;
     final selected =
-        nativeFlavor ?? appFlavor ?? (flavor.isEmpty ? 'emulator' : flavor);
+        nativeFlavor ??
+        appFlavor ??
+        (flavor.isEmpty && debug ? 'emulator' : flavor);
+    if (!debug && selected != 'staging') {
+      throw StateError(
+        'Release/profile require staging; emulators are debug-only',
+      );
+    }
     if (flavor.isNotEmpty && flavor != selected) {
       throw StateError('APP_ENV must match the native build flavor');
     }

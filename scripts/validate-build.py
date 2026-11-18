@@ -3,10 +3,14 @@
 import argparse
 import base64
 import os
+import json
 from pathlib import Path
 
 
-def validate(flavor, encoded, root):
+def validate(flavor, encoded, root, mode='debug'):
+    mode = mode.lower()
+    if mode not in ('debug', 'profile', 'release'):
+        raise ValueError('Explicit debug/profile/release build mode is required')
     values = {}
     for item in filter(None, encoded.split(',')):
         decoded = base64.b64decode(item, validate=True).decode()
@@ -14,6 +18,8 @@ def validate(flavor, encoded, root):
         if not separator or key in values:
             raise ValueError('Malformed or duplicate Dart define')
         values[key] = value
+    if mode != 'debug' and (flavor != 'staging' or values.get('APP_ENV') != 'staging'):
+        raise ValueError('Release/profile require the staging flavor and real Firebase config; emulators are debug-only')
     flavor = flavor or 'emulator'
     if flavor not in ('emulator', 'staging'):
         raise ValueError('Only emulator and staging builds are supported')
@@ -41,7 +47,7 @@ def validate(flavor, encoded, root):
         if values.get('STAGING_PROJECT_ID') != 'rally4ever-3adaf' or values.get('FIREBASE_PROJECT_ID') != 'rally4ever-3adaf':
             raise ValueError('Only the owner-specified staging candidate is allowed')
         for key in ('FIREBASE_API_KEY', 'FIREBASE_APP_ID', 'FIREBASE_MESSAGING_SENDER_ID'):
-            if not values.get(key) or 'REPLACE' in values[key]:
+            if not values.get(key, '').strip() or any(marker in values[key].upper() for marker in ('REPLACE', 'PLACEHOLDER', 'YOUR_')):
                 raise ValueError('Registered platform-specific staging Firebase config is required')
     return flavor
 
@@ -50,9 +56,19 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--flavor', default=os.environ.get('CONFIGURATION', '').partition('-')[2])
     parser.add_argument('--dart-defines', default=os.environ.get('DART_DEFINES', ''))
+    parser.add_argument('--mode', default=os.environ.get('CONFIGURATION', '').partition('-')[0] or os.environ.get('FLUTTER_BUILD_MODE', ''))
+    parser.add_argument('--config-file', type=Path)
     args = parser.parse_args()
     try:
-        selected = validate(args.flavor, args.dart_defines, Path(__file__).resolve().parent.parent)
+        encoded = args.dart_defines
+        if args.config_file:
+            if encoded:
+                raise ValueError('Supply config-file or Dart defines, not both')
+            values = json.loads(args.config_file.read_text())
+            if not isinstance(values, dict) or not all(isinstance(k, str) and isinstance(v, (str, bool, int)) for k, v in values.items()):
+                raise ValueError('Firebase config must be a JSON object of scalar Dart defines')
+            encoded = ','.join(base64.b64encode(f'{k}={str(v).lower() if isinstance(v, bool) else v}'.encode()).decode() for k, v in values.items())
+        selected = validate(args.flavor, encoded, Path(__file__).resolve().parent.parent, args.mode)
         print(f'Validated {selected} backend isolation (no network access)')
     except Exception as error:
         raise SystemExit(f'Build refused: {error}')

@@ -90,7 +90,7 @@ androidComponents.onVariants { variant ->
     val flavor = variant.productFlavors.first { it.first == "backend" }.second
     val guard = tasks.register<Exec>("validate${variantName}Backend") {
         commandLine("python3", rootProject.file("../scripts/validate-build.py").absolutePath,
-            "--flavor", flavor, "--dart-defines", project.findProperty("dart-defines")?.toString() ?: "")
+            "--flavor", flavor, "--mode", variant.buildType ?: error("Missing build type"), "--dart-defines", project.findProperty("dart-defines")?.toString() ?: "")
     }
     tasks.matching { it.name == "pre${variantName}Build" }.configureEach { dependsOn(guard) }
 }
