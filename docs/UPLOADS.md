@@ -1,3 +1,21 @@
+# Build 6 internal tester upload — 18 November 2026
+
+Owner explicitly requested build 6 uploaded to TestFlight first, then Android. Uploaded the existing validated Stage 7 artifacts without rebuilding or changing signing/IDs.
+
+| Platform | Build | Observed result |
+|---|---|---|
+| iOS | `org.rally4ever`, `1.0.1 (6)`, app `6816826035` | Transporter confirmed delivered at 23:20 Sydney time. App Store Connect subsequently displayed Build 6 Internal, Missing Compliance, expires in 90 days. Upload completed; export-compliance declaration and internal-group assignment remain outstanding. |
+| Android | `org.raly4ever`, `1.0.1`, code `6` | Play Internal testing displayed Active, latest release `1.0.1 (6) staging internal`, Available to internal testers, released 18 Nov at 23:25. Release ID `2`. |
+
+- iOS SHA-256: `e19bace0e0d697d72bfa38beb81b8a75609fd613f463c1e4ba4160c98bed2cf7`. Verified embedded ID/version/build and `testFlightInternalTestingOnly=true`, team `7HGT5BT6KT` before upload.
+- Android SHA-256: `0fdd98a7e2588d782f1036e4c28136f6971142dc4e96dd4e2c77241511ed49f7`. JAR signature verified; Google accepted code 6 with mapping and native symbols.
+- Apple delivery warning `90725`: current artifact uses iOS 26.2 SDK; Apple's notice requires iOS 27 SDK/Xcode 27 starting April 2027. This was a warning, and delivery/processing succeeded.
+- Android release notes describe staging features and disclose that coach Google sign-in requires configured OAuth. No production promotion or external TestFlight distribution was performed, and no invitations were sent.
+- The internal group creation dialog did not accept text through the available Safari controls; it was cancelled, so no new internal group or tester assignment is claimed. Complete the compliance declaration for build 6, then create `R4E Staging Internal` with automatic distribution off and assign only this build and authorized internal testers. Do not use the existing external `rally4ever` group.
+- No backend deployment, data import, fee, billing change, or new signing key in this upload task. Pre-build validation is recorded in CHANGELOG Stage 7. Local unrelated edits were preserved; the current uncommitted Android Gradle ID differs from the accepted artifact, so review it before any future rebuild. Build 6 is consumed; the next upload must use at least build 7 after rechecking both consoles.
+
+---
+
 # Internal tester upload record — 17 November 2026
 
 The owner explicitly authorized “upload them all”, then specified Android package `org.raly4ever`. This package spelling supersedes the earlier assumption `org.rally4ever` for Android only. iOS remains `org.rally4ever`.

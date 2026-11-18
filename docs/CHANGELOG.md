@@ -1,3 +1,9 @@
+## Build 6 uploaded to internal stores — 18 November 2026
+
+- Owner authorized TestFlight first, then Android. Delivered the validated `1.0.1 (6)` IPA through signed-in Transporter; App Store Connect confirms Build 6 Internal, Missing Compliance. Compliance and internal-group assignment remain manual; the external `rally4ever` group was untouched.
+- Then uploaded the signed Android code 6 AAB and published only to Play Internal testing. Console confirms Active and Available to internal testers, release `1.0.1 (6) staging internal`.
+- Recorded artifact checksums, Apple's nonblocking SDK warning and remaining steps in docs/UPLOADS.md. No backend deployment, production release, fee or new key. Existing unrelated workspace edits preserved. Next upload needs build 7 or higher.
+
 ## Stage 7: staging builds, build 6 — 18 November 2026
 
 - Ran the full pre-build validation from `docs/RELEASE.md` first: `flutter analyze`/`flutter test` (84/84), `npm run test:lan` (5/5), `npm run test:functions` (14/14), `python3 -m unittest discover -s tests/release_guard -v` (3/3), and `npm run test:all:emulator` (rules 19/19 + functions-emulator 27/27). All green before building anything.
