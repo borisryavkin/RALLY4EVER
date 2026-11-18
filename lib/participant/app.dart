@@ -373,6 +373,15 @@ class _ParticipantAppState extends State<ParticipantApp>
       ),
     ],
   );
+  // Below this width: phone layout (full-width bottom bar, content fills the
+  // screen). At or above it: a side NavigationRail replaces the bottom bar,
+  // and single-column content is centred with a readable max width instead
+  // of stretching edge-to-edge across a tablet.
+  static const wideBreakpoint = 840.0;
+  static const wideContentMaxWidth = 720.0;
+  bool isWide(BuildContext context) =>
+      MediaQuery.sizeOf(context).width >= wideBreakpoint;
+
   Widget frame(
     BuildContext context, {
     String? title,
@@ -381,29 +390,9 @@ class _ParticipantAppState extends State<ParticipantApp>
     bool dark = false,
     bool navigation = false,
     VoidCallback? back,
-  }) => Scaffold(
-    backgroundColor: dark ? navy : cream,
-    appBar: AppBar(
-      backgroundColor: dark ? navy : cream,
-      foregroundColor: dark ? Colors.white : navy,
-      leading: back != null ? BackButton(onPressed: back) : null,
-      automaticallyImplyLeading: false,
-      title: title != null
-          ? Text(title, style: TextStyle(color: dark ? Colors.white : navy))
-          : brand(light: dark),
-      actions: [
-        if (title != null)
-          Padding(
-            padding: const EdgeInsets.only(right: 20),
-            child: Icon(
-              Icons.sports_tennis,
-              color: dark ? pink : coral,
-              size: 19,
-            ),
-          ),
-      ],
-    ),
-    body: SafeArea(
+  }) {
+    final wide = isWide(context);
+    final content = SafeArea(
       top: false,
       child: Column(
         children: [
@@ -412,40 +401,47 @@ class _ParticipantAppState extends State<ParticipantApp>
             // The error banner lives inside this scrollable, rather than as
             // a fixed sibling, so a long message (or a short keyboard-
             // shrunk viewport) scrolls into view instead of overflowing.
-            child: ListView(
-              padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
-              children: [
-                if (error != null || repo.streamError != null)
-                  Container(
-                    key: const Key('error-banner'),
-                    width: double.infinity,
-                    margin: const EdgeInsets.only(bottom: 16),
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: pink,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          error ?? repo.streamError!,
-                          style: const TextStyle(color: navy),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: wide ? wideContentMaxWidth : double.infinity,
+                ),
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+                  children: [
+                    if (error != null || repo.streamError != null)
+                      Container(
+                        key: const Key('error-banner'),
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: pink,
+                          borderRadius: BorderRadius.circular(12),
                         ),
-                        if (error != null && _lastFailedAction != null)
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: TextButton(
-                              key: const Key('retry-action'),
-                              onPressed: busy ? null : retryLastAction,
-                              child: const Text('Retry'),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              error ?? repo.streamError!,
+                              style: const TextStyle(color: navy),
                             ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ...children,
-              ],
+                            if (error != null && _lastFailedAction != null)
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: TextButton(
+                                  key: const Key('retry-action'),
+                                  onPressed: busy ? null : retryLastAction,
+                                  child: const Text('Retry'),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ...children,
+                  ],
+                ),
+              ),
             ),
           ),
           if (bottom != null)
@@ -455,24 +451,74 @@ class _ParticipantAppState extends State<ParticipantApp>
             ),
         ],
       ),
-    ),
-    bottomNavigationBar: navigation ? bottomNav() : null,
-  );
+    );
+    return Scaffold(
+      backgroundColor: dark ? navy : cream,
+      appBar: AppBar(
+        backgroundColor: dark ? navy : cream,
+        foregroundColor: dark ? Colors.white : navy,
+        leading: back != null ? BackButton(onPressed: back) : null,
+        automaticallyImplyLeading: false,
+        title: title != null
+            ? Text(title, style: TextStyle(color: dark ? Colors.white : navy))
+            : brand(light: dark),
+        actions: [
+          if (title != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 20),
+              child: Icon(
+                Icons.sports_tennis,
+                color: dark ? pink : coral,
+                size: 19,
+              ),
+            ),
+        ],
+      ),
+      body: navigation && wide
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                navRail(),
+                const VerticalDivider(width: 1),
+                Expanded(child: content),
+              ],
+            )
+          : content,
+      bottomNavigationBar: navigation && !wide ? bottomNav() : null,
+    );
+  }
+
+  static const _navLabels = ['Play', 'Map', 'Check in', 'Me', 'Help'];
+  static const _navIcons = [
+    Icons.sports_tennis,
+    Icons.map_outlined,
+    Icons.qr_code_scanner,
+    Icons.person_outline,
+    Icons.favorite_border,
+  ];
+  void _navigateTo(int i) {
+    tab = i;
+    go(['home', 'map', 'checkin', 'profile', 'help'][i]);
+  }
+
   Widget bottomNav() => NavigationBar(
     selectedIndex: tab,
-    onDestinationSelected: (i) {
-      tab = i;
-      go(['home', 'map', 'checkin', 'profile', 'help'][i]);
-    },
-    destinations: const [
-      NavigationDestination(icon: Icon(Icons.sports_tennis), label: 'Play'),
-      NavigationDestination(icon: Icon(Icons.map_outlined), label: 'Map'),
-      NavigationDestination(
-        icon: Icon(Icons.qr_code_scanner),
-        label: 'Check in',
-      ),
-      NavigationDestination(icon: Icon(Icons.person_outline), label: 'Me'),
-      NavigationDestination(icon: Icon(Icons.favorite_border), label: 'Help'),
+    onDestinationSelected: _navigateTo,
+    destinations: [
+      for (var i = 0; i < _navLabels.length; i++)
+        NavigationDestination(icon: Icon(_navIcons[i]), label: _navLabels[i]),
+    ],
+  );
+  Widget navRail() => NavigationRail(
+    selectedIndex: tab,
+    labelType: NavigationRailLabelType.all,
+    onDestinationSelected: _navigateTo,
+    destinations: [
+      for (var i = 0; i < _navLabels.length; i++)
+        NavigationRailDestination(
+          icon: Icon(_navIcons[i]),
+          label: Text(_navLabels[i]),
+        ),
     ],
   );
 
@@ -2223,12 +2269,25 @@ class _ParticipantAppState extends State<ParticipantApp>
   LatLng get mapCenter => selectedMapPoint ?? const LatLng(-25, 133);
 
   Widget map(BuildContext context) => Scaffold(
-    bottomNavigationBar: bottomNav(),
+    // The map itself stays full-bleed on a tablet (unlike text content, a
+    // map benefits from the extra width) -- only the nav chrome adapts.
+    bottomNavigationBar: isWide(context) ? null : bottomNav(),
     appBar: AppBar(
       title: const Text('Play near you'),
       leading: BackButton(onPressed: () => go('home')),
     ),
-    body: Stack(
+    body: isWide(context)
+        ? Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              navRail(),
+              const VerticalDivider(width: 1),
+              Expanded(child: _mapBody(context)),
+            ],
+          )
+        : _mapBody(context),
+  );
+  Widget _mapBody(BuildContext context) => Stack(
       children: [
         Positioned.fill(
           child: FlutterMap(
@@ -2351,6 +2410,5 @@ class _ParticipantAppState extends State<ParticipantApp>
           ),
         ),
       ],
-    ),
-  );
+    );
 }
