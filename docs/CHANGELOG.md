@@ -4,6 +4,7 @@
 - Made staging Storage lazy/optional; optional FIREBASE_STORAGE_BUCKET uses an existing configured bucket, while missing photos never disable Auth/Firestore/Functions. Photo actions give a separate not-configured error. Set an explicit demo-only bucket for the Storage emulator.
 - Replaced main's silent disabled-backend fallback after errors with AppBootstrap: persistent support code and Retry, loading state, and recovery into the participant app. Release builds never display developer emulator instructions in the account form.
 - Regression tests reproduce the SDK's missing-bucket exception, verify enabled repository startup without a bucket, preserve configured Storage, and exercise repeated initialization failure/retry/recovery. Analyzer clean, 88 Flutter tests passed (one browser-only skip), eight build-guard tests passed. No backend deployment, paid Storage, or real-data writes.
+- Prepared and verified local staging IPA `1.0.1 (8)`, `org.rally4ever`, team `7HGT5BT6KT`, `testFlightInternalTestingOnly=true`; SHA-256 `07b6216bc10cd37c30bd9b8edba11985d360e642661c05931fb7a7729878e541`. Built with the guarded staging script; no upload. Build 7 on testers’ phones is unchanged; install a new tester build after its upload is authorized. Device sign-in still needs verification on that build.
 
 ## Fail-closed release/profile Firebase configuration — 19 November 2026
 
