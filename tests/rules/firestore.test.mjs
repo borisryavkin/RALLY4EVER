@@ -1,3 +1,4 @@
+import {planProfileUpgrade} from '../../scripts/profile-schema.mjs';
 import {before, after, beforeEach, test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -196,4 +197,27 @@ test('Workspace email without a coach claim cannot read coach data; stale claims
   await assertSucceeds(getDoc(doc(user('coach-1'),'checkins/event-1_participant-1')));
   await env.withSecurityRulesDisabled(async ctx=>updateDoc(doc(ctx.firestore(),'users/coach-1'),{coachEnabled:false,role:'participant'}));
   await assertFails(getDoc(doc(user('coach-1'),'checkins/event-1_participant-1')));
+});
+
+
+test('prefilled first-page save works after upgrading legacy profile/contact schema',async()=>{
+  const original={...profile(accounts[3],now),mobile:'0400000000',emergencyContact:{name:'Contact',mobile:'0400000001'},
+    about:{ageRange:'25–34',currentActivity:'Working',referral:'Friend',culturalBackground:'Neither'}};
+  await trusted('users/participant-1',original);
+  const plan=planProfileUpgrade(original);
+  const changes={firstName:original.firstName,postcode:original.postcode,about:plan.profile.about,updatedAt:serverTimestamp()};
+  // Even current rules cannot accept the legacy top-level phone fields.
+  await assertFails(updateDoc(doc(ownDb(),'users/participant-1'),changes));
+  // A coordinated trusted migration preserves details, moves private contact,
+  // and normalizes the old single-choice answers; no identity/role changes.
+  await trusted('users/participant-1',plan.profile);
+  await trusted('users/participant-1/private/contact',plan.contact);
+  await assertSucceeds(updateDoc(doc(ownDb(),'users/participant-1'),changes));
+  const saved=(await getDoc(doc(ownDb(),'users/participant-1'))).data();
+  assert.equal(saved.firstName,original.firstName);
+  assert.equal(saved.postcode,original.postcode);
+  assert.equal(saved.about.ageRange,original.about.ageRange);
+  await assertSucceeds(updateDoc(doc(ownDb(),'users/participant-1/private/contact'),{mobile:'0400000099',updatedAt:serverTimestamp()}));
+  await assertFails(updateDoc(doc(user('participant-2'),'users/participant-1'),changes));
+  await assertFails(updateDoc(doc(ownDb(),'users/participant-1'),{role:'admin',updatedAt:serverTimestamp()}));
 });

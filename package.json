@@ -14,7 +14,7 @@
     "emulators:lan": "node scripts/emulators-lan.mjs",
     "test:lan": "node --test tests/lan-config.test.mjs",
     "programs:preview": "node scripts/import-programs.mjs",
-    "test:catalogue": "npm --prefix functions run build && node --test tests/catalogue/import.test.mjs && node scripts/test-catalogue.mjs"
+    "test:catalogue": "npm --prefix functions run build && node --test tests/catalogue/import.test.mjs tests/catalogue/profile-schema.test.mjs && node scripts/test-catalogue.mjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^6.0.0",

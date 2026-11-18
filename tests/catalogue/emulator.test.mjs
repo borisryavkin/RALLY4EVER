@@ -1,3 +1,7 @@
+import {migrateProfiles} from '../../scripts/migrate-profile-schema.mjs';
+import {mkdtemp,rm} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
 import {before,after,beforeEach,test} from 'node:test';
 import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
@@ -109,4 +113,33 @@ test('session-specific capacity, cancellation and revision checks are audited wi
  assert.ok((await db.collection('catalogueAudits').get()).size>=3);
  await db.doc('checkins/session-one_participant-1').set({eventId:'session-one',uid:'participant-1',status:'pending'});
  await rejects(()=>session({revision:2,capacity:2}),'session-started');
+});
+
+test('profile migration dry-run writes nothing; apply backs up and rollback preserves timestamps and identity',async()=>{
+ const original={...(await db.doc('users/participant-1').get()).data(),mobile:'0400000000',emergencyContact:{name:'Contact',mobile:'0400000001'},
+   about:{ageRange:'25–34',currentActivity:'Working',referral:'Friend',culturalBackground:'Neither'}};
+ await db.doc('users/participant-1').set(original);
+ const before=(await db.doc('users/participant-1').get()).data();
+ const preview=await migrateProfiles(db,{project:'demo-rally4ever'});
+ assert.equal(preview.dryRun,true);assert.equal(preview.needsReview,0);
+ assert.deepEqual((await db.doc('users/participant-1').get()).data(),before);
+ const dir=await mkdtemp(join(tmpdir(),'r4e-profile-migration-'));
+ const backup=join(dir,'backup.json');
+ try{
+  const result=await migrateProfiles(db,{project:'demo-rally4ever',apply:true,backup});
+  assert.ok(result.applied>0);
+  const updated=(await db.doc('users/participant-1').get()).data();
+  assert.equal(updated.uid,before.uid);assert.equal(updated.firstName,before.firstName);
+  assert.ok(updated.createdAt.isEqual(before.createdAt));assert.equal(updated.mobile,undefined);
+  assert.equal((await db.doc('users/participant-1/private/contact').get()).data().mobile,before.mobile);
+  assert.equal((await migrateProfiles(db,{project:'demo-rally4ever'})).upgrade,0);
+  await migrateProfiles(db,{project:'demo-rally4ever',apply:true,rollback:backup});
+  assert.deepEqual((await db.doc('users/participant-1').get()).data(),before);
+  assert.equal((await db.doc('users/participant-1/private/contact').get()).exists,false);
+  const second=join(dir,'second-backup.json');
+  await migrateProfiles(db,{project:'demo-rally4ever',apply:true,backup:second});
+  await db.doc('users/participant-1').update({firstName:'Changed after migration'});
+  await assert.rejects(()=>migrateProfiles(db,{project:'demo-rally4ever',apply:true,rollback:second}),/data changed after migration/);
+  assert.equal((await db.doc('users/participant-1').get()).data().firstName,'Changed after migration');
+ }finally{await rm(dir,{recursive:true,force:true});}
 });

@@ -1,3 +1,10 @@
+## Prepare safe fix for prefilled onboarding permission denial — 19 November 2026
+
+- User confirmed rejection on the first name/age/postcode page after login. Read-only Rules API inspection confirms live staging rules still use the 17 November schema; no live data was fetched/modified. The client submits normalized profile answers even when prefilled, and the live rules reject the new keys. Local current rules also reject legacy top-level contact fields, so rules deployment alone is not sufficient.
+- Added a pure, conflict-sensitive profile/contact upgrade planner, offline preview, and default-dry-run migration command. Apply requires explicit target confirmation and a mode-600 rollback snapshot outside git; per-profile transactions detect concurrent edits and create mergeAudits entries. Rollback restores exact timestamps/identity, skips unapplied rows and refuses to overwrite later edits. Merged profiles are skipped; unsupported/conflicting data stops apply for review.
+- Added regression for the exact prefilled first-page denial then successful save after trusted migration, with existing owner/role restrictions retained. Added emulator dry-run/apply/idempotency/rollback/stale-rollback tests and migration-target tests. Updated MIGRATION.md with coordinated backend/rules rollout, backup/rollback commands and an AUD $0–5 planning allowance/free emulator alternative.
+- Analyzer clean, 88 Flutter tests passed (one browser-only skip), five importer/migration planner tests and 27 isolated emulator/rules tests passed. No real migration, deployment, billing change or upload. Real staging rollout remains approval-gated under the owner's schema-migration/cost instructions.
+
 ## Fix build 7 sign-in startup failure — 19 November 2026
 
 - Identified the runtime failure after the compile-time config guard: StagingBackend eagerly constructed FirebaseStorage with no storageBucket in FirebaseOptions. The installed SDK throws immediately, leaving main's DisabledParticipantRepository in place. Its generic emulator instruction appeared even though the real staging config was supplied; navigation cleared the actual startup error.
