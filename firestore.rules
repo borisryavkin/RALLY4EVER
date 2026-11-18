@@ -36,30 +36,64 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/events/$(eventId)).data.status == 'published';
     }
     function text(value, max) { return value is string && value.size() <= max; }
+    // A list of allowed option keys, no duplicates, at most `max` entries.
+    function optionList(value, allowed, max) {
+      return value is list && value.size() <= max && value.hasOnly(allowed)
+        && value.toSet().size() == value.size();
+    }
+    // If the list contains any of `exclusive`, it must contain only that one entry.
+    function exclusiveOk(value, exclusive) {
+      return !value.hasAny(exclusive) || (value.size() == 1 && value.hasAny(exclusive));
+    }
+    function validAbout(d) {
+      return d is map
+        && d.keys().hasOnly(['ageRange', 'gender', 'accessNeed', 'occupation', 'heardAbout',
+          'heardAboutOther', 'loneliness', 'satisfaction', 'culturalBackground'])
+        && text(d.get('ageRange', ''), 80) && text(d.get('gender', ''), 80)
+        && text(d.get('accessNeed', ''), 500)
+        && optionList(d.get('occupation', []),
+          ['working', 'studying', 'looking_for_work', 'retired', 'prefer_not_to_say'], 5)
+        && exclusiveOk(d.get('occupation', []), ['prefer_not_to_say'])
+        && optionList(d.get('heardAbout', []),
+          ['friend', 'uni_campus', 'social_media', 'local_club', 'other'], 5)
+        && text(d.get('heardAboutOther', ''), 200)
+        // Required while "other" is selected, cleared otherwise.
+        && (d.get('heardAbout', []).hasAny(['other'])
+          ? d.get('heardAboutOther', '').size() > 0
+          : d.get('heardAboutOther', '').size() == 0)
+        && text(d.get('loneliness', ''), 80) && text(d.get('satisfaction', ''), 80)
+        && optionList(d.get('culturalBackground', []),
+          ['aboriginal_torres_strait_islander', 'born_outside_australia', 'neither', 'prefer_not_to_say'], 4)
+        && exclusiveOk(d.get('culturalBackground', []), ['neither', 'prefer_not_to_say']);
+    }
     function validProfile(d) {
       return d.keys().hasAll(['uid', 'email', 'emailLower', 'role', 'mergedInto', 'createdAt', 'updatedAt',
-          'firstName', 'lastName', 'postcode', 'mobile', 'emergencyContact', 'injuries', 'preferences', 'about'])
+          'firstName', 'lastName', 'postcode', 'injuries', 'preferences', 'about'])
         && d.keys().hasOnly(['uid', 'email', 'emailLower', 'role', 'coachEnabled', 'mergedInto', 'createdAt', 'updatedAt',
-          'firstName', 'lastName', 'postcode', 'mobile', 'emergencyContact', 'injuries', 'preferences', 'about'])
+          'firstName', 'lastName', 'postcode', 'injuries', 'preferences', 'about', 'photoUpdatedAt'])
         && text(d.firstName, 100) && text(d.lastName, 100) && text(d.postcode, 20)
-        && text(d.mobile, 40) && text(d.injuries, 2000)
-        && d.emergencyContact is map
-        && d.emergencyContact.keys().hasAll(['name', 'mobile'])
-        && d.emergencyContact.keys().hasOnly(['name', 'mobile'])
-        && text(d.emergencyContact.name, 200) && text(d.emergencyContact.mobile, 40)
+        && text(d.injuries, 2000)
         && d.preferences is map
         && d.preferences.keys().hasAll(['useInReports', 'wellbeingCheckIns', 'showInWhosGoing', 'marketingEmails'])
         && d.preferences.keys().hasOnly(['useInReports', 'wellbeingCheckIns', 'showInWhosGoing', 'marketingEmails'])
         && d.preferences.useInReports is bool && d.preferences.wellbeingCheckIns is bool
         && d.preferences.showInWhosGoing is bool && d.preferences.marketingEmails is bool
-        && d.about is map
-        && d.about.keys().hasOnly(['ageRange', 'gender', 'accessNeed', 'currentActivity', 'referral',
-          'referralOther', 'loneliness', 'satisfaction', 'culturalBackground'])
-        && text(d.about.get('ageRange', ''), 80) && text(d.about.get('gender', ''), 80)
-        && text(d.about.get('accessNeed', ''), 500) && text(d.about.get('currentActivity', ''), 100)
-        && text(d.about.get('referral', ''), 100) && text(d.about.get('referralOther', ''), 500)
-        && text(d.about.get('loneliness', ''), 80) && text(d.about.get('satisfaction', ''), 80)
-        && text(d.about.get('culturalBackground', ''), 200);
+        && validAbout(d.about);
+    }
+    // Phone/emergency-contact are deliberately NOT on the main profile: only
+    // the owner, admin, and a coach actually running an event this person is
+    // involved in may read them -- never other participants, never surfaced
+    // through "Who's counted in". visibleToCoachUids is maintained server-side
+    // (see functions/src/service.ts) from real RSVP/check-in relationships;
+    // a participant can never set it themselves.
+    function validContact(d) {
+      return d.keys().hasAll(['mobile', 'mobileVerified', 'emergencyContact', 'visibleToCoachUids', 'updatedAt'])
+        && d.keys().hasOnly(['mobile', 'mobileVerified', 'emergencyContact', 'visibleToCoachUids', 'updatedAt'])
+        && text(d.mobile, 40) && d.mobileVerified == false
+        && d.emergencyContact is map
+        && d.emergencyContact.keys().hasAll(['name', 'mobile'])
+        && d.emergencyContact.keys().hasOnly(['name', 'mobile'])
+        && text(d.emergencyContact.name, 200) && text(d.emergencyContact.mobile, 40);
     }
 
     match /users/{uid} {
@@ -68,7 +102,7 @@ service cloud.firestore {
       allow create, delete: if admin();
       allow update: if admin() || (own(uid) && validProfile(request.resource.data)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'firstName', 'lastName', 'postcode', 'mobile', 'emergencyContact', 'injuries', 'preferences', 'about', 'updatedAt'])
+          'firstName', 'lastName', 'postcode', 'injuries', 'preferences', 'about', 'photoUpdatedAt', 'updatedAt'])
         && request.resource.data.updatedAt == request.time);
       match /devices/{deviceId} {
         allow read, delete: if own(uid) || admin();
@@ -79,6 +113,19 @@ service cloud.firestore {
           && request.resource.data.token.size() > 0
           && request.resource.data.platform in ['android', 'ios', 'web']
           && request.resource.data.updatedAt == request.time);
+      }
+      match /private/contact {
+        allow read: if own(uid) || admin()
+          || (coachAccess() && request.auth.uid in resource.data.get('visibleToCoachUids', []));
+        // Always created server-side by registerIdentity (Admin SDK bypasses
+        // rules), so a client never needs to create this document.
+        allow create: if admin();
+        // visibleToCoachUids is written only by trusted server code; a
+        // client update can never set or widen it.
+        allow update: if admin() || (own(uid) && validContact(request.resource.data)
+          && request.resource.data.visibleToCoachUids == resource.data.get('visibleToCoachUids', [])
+          && request.resource.data.updatedAt == request.time);
+        allow delete: if admin();
       }
     }
     match /emailIdentities/{normalizedEmail} { allow read, write: if admin(); }
@@ -166,6 +213,7 @@ service cloud.firestore {
       allow create, delete: if admin();
     }
     match /roleAudits/{id} { allow read: if admin(); allow write: if false; }
+    match /profilePhotoAudits/{id} { allow read: if admin(); allow write: if false; }
     match /roleChanges/{id} { allow read, write: if false; }
     match /mergeAudits/{id} { allow read, write: if admin(); }
     match /{document=**} { allow read, write: if false; }

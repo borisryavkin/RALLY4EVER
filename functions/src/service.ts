@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { Auth } from "firebase-admin/auth";
 import {
   DocumentData,
+  FieldValue,
   Firestore,
   Timestamp,
   Transaction,
@@ -143,8 +144,6 @@ export class AttendanceService {
       firstName: "",
       lastName: "",
       postcode: "",
-      mobile: "",
-      emergencyContact: { name: "", mobile: "" },
       injuries: "",
       preferences: {
         useInReports: false,
@@ -154,6 +153,35 @@ export class AttendanceService {
       },
       about: {},
     };
+  }
+  // mobile/emergencyContact deliberately live here, not on the main profile:
+  // only the owner, admin, and a coach actually running an event this person
+  // is involved in may ever read them (see firestore.rules' validContact and
+  // syncContactVisibility below).
+  baseContact(): DocumentData {
+    return {
+      mobile: "",
+      mobileVerified: false,
+      emergencyContact: { name: "", mobile: "" },
+      visibleToCoachUids: [],
+      updatedAt: this.stamp(),
+    };
+  }
+  // Grants every coach on `eventId` read access to `uid`'s contact details,
+  // recording a real RSVP/check-in relationship. Never removes a coach once
+  // granted -- a past relationship is still a legitimate reason to retain
+  // visibility, and this only ever widens a narrow, purpose-built allowlist.
+  async syncContactVisibility(eventId: string, uid: string): Promise<void> {
+    const [event, contact] = await Promise.all([
+      this.db.doc(`events/${eventId}`).get(),
+      this.db.doc(`users/${uid}/private/contact`).get(),
+    ]);
+    const coachUids = (event.data()?.coachUids as string[] | undefined) ?? [];
+    if (!contact.exists || coachUids.length === 0) return;
+    await contact.ref.update({
+      visibleToCoachUids: FieldValue.arrayUnion(...coachUids),
+      updatedAt: this.stamp(),
+    });
   }
   // Both registerIdentity and addWalkIn reserve this exact mapping in a transaction.
   async reserveIdentity(
@@ -188,11 +216,16 @@ export class AttendanceService {
           "Profile email or merge needs admin resolution",
         );
       }
-      if (!existing.exists)
+      if (!existing.exists) {
         tx.create(
           this.db.doc(`users/${userId}`),
           this.baseProfile(userId, email),
         );
+        tx.create(
+          this.db.doc(`users/${userId}/private/contact`),
+          this.baseContact(),
+        );
+      }
       tx.create(ref, {
         uid: userId,
         emailLower: email,
@@ -294,10 +327,11 @@ export class AttendanceService {
       this.window(e);
       const checkinId = `${eventId}_${who.uid}`,
         ref = this.db.doc(`checkins/${checkinId}`);
-      const [old, credentials, rsvp] = await Promise.all([
+      const [old, credentials, rsvp, contact] = await Promise.all([
         tx.get(ref),
         tx.get(this.db.doc(`eventSecrets/${eventId}`)),
         tx.get(this.db.doc(`rsvps/${checkinId}`)),
+        tx.get(this.db.doc(`users/${who.uid}/private/contact`)),
       ]);
       if (old.exists)
         fail(
@@ -333,13 +367,13 @@ export class AttendanceService {
           "Sign the current required forms before checking in",
           { missingForms: missing },
         );
-      const missingDetails = ["firstName", "mobile"].filter(
+      const c = contact.data();
+      const missingDetails = ["firstName"].filter(
         (key) => typeof p[key] !== "string" || !p[key].trim(),
       );
-      if (
-        !p.emergencyContact?.name?.trim() ||
-        !p.emergencyContact?.mobile?.trim()
-      )
+      if (typeof c?.mobile !== "string" || !c.mobile.trim())
+        missingDetails.push("mobile");
+      if (!c?.emergencyContact?.name?.trim() || !c?.emergencyContact?.mobile?.trim())
         missingDetails.push("emergencyContact");
       if (missingDetails.length)
         fail(
@@ -366,6 +400,14 @@ export class AttendanceService {
         eventEndsAt: e.endsAt,
         feedbackReminderPending: false,
       });
+      // A real check-in is as strong a relationship as an RSVP -- grant the
+      // event's coaches contact visibility (covers walk-ins who never RSVP'd).
+      if (contact.exists && (e.coachUids as string[] | undefined)?.length) {
+        tx.update(contact.ref, {
+          visibleToCoachUids: FieldValue.arrayUnion(...(e.coachUids as string[])),
+          updatedAt: this.stamp(),
+        });
+      }
       return { checkinId, eventId, status: "pending", distanceM: distance };
     });
   }
@@ -465,14 +507,15 @@ export class AttendanceService {
     for (const [key, max] of [
       ["firstName", 100],
       ["lastName", 100],
-      ["mobile", 40],
       ["injuries", 2000],
     ] as const) {
       if (d[key] !== undefined) details[key] = text(d[key], key, max, 0);
     }
+    const contactDetails: DocumentData = {};
+    if (d.mobile !== undefined) contactDetails.mobile = text(d.mobile, "mobile", 40, 0);
     if (d.emergencyContact !== undefined) {
       const contact = input(d.emergencyContact, ["name", "mobile"]);
-      details.emergencyContact = {
+      contactDetails.emergencyContact = {
         name: text(contact.name, "contact.name", 200),
         mobile: text(contact.mobile, "contact.mobile", 40),
       };
@@ -518,7 +561,11 @@ export class AttendanceService {
       this.authorize(coach, who, e);
       this.window(e);
       const pRef = this.db.doc(`users/${participant}`),
-        p = (await tx.get(pRef)).data();
+        contactRef = this.db.doc(`users/${participant}/private/contact`),
+        [p, c] = await Promise.all([
+          tx.get(pRef).then((s) => s.data()),
+          tx.get(contactRef).then((s) => s.data()),
+        ]);
       if (!p || p.mergedInto !== null)
         fail(
           "failed-precondition",
@@ -542,11 +589,17 @@ export class AttendanceService {
       // Existing details are not silently overwritten by a different coach.
       const fill: DocumentData = {};
       for (const [key, val] of Object.entries(details)) {
-        if (key === "emergencyContact" ? !p.emergencyContact?.name : !p[key])
-          fill[key] = val;
+        if (!p[key]) fill[key] = val;
       }
       if (Object.keys(fill).length)
         tx.update(pRef, { ...fill, updatedAt: this.stamp() });
+      const contactFill: DocumentData = {};
+      for (const [key, val] of Object.entries(contactDetails)) {
+        if (key === "emergencyContact" ? !c?.emergencyContact?.name : !c?.[key])
+          contactFill[key] = val;
+      }
+      if (Object.keys(contactFill).length)
+        tx.update(contactRef, { ...contactFill, updatedAt: this.stamp() });
       if (!rsvp.exists)
         tx.create(this.db.doc(`rsvps/${checkinId}`), {
           eventId,

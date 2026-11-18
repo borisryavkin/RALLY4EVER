@@ -45,13 +45,17 @@ dependencies:
   firebase_auth: ^7.1.0
   cloud_firestore: ^7.2.0
   cloud_functions: ^7.1.0
+  firebase_storage: ^14.1.0
   google_sign_in: ^7.2.0
+  image_picker: ^1.1.2
+  image: ^4.3.0
 
 dev_dependencies:
   firebase_core_web: ^4.2.0
   firebase_auth_web: ^6.4.0
   cloud_firestore_web: ^5.9.0
   cloud_functions_web: ^5.2.0
+  firebase_storage_web: ^3.11.0
   flutter_web_plugins:
     sdk: flutter
   flutter_test:

@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { Timestamp } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
 import { Identity, input, text, id, fail } from "./domain";
 import { AttendanceService, uid } from "./service";
 
@@ -24,14 +25,21 @@ export class AdminRoleService {
       .orderBy("startsAt")
       .limit(100)
       .get();
+    // Admin-only: phone/emergency contact live outside the main profile
+    // (see firestore.rules' private/contact) and are fetched here, not
+    // exposed to coaches or other participants through this callable.
+    const contacts = await Promise.all(
+      found.docs.map((doc) => doc.ref.collection("private").doc("contact").get()),
+    );
     return {
       events: events.docs.map((e) => ({
         eventId: e.id,
         name: e.data().name,
         coachUids: e.data().coachUids,
       })),
-      users: found.docs.map((doc) => {
-        const p = doc.data();
+      users: found.docs.map((doc, i) => {
+        const p = doc.data(),
+          c = contacts[i].data();
         return {
           uid: doc.id,
           email: p.emailLower,
@@ -39,6 +47,10 @@ export class AdminRoleService {
           role: p.role ?? "participant",
           coachEnabled: p.coachEnabled ?? p.role === "coach",
           mergedInto: p.mergedInto,
+          about: p.about ?? {},
+          hasPhoto: p.photoUpdatedAt != null,
+          mobile: c?.mobile ?? "",
+          emergencyContact: c?.emergencyContact ?? { name: "", mobile: "" },
         };
       }),
       cursor: found.size === 50 ? found.docs.at(-1)!.data().emailLower : null,
@@ -262,5 +274,59 @@ export class AdminRoleService {
       events: events.docs.map((e) => ({ eventId: e.id, name: e.data().name })),
       pending,
     };
+  }
+  // Admin always; a coach only for a participant whose contact doc already
+  // lists them in visibleToCoachUids (a real RSVP/check-in relationship).
+  async removeParticipantPhoto(who: Identity, value: unknown) {
+    const d = input(value, ["uid", "reason"]),
+      targetUid = uid(d.uid),
+      reason = text(d.reason, "reason", 1000);
+    const { db } = this.service;
+    await db.runTransaction(async (tx) => {
+      const actor = await this.service.actor(tx, who);
+      if (actor.role !== "admin") {
+        if (actor.role !== "coach")
+          fail(
+            "permission-denied",
+            "admin-required",
+            "Admin or coach access required",
+          );
+        const contact = (
+          await tx.get(db.doc(`users/${targetUid}/private/contact`))
+        ).data();
+        if (!(contact?.visibleToCoachUids ?? []).includes(who.uid))
+          fail(
+            "permission-denied",
+            "admin-required",
+            "Not an assigned coach for this participant",
+          );
+      }
+      const target = (await tx.get(db.doc(`users/${targetUid}`))).data();
+      if (!target || target.mergedInto !== null)
+        fail("not-found", "profile-not-found", "Choose an active profile");
+      tx.update(db.doc(`users/${targetUid}`), {
+        photoUpdatedAt: null,
+        updatedAt: this.service.stamp(),
+      });
+      tx.create(db.collection("profilePhotoAudits").doc(), {
+        targetUid,
+        actorUid: who.uid,
+        reason,
+        createdAt: this.service.stamp(),
+      });
+    });
+    // Storage is not enabled on the project yet; this delete is a no-op
+    // (caught and ignored) until it is. Best-effort, outside the
+    // transaction -- the Firestore removal above is the source of truth
+    // for whether a photo is considered to exist.
+    try {
+      await getStorage()
+        .bucket()
+        .file(`profilePhotos/${targetUid}/avatar.jpg`)
+        .delete();
+    } catch {
+      // Expected until Storage is enabled, or if no photo was ever uploaded.
+    }
+    return { uid: targetUid };
   }
 }

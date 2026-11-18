@@ -1,0 +1,25 @@
+rules_version = '2';
+
+// Not deployed yet -- Storage is not enabled on rally4ever-3adaf. Written
+// now so the capability and its rules are reviewed together; deploy with
+// `firebase deploy --only storage` once Storage is turned on.
+//
+// profilePhotos/{uid}/avatar.jpg is the only path in use. Removal by a
+// coach/admin (functions/src/admin_roles.ts's removeParticipantPhoto) goes
+// through the Admin SDK, which bypasses these rules entirely -- that path
+// doesn't need a rule here, only the direct owner upload/delete does.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /profilePhotos/{uid}/avatar.jpg {
+      // Any signed-in, verified user can view a profile photo (same
+      // visibility as a participant's first name elsewhere in the app);
+      // only the owner can upload or remove their own.
+      allow read: if request.auth != null && request.auth.token.email_verified == true;
+      allow write: if request.auth != null && request.auth.uid == uid
+        && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType == 'image/jpeg';
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+    match /{allPaths=**} { allow read, write: if false; }
+  }
+}

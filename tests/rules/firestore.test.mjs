@@ -173,6 +173,22 @@ test('unknown collections denied; admin can manage forms, profiles and merge aud
   }
 });
 
+test('phone/emergency contact are visible only to the owner, admin, and a coach actually granted access',async()=>{
+  await trusted('users/participant-1/private/contact',{mobile:'0400000000',mobileVerified:false,emergencyContact:{name:'Pat',mobile:'0400000001'},visibleToCoachUids:['coach-1'],updatedAt:now});
+  await assertSucceeds(getDoc(doc(ownDb(),'users/participant-1/private/contact')));
+  await assertSucceeds(getDoc(doc(user('coach-1'),'users/participant-1/private/contact')));
+  // coach-2 runs no event participant-1 is involved in -- not in visibleToCoachUids.
+  await assertFails(getDoc(doc(user('coach-2'),'users/participant-1/private/contact')));
+  // Another participant can never read this, regardless of visibleToCoachUids.
+  await assertFails(getDoc(doc(user('participant-2'),'users/participant-1/private/contact')));
+  await assertSucceeds(getDoc(doc(user('admin-1'),'users/participant-1/private/contact')));
+  // The owner can edit their own mobile/emergency contact...
+  await assertSucceeds(updateDoc(doc(ownDb(),'users/participant-1/private/contact'),{mobile:'0400000099',updatedAt:serverTimestamp()}));
+  // ...but can never set or widen visibleToCoachUids themselves -- only
+  // trusted server code (service.ts's syncContactVisibility) may.
+  await assertFails(updateDoc(doc(ownDb(),'users/participant-1/private/contact'),{visibleToCoachUids:['coach-1','coach-2'],updatedAt:serverTimestamp()}));
+  await assertFails(updateDoc(doc(ownDb(),'users/participant-1/private/contact'),{mobileVerified:true,updatedAt:serverTimestamp()}));
+});
 test('Workspace email without a coach claim cannot read coach data; stale claims fail after revocation',async()=>{
   const noClaim=env.authenticatedContext('coach-1',{email_verified:true,email:'dan@rally4ever.org',firebase:{sign_in_provider:'google.com'}}).firestore();
   await assertFails(getDoc(doc(noClaim,'checkins/event-1_participant-1')));

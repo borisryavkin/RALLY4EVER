@@ -4,7 +4,7 @@ import { initializeApp, deleteApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { requireEmulators, projectId } from './emulator-env.mjs';
-import { accounts, demoPassword, profile, identityKey, event } from './fixtures.mjs';
+import { accounts, demoPassword, profile, contact, identityKey, event } from './fixtures.mjs';
 
 export async function seed() {
   requireEmulators();
@@ -27,6 +27,21 @@ export async function seed() {
       }
       await auth.setCustomUserClaims(account.uid, {role: account.role, roles: account.role === 'participant' ? ['participant'] : ['participant', account.role]});
       await create(`users/${account.uid}`, profile(account, now));
+      // Most check-in tests/dev flows need these filled in; only
+      // participant-3+ are left blank to also exercise the "missing
+      // details" gate. coach-1/coach-2 get a visibility seed so
+      // participant-1/2's contact is readable by them in local dev.
+      await create(
+        `users/${account.uid}/private/contact`,
+        contact(now, account.role === 'participant' &&
+          ['participant-1', 'participant-2'].includes(account.uid)
+          ? {
+              mobile: '0400000000',
+              emergencyContact: { name: 'Emergency Contact', mobile: '0400000001' },
+              visibleToCoachUids: ['coach-1'],
+            }
+          : {}),
+      );
       await create(`emailIdentities/${identityKey(account.email)}`, {
         emailLower: account.email, uid: account.uid, createdAt: now,
       });

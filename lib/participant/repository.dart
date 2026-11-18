@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -47,6 +48,10 @@ abstract class ParticipantRepository extends ChangeNotifier {
   bool enabled = false;
   String? streamError;
   Record profile = {};
+  // mobile/emergencyContact: not in `profile` -- see firestore.rules'
+  // private/contact. Populated once `contactReady` is true.
+  Record contact = {};
+  bool contactReady = false;
   List<Record> programs = [];
   bool catalogueReady = false;
   String? catalogueError;
@@ -101,9 +106,14 @@ abstract class ParticipantRepository extends ChangeNotifier {
   Future<void> refreshVerification() => throw UnimplementedError();
   Future<void> signOut() => throw UnimplementedError();
   Future<void> saveProfile(Record changes) => throw UnimplementedError();
+  Future<void> saveContact(Record changes) => throw UnimplementedError();
+  /// Null means "remove the photo". Expects already-encoded JPEG bytes.
+  Future<void> savePhoto(List<int>? jpegBytes) => throw UnimplementedError();
   Future<void> countMeIn(String eventId, {bool cancel = false}) =>
       throw UnimplementedError();
   Future<Record> countedPeople(String eventId) => throw UnimplementedError();
+  /// Null if there's no photo (or it can't be reached); never throws.
+  Future<String?> photoDownloadUrl() async => null;
   Future<void> signForm(Record form) => throw UnimplementedError();
   Future<Record> call(String name, Record data) => throw UnimplementedError();
   Future<Record> location() async {
@@ -190,6 +200,22 @@ class FirebaseParticipantRepository extends ParticipantRepository {
         }
         arrived('profile');
       }, onError: failed),
+    );
+    contactReady = false;
+    _subscriptions.add(
+      db.doc('users/$uid/private/contact').snapshots().listen(
+        (s) {
+          contact = s.data() ?? {};
+          contactReady = true;
+          notifyListeners();
+        },
+        onError: (Object error) {
+          // Not counted in `ready`: contact is a narrower, newer slice of
+          // profile data and should never block the rest of the app.
+          contactReady = true;
+          notifyListeners();
+        },
+      ),
     );
     void watch(
       String collection,
@@ -391,6 +417,8 @@ class FirebaseParticipantRepository extends ParticipantRepository {
     email = null;
     verified = false;
     profile = {};
+    contact = {};
+    contactReady = false;
     events = [];
     programs = [];
     catalogueReady = false;
@@ -428,6 +456,47 @@ class FirebaseParticipantRepository extends ParticipantRepository {
     });
     profile = {...profile, ...changes};
     notifyListeners();
+  }
+
+  @override
+  Future<void> saveContact(Record changes) async {
+    await backend.firestore.doc('users/$uid/private/contact').update({
+      ...changes,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+    contact = {...contact, ...changes};
+    notifyListeners();
+  }
+
+  @override
+  Future<void> savePhoto(List<int>? jpegBytes) async {
+    final ref = backend.storage.ref('profilePhotos/$uid/avatar.jpg');
+    if (jpegBytes == null) {
+      try {
+        await ref.delete();
+      } on FirebaseException catch (e) {
+        if (e.code != 'object-not-found') rethrow;
+      }
+      await saveProfile({'photoUpdatedAt': null});
+      return;
+    }
+    await ref.putData(
+      Uint8List.fromList(jpegBytes),
+      SettableMetadata(contentType: 'image/jpeg'),
+    );
+    await saveProfile({'photoUpdatedAt': FieldValue.serverTimestamp()});
+  }
+
+  @override
+  Future<String?> photoDownloadUrl() async {
+    if (profile['photoUpdatedAt'] == null) return null;
+    try {
+      return await backend.storage
+          .ref('profilePhotos/$uid/avatar.jpg')
+          .getDownloadURL();
+    } on FirebaseException {
+      return null;
+    }
   }
 
   @override

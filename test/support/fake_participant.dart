@@ -191,6 +191,28 @@ class FakeParticipantRepository extends ParticipantRepository {
   }
 
   @override
+  Future<void> saveContact(Record changes) async {
+    calls.add('saveContact');
+    contact = {...contact, ...changes};
+    notifyListeners();
+  }
+
+  List<int>? savedPhotoBytes;
+  bool photoRemoved = false;
+  @override
+  Future<void> savePhoto(List<int>? jpegBytes) async {
+    calls.add('savePhoto');
+    if (jpegBytes == null) {
+      photoRemoved = true;
+      profile = {...profile, 'photoUpdatedAt': null};
+    } else {
+      savedPhotoBytes = jpegBytes;
+      profile = {...profile, 'photoUpdatedAt': DateTime.now()};
+    }
+    notifyListeners();
+  }
+
+  @override
   Future<void> countMeIn(String eventId, {bool cancel = false}) async {
     rsvps = [
       ...rsvps.where((r) => r['eventId'] != eventId),

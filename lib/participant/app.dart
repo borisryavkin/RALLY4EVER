@@ -560,11 +560,20 @@ class _ParticipantAppState extends State<ParticipantApp>
             key: ValueKey(page),
             step: step,
             profile: repo.profile,
+            contact: repo.contact,
             onSave: (changes) => action(() async {
-              await repo.saveProfile(changes);
-              go(step == 5 ? 'home' : 'profile${step + 1}');
+              if (step == 6) {
+                await repo.saveContact(changes);
+              } else if (step == 7) {
+                if (changes['photoSkip'] != true) {
+                  await repo.savePhoto(changes['photoBytes'] as List<int>?);
+                }
+              } else {
+                await repo.saveProfile(changes);
+              }
+              go(step == 7 ? 'home' : 'profile${step + 1}');
             }),
-            onSkip: () => go(step == 5 ? 'home' : 'profile${step + 1}'),
+            onSkip: () => go(step == 7 ? 'home' : 'profile${step + 1}'),
           ),
         ],
       );
@@ -1707,13 +1716,25 @@ class _ParticipantAppState extends State<ParticipantApp>
     children: [
       Row(
         children: [
-          CircleAvatar(
-            radius: 28,
-            backgroundColor: navy,
-            foregroundColor: Colors.white,
-            child: Text(
-              initials,
-              style: const TextStyle(fontFamily: 'Figtree', fontSize: 24),
+          FutureBuilder<String?>(
+            key: ValueKey(repo.profile['photoUpdatedAt']),
+            future: repo.photoDownloadUrl(),
+            builder: (context, snapshot) => CircleAvatar(
+              radius: 28,
+              backgroundColor: navy,
+              foregroundColor: Colors.white,
+              backgroundImage: snapshot.data != null
+                  ? NetworkImage(snapshot.data!)
+                  : null,
+              child: snapshot.data == null
+                  ? Text(
+                      initials,
+                      style: const TextStyle(
+                        fontFamily: 'Figtree',
+                        fontSize: 24,
+                      ),
+                    )
+                  : null,
             ),
           ),
           const SizedBox(width: 14),

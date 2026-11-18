@@ -7,7 +7,9 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>NSCameraUsageDescription</key>
-	<string>Rally4Ever uses your camera to scan the current session QR code from your coach.</string>
+	<string>Rally4Ever uses your camera to scan the current session QR code from your coach, or to take an optional profile photo.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Rally4Ever uses your photo library so you can choose an optional profile photo.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Rally4Ever uses your location to find nearby sessions and check that you are at the venue when you check in.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>

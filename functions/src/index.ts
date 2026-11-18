@@ -207,6 +207,9 @@ export const assignEventCoaches = callable((who, data) =>
 export const coachOverview = callable((who, data) =>
   roles.coachOverview(who, data),
 );
+export const removeParticipantPhoto = callable((who, data) =>
+  roles.removeParticipantPhoto(who, data),
+);
 
 const catalogue = new CatalogueService(service);
 export const listPrograms = callable((who, data) => catalogue.listPrograms(who, data));
@@ -218,4 +221,10 @@ export const syncSessionAvailability = onDocumentWritten({document:"rsvps/{rsvpI
   const before = event.data?.before.data(), after = event.data?.after.data();
   const ids = new Set([before?.eventId, after?.eventId].filter((id): id is string => typeof id === "string" && /^[a-zA-Z0-9-]{1,128}$/.test(id)));
   for (const eventId of ids) await catalogue.reconcileAvailability(eventId);
+  // An RSVP (including a legacy direct-write "Count me in") is a real
+  // relationship with the event's coaches -- grant them contact visibility.
+  const rsvpUid = (after?.uid ?? before?.uid) as string | undefined;
+  if (rsvpUid) {
+    for (const eventId of ids) await service.syncContactVisibility(eventId, rsvpUid);
+  }
 });

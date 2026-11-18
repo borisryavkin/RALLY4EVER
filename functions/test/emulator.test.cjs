@@ -122,9 +122,12 @@ beforeEach(async () => {
   await seed();
   await db.doc("checkins/event-3_participant-1").delete();
   for (const uid of ["participant-1", "participant-2"]) {
-    await db.doc(`users/${uid}`).update({
+    await db.doc(`users/${uid}/private/contact`).set({
       mobile: "0400000000",
+      mobileVerified: false,
       emergencyContact: { name: "Emergency Contact", mobile: "0400000001" },
+      visibleToCoachUids: [],
+      updatedAt: Timestamp.now(),
     });
     await sign(uid);
   }
@@ -286,7 +289,7 @@ test("checkIn rejects wrong/expired secret, unsigned/outdated forms and missing 
   await db.doc("forms/waiver").update({ version: 2 });
   await error(() => scan(), "unsigned-forms", "FAILED_PRECONDITION");
   await db.doc("forms/waiver").update({ version: 1 });
-  await db.doc("users/participant-1").update({ mobile: "" });
+  await db.doc("users/participant-1/private/contact").update({ mobile: "" });
   await error(() => scan(), "missing-details", "FAILED_PRECONDITION");
 });
 test("duplicate simultaneous scans create one pending attendance, preserving intent", async () => {

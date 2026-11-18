@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 import 'build_environment.dart';
 import 'emulator_backend.dart';
@@ -9,13 +10,17 @@ import 'emulator_backend.dart';
 /// Real staging transport; deliberately has no emulator connection calls.
 /// Deploying its backend is a separate, approval-gated release step.
 class StagingBackend implements FirebaseBackend {
-  StagingBackend._(this.auth, this.firestore, this.functions);
+  StagingBackend._(this.auth, this.firestore, this.functions, this.storage);
   @override
   final FirebaseAuth auth;
   @override
   final FirebaseFirestore firestore;
   @override
   final FirebaseFunctions functions;
+  // Storage is not enabled on rally4ever-3adaf yet -- constructing this
+  // reference is harmless, but any actual read/write will fail until it is.
+  @override
+  final FirebaseStorage storage;
 
   static Future<StagingBackend> connect() async {
     if (BuildEnvironment.validate() != 'staging') {
@@ -51,6 +56,7 @@ class StagingBackend implements FirebaseBackend {
       FirebaseAuth.instanceFor(app: app),
       FirebaseFirestore.instanceFor(app: app),
       FirebaseFunctions.instanceFor(app: app, region: 'australia-southeast1'),
+      FirebaseStorage.instanceFor(app: app),
     );
   }
 }

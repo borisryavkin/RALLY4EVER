@@ -1,7 +1,47 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
+import 'forms.dart' show occupationOptions, heardAboutOptions, culturalBackgroundOptions;
 import 'repository.dart';
 import 'theme.dart';
+
+String _csvField(Object? value) {
+  final text = value?.toString() ?? '';
+  return text.contains(RegExp(r'[,"\n]'))
+      ? '"${text.replaceAll('"', '""')}"'
+      : text;
+}
+
+String _optionLabels(Record about, String key, Map<String, String> options) =>
+    (about[key] as List? ?? const [])
+        .map((k) => options[k] ?? k)
+        .join('; ');
+
+/// Admin-only: email, role, and about/phone/emergency-contact details come
+/// straight from the listUsers callable -- never a direct Firestore read of
+/// another participant's profile or private/contact subcollection.
+String usersToCsv(List<Record> users) {
+  final header = [
+    'email', 'firstName', 'role', 'coachEnabled', 'hasPhoto',
+    'occupation', 'heardAbout', 'culturalBackground', 'mobile',
+    'emergencyContactName', 'emergencyContactMobile',
+  ];
+  final rows = users.map((u) {
+    final about = Map<String, dynamic>.from(u['about'] as Map? ?? {});
+    final emergency = Map<String, dynamic>.from(
+      u['emergencyContact'] as Map? ?? {},
+    );
+    return [
+      u['email'], u['firstName'], u['role'], u['coachEnabled'],
+      u['hasPhoto'],
+      _optionLabels(about, 'occupation', occupationOptions),
+      _optionLabels(about, 'heardAbout', heardAboutOptions),
+      _optionLabels(about, 'culturalBackground', culturalBackgroundOptions),
+      u['mobile'], emergency['name'], emergency['mobile'],
+    ].map(_csvField).join(',');
+  });
+  return [header.join(','), ...rows].join('\n');
+}
 
 class AdminAccessPanel extends StatefulWidget {
   const AdminAccessPanel({super.key, required this.repository});
@@ -14,8 +54,12 @@ class _AdminAccessPanelState extends State<AdminAccessPanel> {
   final search = TextEditingController(), reason = TextEditingController();
   List<Record> users = [], events = [];
   String? error, selectedEventId, cursor;
+  String roleFilter = 'all';
   Set<String> selectedCoaches = {};
   bool busy = false;
+  List<Record> get filteredUsers => roleFilter == 'all'
+      ? users
+      : users.where((u) => u['role'] == roleFilter).toList();
   @override
   void initState() {
     super.initState();
@@ -97,7 +141,59 @@ class _AdminAccessPanelState extends State<AdminAccessPanel> {
       ),
       if (error != null) Panel(color: pink, child: Text(error!)),
       if (busy) const LinearProgressIndicator(),
-      for (final user in users)
+      const SizedBox(height: 14),
+      DropdownButtonFormField<String>(
+        key: const Key('role-filter'),
+        initialValue: roleFilter,
+        decoration: const InputDecoration(labelText: 'Filter by role'),
+        items: const [
+          DropdownMenuItem(value: 'all', child: Text('All roles')),
+          DropdownMenuItem(value: 'participant', child: Text('Participant')),
+          DropdownMenuItem(value: 'coach', child: Text('Coach')),
+          DropdownMenuItem(value: 'admin', child: Text('Admin')),
+        ],
+        onChanged: (v) => setState(() => roleFilter = v ?? 'all'),
+      ),
+      const SizedBox(height: 10),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton(
+          key: const Key('export-csv'),
+          onPressed: users.isEmpty
+              ? null
+              : () => showDialog<void>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: const Text('CSV export'),
+                    content: SizedBox(
+                      width: 480,
+                      child: SelectableText(
+                        usersToCsv(filteredUsers),
+                        style: const TextStyle(
+                          fontFamily: 'monospace',
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Clipboard.setData(
+                          ClipboardData(text: usersToCsv(filteredUsers)),
+                        ),
+                        child: const Text('Copy to clipboard'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Close'),
+                      ),
+                    ],
+                  ),
+                ),
+          child: const Text('Export CSV'),
+        ),
+      ),
+      const SizedBox(height: 10),
+      for (final user in filteredUsers)
         Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: Panel(
@@ -112,6 +208,28 @@ class _AdminAccessPanelState extends State<AdminAccessPanel> {
                   user['firstName'] as String? ?? '',
                   style: const TextStyle(fontSize: 12),
                 ),
+                Text(
+                  [
+                    _optionLabels(
+                      Map<String, dynamic>.from(user['about'] as Map? ?? {}),
+                      'occupation',
+                      occupationOptions,
+                    ),
+                    if (user['hasPhoto'] == true) 'Has photo',
+                  ].where((s) => s.isNotEmpty).join(' · '),
+                  style: const TextStyle(fontSize: 11, color: slate),
+                ),
+                // Admin-only, per listUsers: never shown to coaches or other participants.
+                if ((user['mobile'] as String?)?.isNotEmpty == true ||
+                    ((user['emergencyContact'] as Map?)?['name'] as String?)
+                            ?.isNotEmpty ==
+                        true)
+                  Text(
+                    'Mobile: ${user['mobile'] ?? '—'} · Emergency: '
+                    '${(user['emergencyContact'] as Map?)?['name'] ?? '—'} '
+                    '(${(user['emergencyContact'] as Map?)?['mobile'] ?? '—'})',
+                    style: const TextStyle(fontSize: 11, color: slate),
+                  ),
                 if (user['mergedInto'] != null)
                   const StatusPill('Merged profile')
                 else

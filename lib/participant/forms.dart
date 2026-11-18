@@ -1,6 +1,9 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:image/image.dart' as img;
+import 'package:image_picker/image_picker.dart';
 
 import 'repository.dart';
 import 'theme.dart';
@@ -286,16 +289,89 @@ class _ForgotPasswordFormState extends State<ForgotPasswordForm> {
   );
 }
 
+// Option keys stored in Firestore; labels are display-only and can change
+// freely without touching stored data. See firestore.rules' validAbout.
+const occupationOptions = {
+  'working': 'Working',
+  'studying': 'Studying',
+  'looking_for_work': 'Looking for work',
+  'retired': 'Retired',
+  'prefer_not_to_say': 'Prefer not to say',
+};
+const occupationExclusive = {'prefer_not_to_say'};
+const heardAboutOptions = {
+  'friend': 'Friend',
+  'uni_campus': 'Uni / campus',
+  'social_media': 'Social media',
+  'local_club': 'Local club',
+  'other': 'Other',
+};
+const culturalBackgroundOptions = {
+  'aboriginal_torres_strait_islander': 'Aboriginal and/or Torres Strait Islander',
+  'born_outside_australia': 'Born outside Australia',
+  'neither': 'Neither',
+  'prefer_not_to_say': 'Prefer not to say',
+};
+const culturalBackgroundExclusive = {'neither', 'prefer_not_to_say'};
+
+/// Converts a legacy single-value `about` map (currentActivity/referral as a
+/// display-label string, culturalBackground as a single string) into the
+/// current array-of-option-key shape. A map that's already current (or
+/// empty) passes through unchanged. Pure and safe to call on every read, so
+/// an old profile is migrated the moment it's next loaded for editing.
+Record migrateAbout(Record raw) {
+  final about = Map<String, dynamic>.from(raw);
+  String? keyFor(Map<String, String> options, Object? label) =>
+      options.entries
+          .firstWhere(
+            (e) => e.value == label,
+            orElse: () => const MapEntry('', ''),
+          )
+          .key
+          .let((k) => k.isEmpty ? null : k);
+  if (about['currentActivity'] is String) {
+    final key = keyFor(occupationOptions, about.remove('currentActivity'));
+    about['occupation'] = [?key];
+  }
+  if (about['referral'] is String) {
+    final key = keyFor(heardAboutOptions, about.remove('referral'));
+    about['heardAbout'] = [?key];
+  }
+  if (about.containsKey('referralOther') && !about.containsKey('heardAboutOther')) {
+    about['heardAboutOther'] = about.remove('referralOther');
+  }
+  if (about['culturalBackground'] is String) {
+    final key = keyFor(
+      culturalBackgroundOptions,
+      about.remove('culturalBackground'),
+    );
+    about['culturalBackground'] = [?key];
+  }
+  about['occupation'] = List<String>.from(about['occupation'] as List? ?? []);
+  about['heardAbout'] = List<String>.from(about['heardAbout'] as List? ?? []);
+  about['heardAboutOther'] = (about['heardAboutOther'] as String?) ?? '';
+  about['culturalBackground'] = List<String>.from(
+    about['culturalBackground'] as List? ?? [],
+  );
+  return about;
+}
+
+extension _Let<T> on T {
+  R let<R>(R Function(T) f) => f(this);
+}
+
 class ProfileStep extends StatefulWidget {
   const ProfileStep({
     super.key,
     required this.step,
     required this.profile,
+    required this.contact,
     required this.onSave,
     required this.onSkip,
   });
   final int step;
   final Record profile;
+  final Record contact;
   final Future<void> Function(Record) onSave;
   final VoidCallback onSkip;
   @override
@@ -309,8 +385,8 @@ class _ProfileStepState extends State<ProfileStep> {
   late final postcode = TextEditingController(
     text: widget.profile['postcode'] as String? ?? '',
   );
-  late final Record about = Map<String, dynamic>.from(
-    widget.profile['about'] as Map? ?? {},
+  late final Record about = migrateAbout(
+    Map<String, dynamic>.from(widget.profile['about'] as Map? ?? {}),
   );
   late final Record prefs = {
     'useInReports': false,
@@ -319,11 +395,36 @@ class _ProfileStepState extends State<ProfileStep> {
     'marketingEmails': false,
     ...Map<String, dynamic>.from(widget.profile['preferences'] as Map? ?? {}),
   };
+  late final mobile = TextEditingController(
+    text: (widget.contact['mobile'] as String?)?.isNotEmpty == true
+        ? widget.contact['mobile'] as String
+        : '+61 ',
+  );
+  late final emergencyName = TextEditingController(
+    text:
+        (widget.contact['emergencyContact'] as Map?)?['name'] as String? ??
+        '',
+  );
+  late final emergencyMobile = TextEditingController(
+    text:
+        (widget.contact['emergencyContact'] as Map?)?['mobile'] as String? ??
+        '',
+  );
+  late final heardAboutOther = TextEditingController(
+    text: about['heardAboutOther'] as String? ?? '',
+  );
+  List<int>? pickedPhotoBytes;
+  bool removePhoto = false;
+  String? photoError;
   String? error;
   @override
   void dispose() {
     first.dispose();
     postcode.dispose();
+    mobile.dispose();
+    emergencyName.dispose();
+    emergencyMobile.dispose();
+    heardAboutOther.dispose();
     super.dispose();
   }
 
@@ -359,15 +460,116 @@ class _ProfileStepState extends State<ProfileStep> {
       ],
     ),
   );
+  /// Multiple chips can be selected at once; any key in [exclusive] clears
+  /// every other selection the moment it's chosen (and vice versa).
+  Widget multiChoices(
+    String label,
+    String name,
+    Map<String, String> options, {
+    Set<String> exclusive = const {},
+  }) {
+    final selected = Set<String>.from(about[name] as List? ?? const []);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.w700, color: navy),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 7,
+            runSpacing: 4,
+            children: options.entries
+                .map(
+                  (entry) => ChoiceChip(
+                    label: Text(
+                      entry.value,
+                      style: TextStyle(
+                        color: selected.contains(entry.key)
+                            ? Colors.white
+                            : navy,
+                        fontSize: 12,
+                      ),
+                    ),
+                    selected: selected.contains(entry.key),
+                    selectedColor: navy,
+                    showCheckmark: false,
+                    onSelected: (_) => setState(() {
+                      final next = Set<String>.from(selected);
+                      if (next.contains(entry.key)) {
+                        next.remove(entry.key);
+                      } else if (exclusive.contains(entry.key)) {
+                        next
+                          ..clear()
+                          ..add(entry.key);
+                      } else {
+                        next
+                          ..removeAll(exclusive)
+                          ..add(entry.key);
+                      }
+                      about[name] = next.toList();
+                      if (name == 'heardAbout' && !next.contains('other')) {
+                        heardAboutOther.clear();
+                        about['heardAboutOther'] = '';
+                      }
+                    }),
+                  ),
+                )
+                .toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> pickPhoto(ImageSource source) async {
+    setState(() => photoError = null);
+    final picked = await ImagePicker().pickImage(source: source);
+    if (picked == null) return;
+    final rawBytes = await picked.readAsBytes();
+    if (rawBytes.lengthInBytes > 5 * 1024 * 1024) {
+      setState(() => photoError = 'Choose a photo under 5 MB.');
+      return;
+    }
+    final decoded = img.decodeImage(rawBytes);
+    if (decoded == null) {
+      setState(() => photoError = 'That file could not be read as an image.');
+      return;
+    }
+    final side = decoded.width < decoded.height ? decoded.width : decoded.height;
+    final square = img.copyCrop(
+      decoded,
+      x: (decoded.width - side) ~/ 2,
+      y: (decoded.height - side) ~/ 2,
+      width: side,
+      height: side,
+    );
+    final resized = img.copyResize(square, width: 512, height: 512);
+    setState(() {
+      pickedPhotoBytes = img.encodeJpg(resized, quality: 85);
+      removePhoto = false;
+    });
+  }
+
   Future<void> save() async {
     if (widget.step == 1 &&
         (first.text.trim().isEmpty ||
             !RegExp(r'^\d{4}$').hasMatch(postcode.text.trim()))) {
-      setState(
-        () => error = 'Enter your first name and a four-digit postcode.',
-      );
+      setState(() => error = 'Enter your name and a four-digit postcode.');
       return;
     }
+    if (widget.step == 3 &&
+        heardAboutOther.text.trim().isEmpty &&
+        (about['heardAbout'] as List).contains('other')) {
+      setState(() => error = 'Tell us a little more, or remove "Other".');
+      return;
+    }
+    // Trimmed only here, not on every keystroke, so typing a multi-word
+    // answer isn't fought by trimming trailing spaces mid-sentence.
+    about['heardAboutOther'] = heardAboutOther.text.trim();
     await widget.onSave(
       widget.step == 1
           ? {
@@ -377,6 +579,23 @@ class _ProfileStepState extends State<ProfileStep> {
             }
           : widget.step == 5
           ? {'preferences': prefs}
+          : widget.step == 6
+          ? {
+              'mobile': mobile.text.trim().replaceAll(' ', '') == '+61'
+                  ? ''
+                  : normalizeAustralianMobile(mobile.text),
+              'emergencyContact': {
+                'name': emergencyName.text.trim(),
+                'mobile': emergencyMobile.text.trim().isEmpty
+                    ? ''
+                    : normalizeAustralianMobile(emergencyMobile.text),
+              },
+            }
+          : widget.step == 7
+          ? {
+              'photoBytes': removePhoto ? null : pickedPhotoBytes,
+              'photoSkip': pickedPhotoBytes == null && !removePhoto,
+            }
           : {'about': about},
     );
   }
@@ -388,7 +607,7 @@ class _ProfileStepState extends State<ProfileStep> {
       Row(
         children: [
           Text(
-            'Step ${widget.step} of 5',
+            'Step ${widget.step} of 7',
             style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -404,7 +623,7 @@ class _ProfileStepState extends State<ProfileStep> {
         ],
       ),
       LinearProgressIndicator(
-        value: widget.step / 5,
+        value: widget.step / 7,
         minHeight: 4,
         color: coral,
         backgroundColor: const Color(0xffe1dcda),
@@ -417,6 +636,8 @@ class _ProfileStepState extends State<ProfileStep> {
           'Help our research,\nwhen you’re ready',
           'How have you been\nfeeling lately?',
           'Your info, your call',
+          'In case we ever\nneed to reach you',
+          'Add a photo\n(optional)',
         ][widget.step - 1],
         style: Theme.of(context).textTheme.headlineMedium,
       ),
@@ -428,7 +649,7 @@ class _ProfileStepState extends State<ProfileStep> {
       ),
       const SizedBox(height: 24),
       if (widget.step == 1) ...[
-        _field('First name', first, 'firstName'),
+        _field('Name', first, 'firstName'),
         const SizedBox(height: 12),
         _field(
           'Postcode',
@@ -452,11 +673,12 @@ class _ProfileStepState extends State<ProfileStep> {
           'Non-binary',
           'Prefer not to say',
         ]),
-        choices('Cultural background', 'culturalBackground', [
-          'Aboriginal and/or Torres Strait Islander',
-          'Born outside Australia',
-          'Prefer not to say',
-        ]),
+        multiChoices(
+          'Cultural background',
+          'culturalBackground',
+          culturalBackgroundOptions,
+          exclusive: culturalBackgroundExclusive,
+        ),
       ],
       if (widget.step == 3) ...[
         choices('Do you have a disability or access need?', 'accessNeed', [
@@ -464,20 +686,26 @@ class _ProfileStepState extends State<ProfileStep> {
           'No',
           'Prefer not to say',
         ]),
-        choices('Right now, are you…', 'currentActivity', [
-          'Working',
-          'Studying',
-          'Looking for work',
-          'Retired',
-          'Prefer not to say',
-        ]),
-        choices('How did you hear about us?', 'referral', [
-          'Friend',
-          'Uni / campus',
-          'Social media',
-          'Local club',
-          'Other',
-        ]),
+        multiChoices(
+          'Right now, are you…',
+          'occupation',
+          occupationOptions,
+          exclusive: occupationExclusive,
+        ),
+        multiChoices('How did you hear about us?', 'heardAbout', heardAboutOptions),
+        if ((about['heardAbout'] as List).contains('other')) ...[
+          const SizedBox(height: 4),
+          TextField(
+            key: const Key('heardAboutOther'),
+            controller: heardAboutOther,
+            maxLength: 200,
+            onChanged: (v) => setState(() => about['heardAboutOther'] = v),
+            decoration: const InputDecoration(
+              labelText: 'Tell us more',
+              hintText: 'e.g. a poster at the library',
+            ),
+          ),
+        ],
       ],
       if (widget.step == 4) ...[
         choices('How often do you feel lonely?', 'loneliness', [
@@ -539,15 +767,89 @@ class _ProfileStepState extends State<ProfileStep> {
           style: TextStyle(fontSize: 12),
         ),
       ],
+      if (widget.step == 6) ...[
+        const Text(
+          'Optional. Not shared with other participants; visible only to you, '
+          'admins, and a coach for a session you attend.',
+          style: TextStyle(fontSize: 12),
+        ),
+        const SizedBox(height: 16),
+        _field(
+          'Mobile number',
+          mobile,
+          'mobile',
+          keyboard: TextInputType.phone,
+        ),
+        const SizedBox(height: 12),
+        _field('Emergency contact name', emergencyName, 'emergencyName'),
+        const SizedBox(height: 12),
+        _field(
+          'Emergency contact number',
+          emergencyMobile,
+          'emergencyMobile',
+          keyboard: TextInputType.phone,
+        ),
+      ],
+      if (widget.step == 7) ...[
+        Center(
+          child: Column(
+            children: [
+              CircleAvatar(
+                radius: 56,
+                backgroundColor: navy,
+                foregroundColor: Colors.white,
+                backgroundImage: pickedPhotoBytes != null
+                    ? MemoryImage(Uint8List.fromList(pickedPhotoBytes!))
+                    : null,
+                child: pickedPhotoBytes == null
+                    ? Text(
+                        (widget.profile['firstName'] as String? ?? '?')
+                            .let((s) => s.isEmpty ? '?' : s[0].toUpperCase()),
+                        style: const TextStyle(fontSize: 36),
+                      )
+                    : null,
+              ),
+              const SizedBox(height: 16),
+              if (photoError != null)
+                Text(photoError!, style: const TextStyle(color: coral)),
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 8,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => pickPhoto(ImageSource.camera),
+                    child: const Text('Take a photo'),
+                  ),
+                  OutlinedButton(
+                    onPressed: () => pickPhoto(ImageSource.gallery),
+                    child: const Text('Choose from library'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
       if (error != null) Text(error!, style: const TextStyle(color: coral)),
       const SizedBox(height: 24),
       FilledButton(
         key: const Key('profile-next'),
         onPressed: save,
-        child: Text(widget.step == 5 ? 'Save and find a program' : 'Next'),
+        child: Text(widget.step == 7 ? 'Save and find a program' : 'Next'),
       ),
     ],
   );
+}
+
+/// `+61` default, normalised to E.164. Leaves an already-E.164-looking value
+/// (`+` followed by digits) alone; treats a local `0...` number as domestic.
+String normalizeAustralianMobile(String raw) {
+  final trimmed = raw.trim();
+  if (trimmed.isEmpty) return '';
+  final digits = trimmed.replaceAll(RegExp(r'[^0-9+]'), '');
+  if (digits.startsWith('+')) return digits;
+  if (digits.startsWith('0')) return '+61${digits.substring(1)}';
+  return '+61$digits';
 }
 
 class DetailsForm extends StatefulWidget {

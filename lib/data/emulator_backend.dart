@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
 import '../models/attendance_models.dart';
 import 'emulator_settings.dart';
@@ -12,6 +13,7 @@ abstract interface class FirebaseBackend {
   FirebaseAuth get auth;
   FirebaseFirestore get firestore;
   FirebaseFunctions get functions;
+  FirebaseStorage get storage;
 }
 
 class EmulatorBackend implements FirebaseBackend {
@@ -20,6 +22,7 @@ class EmulatorBackend implements FirebaseBackend {
     this.auth,
     this.firestore,
     this.functions,
+    this.storage,
     this.settings,
   );
   static const projectId = EmulatorSettings.projectId;
@@ -30,6 +33,8 @@ class EmulatorBackend implements FirebaseBackend {
   final FirebaseFirestore firestore;
   @override
   final FirebaseFunctions functions;
+  @override
+  final FirebaseStorage storage;
   final EmulatorSettings settings;
 
   static String validateHost(
@@ -87,7 +92,9 @@ class EmulatorBackend implements FirebaseBackend {
       region: 'australia-southeast1',
     );
     functions.useFunctionsEmulator(emulatorHost, 5001);
-    return EmulatorBackend._(app, auth, firestore, functions, settings);
+    final storage = FirebaseStorage.instanceFor(app: app);
+    storage.useStorageEmulator(emulatorHost, 9199);
+    return EmulatorBackend._(app, auth, firestore, functions, storage, settings);
   }
 }
 

@@ -231,6 +231,10 @@ export class NoAppService {
       const profile = await tx.get(
         this.service.db.doc(`users/${identity.uid}`),
       );
+      const contactRef = this.service.db.doc(
+        `users/${identity.uid}/private/contact`,
+      );
+      const contact = await tx.get(contactRef);
       const receipts = [];
       for (const formId of e.requiredFormIds) {
         const f = await tx.get(this.service.db.doc(`forms/${formId}`));
@@ -261,12 +265,16 @@ export class NoAppService {
       const p = profile.data()!,
         fill: DocumentData = { updatedAt: this.service.stamp() };
       if (!p.firstName) fill.firstName = firstName;
-      if (!p.mobile) fill.mobile = mobile;
-      if (!p.emergencyContact?.name) fill.emergencyContact = emergencyContact;
       if (!p.injuries)
         fill.injuries =
           d.injuries === undefined ? "" : text(d.injuries, "injuries", 2000, 0);
       tx.update(profile.ref, fill);
+      const c = contact.data();
+      const contactFill: DocumentData = { updatedAt: this.service.stamp() };
+      if (!c?.mobile) contactFill.mobile = mobile;
+      if (!c?.emergencyContact?.name) contactFill.emergencyContact = emergencyContact;
+      if (contact.exists && Object.keys(contactFill).length > 1)
+        tx.update(contactRef, contactFill);
       for (const receipt of receipts)
         tx.set(
           this.service.db.doc(`consents/${identity.uid}_${receipt.formId}`),

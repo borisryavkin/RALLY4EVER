@@ -11,10 +11,17 @@ export function profile(account, now) {
   return {
     uid: account.uid, email: account.email, emailLower: normalizeEmail(account.email),
     role: account.role, coachEnabled: account.role === 'coach', mergedInto: null, createdAt: now, updatedAt: now,
-    firstName: account.uid, lastName: '', postcode: '2022', mobile: '',
-    emergencyContact: {name: '', mobile: ''}, injuries: '',
+    firstName: account.uid, lastName: '', postcode: '2022', injuries: '',
     preferences: {useInReports: false, wellbeingCheckIns: false, showInWhosGoing: false, marketingEmails: false},
     about: {},
+  };
+}
+// mobile/emergencyContact live in users/{uid}/private/contact, not the main
+// profile -- see firestore.rules' validContact.
+export function contact(now, extra = {}) {
+  return {
+    mobile: '', mobileVerified: false, emergencyContact: {name: '', mobile: ''},
+    visibleToCoachUids: [], updatedAt: now, ...extra,
   };
 }
 export function event(id, coachUid, startsAt, endsAt) {

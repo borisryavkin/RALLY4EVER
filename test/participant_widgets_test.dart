@@ -471,6 +471,45 @@ void main() {
       repo.dispose();
     },
   );
+  testWidgets(
+    'onboarding step 6 saves phone/emergency contact via saveContact, normalised to E.164',
+    (tester) async {
+      final repo = FakeParticipantRepository();
+      await show(tester, repo, 'profile6');
+      await tester.enterText(find.byKey(const Key('mobile')), '0400 111 222');
+      await tester.enterText(find.byKey(const Key('emergencyName')), 'Sam');
+      await tester.enterText(
+        find.byKey(const Key('emergencyMobile')),
+        '0400 333 444',
+      );
+      await tester.tap(find.byKey(const Key('profile-next')));
+      await tester.pumpAndSettle();
+      expect(repo.calls.contains('saveContact'), true);
+      expect(repo.contact['mobile'], '+61400111222');
+      expect(repo.contact['emergencyContact'], {
+        'name': 'Sam',
+        'mobile': '+61400333444',
+      });
+      // Advances past the last step (7) to home, not a non-existent profile8.
+      expect(find.text('Step 7 of 7'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+      repo.dispose();
+    },
+  );
+  testWidgets(
+    'onboarding step 7 (photo) can be skipped entirely; skipping never calls savePhoto',
+    (tester) async {
+      final repo = FakeParticipantRepository();
+      await show(tester, repo, 'profile7');
+      expect(find.text('Add a photo\n(optional)'), findsOneWidget);
+      await tester.tap(find.byKey(const Key('profile-next')));
+      await tester.pumpAndSettle();
+      expect(repo.calls.contains('savePhoto'), false);
+      expect(find.text('Play near you'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+      repo.dispose();
+    },
+  );
   testWidgets('loading and empty states have useful copy', (tester) async {
     final repo = FakeParticipantRepository();
     repo.ready = false;
