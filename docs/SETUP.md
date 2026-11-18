@@ -112,6 +112,32 @@ SEED_ALLOW_EMAILS="you@example.com,other-test@example.com" npm run seed:staging
 
 It is idempotent: every document/account write is create-only (matching `scripts/seed.mjs`'s convention), so rerunning fills in anything missing without overwriting or duplicating existing seed data. Rerunning does **not** issue a fresh QR secret for an event that already has one — use the in-app rotation for that.
 
+**How the 5 seed accounts authenticate, and whether that's safe to leave on a real project:** they are real email/password Auth accounts (`emailVerified: true`) on `rally4ever-3adaf`, not emulator fixtures, sharing one hardcoded password (`Staging-seed-only-Password-123!`, visible in `scripts/seed-staging.mjs` in source control). Their `@rally4ever-staging-seed.test` addresses use the `.test` TLD reserved by RFC 2606 as non-resolvable, so no one can receive mail there, register that domain, or get a password-reset email for one of these accounts — but **anyone who has read this repo already knows the password** and can sign in as one of these 2 coach / 3 participant accounts on the real project right now. Blast radius is limited (no admin account is seeded; a coach session only sees what `visibleToCoachUids` and the seeded events/catalogue expose), but it is not zero — e.g. Functions quota usage, or exposure of real participant contact details, if one of these seed UIDs is ever (even by mistake) assigned as a coach on a real event. Treat it the same as a shared staging credential: fine to leave running briefly for a specific test, not something to seed and forget. Prefer deleting the 5 seed Auth accounts and their Firestore documents (all tagged `seedSource: 'scripts/seed-staging.mjs'`) once you're done with them, rather than leaving them live indefinitely.
+
+## Granting the first admin on staging
+
+There is no in-app way to create the first admin: `setUserRole` (the admin console's only role-granting callable) explicitly refuses anything but a coach grant, and requires an existing admin to call it. `scripts/bootstrap-admin.mjs` is the one-time, out-of-band bootstrap for that — it grants the admin role to one **existing** Auth user on `rally4ever-3adaf` by email, using the same Application Default Credentials and real-project-only guards as `seed-staging.mjs` (hardcoded project ID, refuses if any emulator env var is set or `GCLOUD_PROJECT`/`GOOGLE_CLOUD_PROJECT` point elsewhere).
+
+It does not create an account — the target email must already have signed in at least once (so the Auth user and its `users/{uid}` Firestore profile both exist) — and it sets both the Auth custom claim (`role`/`roles`, which the app reads for UI routing) and the Firestore profile's `role` field (which Firestore rules and Functions prefer over the claim), so the grant takes effect in both places. It also preserves any existing coach grant and writes a `roleAudits` entry so the grant is visible in the same audit trail as callable-driven role changes, tagged as having run outside the app.
+
+Exact order for a fresh staging project:
+
+```sh
+# 1. Sign in at least once in the app with the account that should become admin
+#    (creates the Auth user and its users/{uid} profile).
+flutter run -d chrome --dart-define=USE_FIREBASE_EMULATORS=false   # or a built staging app
+
+# 2. Grant that account the admin role.
+npm run bootstrap:admin -- you@example.com
+
+# 3. (Optional) seed synthetic coach/participant/event data -- see above.
+SEED_ALLOW_EMAILS="you@example.com" npm run seed:staging
+
+# 4. Sign out and back in (or just reload) so the app picks up the new claim.
+```
+
+Step 4 matters because the client only re-reads the role claim via a forced ID-token refresh on sign-in/`refreshAccess()` (`lib/participant/repository.dart`'s `_refreshClaims`) — a tab left open through step 2 will not see the grant until it signs out and in again.
+
 ## Opt-in phone testing over local Wi-Fi (development only)
 
 LAN testing is **off by default**. `firebase.json` continues to bind to loopback. The separate launcher requires `LAN_TESTING=true` and a canonical RFC1918 IPv4 address actually assigned to the Mac: `10.x.x.x`, `172.16.x.x`–`172.31.x.x`, or `192.168.x.x`. It rejects public IPs, names/URLs, wildcard addresses as client targets, production credentials and every project ID except `demo-rally4ever`. The app also rejects LAN settings in profile/release builds. The Android emulator's existing `10.0.2.2` loopback alias is unchanged.
