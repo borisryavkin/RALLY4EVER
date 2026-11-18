@@ -69,7 +69,7 @@ flutter run -d chrome --web-port 7357 --dart-define=USE_FIREBASE_EMULATORS=true
 
 Without `USE_FIREBASE_EMULATORS=true`, the app can show its introduction but cannot authenticate or write data. All Firebase SDKs use the named demo app and explicit local Auth/Firestore/Functions endpoints. Android emulator host uses `--dart-define=FIREBASE_EMULATOR_HOST=10.0.2.2`; physical LAN hosts remain blocked unless the development-only opt-in below is enabled.
 
-Email/password sign-up sends a **local emulator verification link**; open/copy it from the emulator terminal and return to “I've verified my email”, or paste the verification link into “I have an email link”. One-time sign-in links use the same local mechanism. No SMTP or real email service was enabled.
+Email/password sign-up sends a **local emulator verification link**; open/copy it from the emulator terminal, then return to the app and tap “I've verified my email”. No SMTP or real email service was enabled. There is no email-link ("magic link") sign-in — only email/password and Google. Forgotten passwords use "Forgot password?" on the sign-in screen, which calls Firebase's `sendPasswordResetEmail`; the emulator prints the reset link to the terminal the same way it prints verification links.
 
 “Continue with Google” on Flutter Web uses Firebase Auth's emulator provider popup. Select the seeded Workspace account to use its existing UID. Workspace users without the admin-issued coach claim remain participants and see “Ask your admin for coach access”. An admin signs in with the seed admin account, opens Admin view → Manage users & event coaches, searches by email, supplies a reason, grants/revokes coach access and assigns event coaches. The recipient can refresh access without creating another profile. A dual-role account switches back to participant view without signing out.
 
@@ -88,6 +88,29 @@ npm run test:participant:e2e
 The browser end-to-end test uses a fresh seed and an injected court GPS fix (not physical GPS). All Auth, RSVP, forms, Functions and Firestore confirmation updates are real emulator interactions. Camera acquisition is replaced by pasting the exact coach-generated QR deep link through the same parser. It verifies that intent creates no attendance and that the participant sees the coach-confirmed state live. Browser widget tests explicitly register web Firebase plugins; no production backend is used.
 
 Program JSON assets are now real app-local files, replacing the original absolute symlinks while retaining their contents. Inter/Figtree variable fonts and OFL notices are bundled locally from [Google Fonts](https://github.com/google/fonts/tree/main/ofl). Screen captures and their exact scope are indexed in `SCREENSHOTS.md`.
+
+## Staging data seed (real Firebase project, no emulator)
+
+`scripts/seed-staging.mjs` writes small synthetic data directly to the real `rally4ever-3adaf` Firestore/Auth, using [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials) — run `gcloud auth application-default login` with an account that has access to the project first (or supply a service account via `GOOGLE_APPLICATION_CREDENTIALS`, which ADC also honors). It is hardcoded to `rally4ever-3adaf`; no env var can redirect it to another project, and it refuses to run if `FIRESTORE_EMULATOR_HOST`/`FIREBASE_AUTH_EMULATOR_HOST` are set or if `GCLOUD_PROJECT`/`GOOGLE_CLOUD_PROJECT` point elsewhere.
+
+```sh
+npm run seed:staging
+```
+
+It creates, all tagged with `seedSource: 'scripts/seed-staging.mjs'`:
+
+- 2 coach and 3 participant Auth accounts under `@rally4ever-staging-seed.test` (password `Staging-seed-only-Password-123!`), with matching `users`/`emailIdentities` profiles.
+- Current `forms/conduct` and `forms/waiver` documents (version 1).
+- 3 upcoming `events` (two venues: Waverley Park Courts and Addison Road Courts) and 2 past `events` with confirmed `checkins` and `feedback` from two seed participants each.
+- A matching `eventSecrets` document per upcoming event, hashed the same way `rotateEventSecret` does. The printed plaintext secret is only valid for 5 minutes (or until the event ends), same as a real rotation — it is for an immediate test scan, not a durable QR code. Trigger a normal in-app coach "start session" rotation for anything beyond that window.
+
+**Before writing anything**, it reads the `users` and `events` collections. If any `events` document was not created by this script, it refuses outright — this script never seeds on top of existing program data. If any `users` document is foreign (not seed-tagged) and its `emailLower` is not in `SEED_ALLOW_EMAILS` (a comma-separated allowlist for your own pre-existing test accounts), it refuses with the list of offending document IDs rather than writing anything:
+
+```sh
+SEED_ALLOW_EMAILS="you@example.com,other-test@example.com" npm run seed:staging
+```
+
+It is idempotent: every document/account write is create-only (matching `scripts/seed.mjs`'s convention), so rerunning fills in anything missing without overwriting or duplicating existing seed data. Rerunning does **not** issue a fresh QR secret for an event that already has one — use the in-app rotation for that.
 
 ## Opt-in phone testing over local Wi-Fi (development only)
 
@@ -138,7 +161,7 @@ Use the **same Flutter SDK executable** for `flutter pub get`, `flutter run` and
 
 The app displays a persistent **LAN TESTING — DEVELOPMENT ONLY** warning on every screen, including sign-in. `0.0.0.0` listens on all Mac interfaces: use synthetic/demo accounts only, a trusted router/firewall and no port forwarding. Allow the required local development processes through the Mac firewall if prompted; do not disable the firewall globally. No billing or cloud services are enabled by this mode.
 
-Email-link continuation URLs use `http://<LAN_HOST>:57602`; the no-app service uses the phone-reachable Auth emulator origin in LAN mode. Links are still local emulator links, not real emails. Copy the unconsumed emulator link into the original phone tab's email-link field as described above; do not use `localhost`/`127.0.0.1` on the phone to refer to the Mac.
+The no-app check-in service's own one-time verification link uses the phone-reachable Auth emulator origin in LAN mode; that link is still a local emulator link, not a real email. Copy the unconsumed emulator link into the original phone tab's field as described above; do not use `localhost`/`127.0.0.1` on the phone to refer to the Mac.
 
 ### Camera and location on the phone
 

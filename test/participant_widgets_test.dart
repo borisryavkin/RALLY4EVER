@@ -69,6 +69,59 @@ void main() {
     },
   );
 
+  testWidgets(
+    'forgot password always shows the same neutral confirmation and a resend cooldown',
+    (tester) async {
+      final repo = FakeParticipantRepository(authenticated: false);
+      await show(tester, repo, 'account');
+      expect(find.text('Email me a one-time sign-in link'), findsNothing);
+      expect(find.text('I have an email link'), findsNothing);
+      await tester.tap(find.byKey(const Key('forgot-password')));
+      await tester.pumpAndSettle();
+      expect(find.text('Reset your\npassword'), findsOneWidget);
+      await tester.enterText(
+        find.byKey(const Key('reset-email')),
+        'someone@example.test',
+      );
+      await tester.tap(find.byKey(const Key('send-reset')));
+      await tester.pumpAndSettle();
+      expect(repo.calls.contains('sendPasswordReset'), true);
+      expect(find.byKey(const Key('reset-sent')), findsOneWidget);
+      expect(
+        find.text(
+          "If an account exists for that email, we've sent a link to "
+          'reset the password. Check your inbox and spam folder.',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Resend in 60s'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+      repo.dispose();
+    },
+  );
+  testWidgets(
+    'forgot password shows a friendly message for rate limiting, not a raw error',
+    (tester) async {
+      final repo = FakeParticipantRepository(authenticated: false);
+      repo.passwordResetRateLimited = true;
+      await show(tester, repo, 'account');
+      await tester.tap(find.byKey(const Key('forgot-password')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('reset-email')),
+        'someone@example.test',
+      );
+      await tester.tap(find.byKey(const Key('send-reset')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('reset-sent')), findsNothing);
+      expect(
+        find.text('Too many attempts. Wait a few minutes and try again.'),
+        findsOneWidget,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      repo.dispose();
+    },
+  );
   testWidgets('cold-start relative QR link opens the same strict scan flow', (
     tester,
   ) async {

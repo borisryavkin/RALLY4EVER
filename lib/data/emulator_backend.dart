@@ -12,7 +12,6 @@ abstract interface class FirebaseBackend {
   FirebaseAuth get auth;
   FirebaseFirestore get firestore;
   FirebaseFunctions get functions;
-  String get emailLinkOrigin;
 }
 
 class EmulatorBackend implements FirebaseBackend {
@@ -23,8 +22,6 @@ class EmulatorBackend implements FirebaseBackend {
     this.functions,
     this.settings,
   );
-  @override
-  String get emailLinkOrigin => settings.webOrigin;
   static const projectId = EmulatorSettings.projectId;
   final FirebaseApp app;
   @override
@@ -66,8 +63,11 @@ class EmulatorBackend implements FirebaseBackend {
       requestedProjectId: requestedProjectId,
     );
     final emulatorHost = settings.host;
+    // The default app, matching StagingBackend: using a named app can make
+    // some native Firebase iOS SDK paths outside Dart's control throw
+    // core/no-app when no default app was ever configured. Only one backend
+    // is ever connected per process, so there is no need for a named one.
     final app = await Firebase.initializeApp(
-      name: 'rally4ever-emulator',
       options: const FirebaseOptions(
         apiKey: 'demo-api-key',
         appId: '1:123456789:web:rally4ever-demo',

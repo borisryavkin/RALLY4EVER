@@ -16,8 +16,6 @@ class StagingBackend implements FirebaseBackend {
   final FirebaseFirestore firestore;
   @override
   final FirebaseFunctions functions;
-  @override
-  String get emailLinkOrigin => 'https://rally4ever.org';
 
   static Future<StagingBackend> connect() async {
     if (BuildEnvironment.validate() != 'staging') {
@@ -32,8 +30,13 @@ class StagingBackend implements FirebaseBackend {
         'Supply the registered staging app Firebase client config',
       );
     }
+    // The default app, not a named one: several native Firebase iOS SDK
+    // paths outside this app's own control (Installations/App Check-style
+    // diagnostics inside Auth/Firestore/Functions pods) assume a default
+    // app exists, and throw core/no-app if only a named app was ever
+    // configured. Only one backend is ever connected per process, so there
+    // is no need for a second, named app here.
     final app = await Firebase.initializeApp(
-      name: 'rally4ever-staging',
       options: const FirebaseOptions(
         apiKey: apiKey,
         appId: appId,

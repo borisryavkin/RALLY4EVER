@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import 'repository.dart';
@@ -9,24 +11,23 @@ class AccountForm extends StatefulWidget {
     required this.repository,
     required this.onAction,
     required this.busy,
+    required this.onForgotPassword,
   });
   final ParticipantRepository repository;
   final Future<void> Function(Future<void> Function()) onAction;
   final bool busy;
+  final VoidCallback onForgotPassword;
   @override
   State<AccountForm> createState() => _AccountFormState();
 }
 
 class _AccountFormState extends State<AccountForm> {
-  final email = TextEditingController(),
-      password = TextEditingController(),
-      link = TextEditingController();
-  bool signup = false, showLink = false;
+  final email = TextEditingController(), password = TextEditingController();
+  bool signup = false;
   @override
   void dispose() {
     email.dispose();
     password.dispose();
-    link.dispose();
     super.dispose();
   }
 
@@ -75,19 +76,28 @@ class _AccountFormState extends State<AccountForm> {
       ),
       const SizedBox(height: 16),
       _field('Email', email, 'email', keyboard: TextInputType.emailAddress),
-      if (!showLink) ...[
-        const SizedBox(height: 14),
-        TextField(
-          key: const Key('password'),
-          controller: password,
-          obscureText: true,
-          decoration: const InputDecoration(
-            labelText: 'Password',
-            hintText: 'At least 6 characters',
+      const SizedBox(height: 14),
+      TextField(
+        key: const Key('password'),
+        controller: password,
+        obscureText: true,
+        decoration: const InputDecoration(
+          labelText: 'Password',
+          hintText: 'At least 6 characters',
+        ),
+      ),
+      if (!signup) ...[
+        const SizedBox(height: 4),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
+            key: const Key('forgot-password'),
+            onPressed: widget.onForgotPassword,
+            child: const Text('Forgot password?'),
           ),
         ),
       ],
-      const SizedBox(height: 20),
+      const SizedBox(height: 6),
       FilledButton(
         key: const Key('authenticate'),
         onPressed: widget.busy || !widget.repository.enabled
@@ -113,32 +123,6 @@ class _AccountFormState extends State<AccountForm> {
           signup ? 'Already a member? Sign in' : 'New here? Create an account',
         ),
       ),
-      const Divider(height: 28),
-      OutlinedButton(
-        onPressed: widget.busy || !widget.repository.enabled
-            ? null
-            : () => widget.onAction(() async {
-                await widget.repository.sendLink(email.text);
-                if (mounted) setState(() => showLink = true);
-              }),
-        child: const Text('Email me a one-time sign-in link'),
-      ),
-      TextButton(
-        onPressed: () => setState(() => showLink = !showLink),
-        child: const Text('I have an email link'),
-      ),
-      if (showLink) ...[
-        _field('Email link', link, 'email-link'),
-        const SizedBox(height: 12),
-        FilledButton(
-          onPressed: widget.busy
-              ? null
-              : () => widget.onAction(
-                  () => widget.repository.completeLink(email.text, link.text),
-                ),
-          child: const Text('Continue with email link'),
-        ),
-      ],
       if (!widget.repository.enabled)
         const Panel(
           color: pink,
@@ -183,6 +167,124 @@ Widget _field(
     ],
   ),
 );
+
+class ForgotPasswordForm extends StatefulWidget {
+  const ForgotPasswordForm({super.key, required this.repository});
+  final ParticipantRepository repository;
+  @override
+  State<ForgotPasswordForm> createState() => _ForgotPasswordFormState();
+}
+
+class _ForgotPasswordFormState extends State<ForgotPasswordForm> {
+  final email = TextEditingController();
+  bool busy = false, sent = false;
+  String? error;
+  int cooldown = 0;
+  Timer? _ticker;
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    email.dispose();
+    super.dispose();
+  }
+
+  void _startCooldown() {
+    setState(() => cooldown = 60);
+    _ticker?.cancel();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() => cooldown -= 1);
+      if (cooldown <= 0) timer.cancel();
+    });
+  }
+
+  Future<void> submit() async {
+    if (email.text.trim().isEmpty) {
+      setState(() => error = 'Enter your email address');
+      return;
+    }
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      await widget.repository.sendPasswordReset(email.text.trim());
+      if (!mounted) return;
+      setState(() => sent = true);
+      _startCooldown();
+    } on PasswordResetRateLimited {
+      if (mounted) {
+        setState(
+          () => error = 'Too many attempts. Wait a few minutes and try again.',
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => error = 'Something went wrong. Please try again.');
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        'Reset your\npassword',
+        style: Theme.of(context).textTheme.headlineLarge,
+      ),
+      const SizedBox(height: 12),
+      const Text(
+        "Enter the email you use to sign in and we'll send you a link to "
+        'reset your password.',
+      ),
+      const SizedBox(height: 20),
+      if (sent)
+        Panel(
+          key: const Key('reset-sent'),
+          child: Text(
+            "If an account exists for that email, we've sent a link to "
+            'reset the password. Check your inbox and spam folder.',
+          ),
+        )
+      else ...[
+        _field(
+          'Email',
+          email,
+          'reset-email',
+          keyboard: TextInputType.emailAddress,
+        ),
+        if (error != null) ...[
+          const SizedBox(height: 8),
+          Text(error!, style: const TextStyle(color: coral)),
+        ],
+      ],
+      const SizedBox(height: 16),
+      FilledButton(
+        key: const Key('send-reset'),
+        onPressed: busy || cooldown > 0 ? null : submit,
+        child: Text(
+          cooldown > 0
+              ? 'Resend in ${cooldown}s'
+              : sent
+              ? 'Resend link'
+              : 'Send reset link',
+        ),
+      ),
+      const SizedBox(height: 16),
+      const Text(
+        'If you normally use Google, tap Continue with Google instead.',
+        style: TextStyle(fontSize: 12, color: slate),
+      ),
+    ],
+  );
+}
 
 class ProfileStep extends StatefulWidget {
   const ProfileStep({

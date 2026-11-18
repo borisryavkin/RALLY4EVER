@@ -488,12 +488,25 @@ class _ParticipantAppState extends State<ParticipantApp>
         context,
         back: () => go('welcome1'),
         children: [
-          AccountForm(repository: repo, onAction: action, busy: busy),
+          AccountForm(
+            repository: repo,
+            onAction: action,
+            busy: busy,
+            onForgotPassword: () => go('forgot-password'),
+          ),
           TextButton(
             onPressed: () => go('noapp'),
             child: const Text('Check in without an app account'),
           ),
         ],
+      );
+    }
+    if (page == 'forgot-password') {
+      return frame(
+        context,
+        title: 'Reset password',
+        back: () => go('account'),
+        children: [ForgotPasswordForm(repository: repo)],
       );
     }
     if (page == 'noapp') {

@@ -163,9 +163,11 @@ class FakeParticipantRepository extends ParticipantRepository {
     notifyListeners();
   }
 
+  bool passwordResetRateLimited = false;
   @override
-  Future<void> sendLink(String email) async {
-    calls.add('sendLink');
+  Future<void> sendPasswordReset(String email) async {
+    calls.add('sendPasswordReset');
+    if (passwordResetRateLimited) throw PasswordResetRateLimited();
   }
 
   @override
@@ -175,8 +177,6 @@ class FakeParticipantRepository extends ParticipantRepository {
     notifyListeners();
   }
 
-  @override
-  Future<void> completeLink(String email, String link) => signIn(email, '');
   @override
   Future<void> signOut() async {
     uid = null;

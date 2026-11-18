@@ -12,6 +12,11 @@ import '../models/attendance_models.dart';
 
 typedef Record = Map<String, dynamic>;
 
+/// Thrown by [ParticipantRepository.sendPasswordReset] only for genuine rate
+/// limiting. Every other outcome (including an unknown email) is swallowed
+/// by the implementation so callers can't distinguish them.
+class PasswordResetRateLimited implements Exception {}
+
 const _fallbackFunctionsError =
     'Something went wrong completing that action. Please try again.';
 
@@ -92,9 +97,7 @@ abstract class ParticipantRepository extends ChangeNotifier {
       throw UnimplementedError();
   Future<void> signUp(String email, String password) =>
       throw UnimplementedError();
-  Future<void> sendLink(String email) => throw UnimplementedError();
-  Future<void> completeLink(String email, String link) =>
-      throw UnimplementedError();
+  Future<void> sendPasswordReset(String email) => throw UnimplementedError();
   Future<void> refreshVerification() => throw UnimplementedError();
   Future<void> signOut() => throw UnimplementedError();
   Future<void> saveProfile(Record changes) => throw UnimplementedError();
@@ -354,29 +357,16 @@ class FirebaseParticipantRepository extends ParticipantRepository {
   }
 
   @override
-  Future<void> sendLink(String email) => backend.auth.sendSignInLinkToEmail(
-    email: normalizeEmail(email),
-    actionCodeSettings: ActionCodeSettings(
-      url: backend.emailLinkOrigin,
-      handleCodeInApp: true,
-    ),
-  );
-  @override
-  Future<void> completeLink(String email, String link) async {
-    if (backend.auth.isSignInWithEmailLink(link)) {
-      final result = await backend.auth.signInWithEmailLink(
+  Future<void> sendPasswordReset(String email) async {
+    try {
+      await backend.auth.sendPasswordResetEmail(
         email: normalizeEmail(email),
-        emailLink: link,
       );
-      await _enter(result.user!);
-    } else {
-      final uri = Uri.parse(link);
-      if (uri.queryParameters['mode'] != 'verifyEmail' ||
-          uri.queryParameters['oobCode'] == null) {
-        throw StateError('Use the email link sent by Rally4Ever.');
-      }
-      await backend.auth.applyActionCode(uri.queryParameters['oobCode']!);
-      await refreshVerification();
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'too-many-requests') throw PasswordResetRateLimited();
+      // Every other code (user-not-found, invalid-email, ...) is swallowed
+      // so the caller always sees the same neutral outcome regardless of
+      // whether the account exists.
     }
   }
 
