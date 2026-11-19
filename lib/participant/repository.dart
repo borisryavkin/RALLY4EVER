@@ -47,6 +47,12 @@ String initialsFor(Record profile) {
   return firstName.isEmpty ? 'M' : firstName.substring(0, 1).toUpperCase();
 }
 
+class RecentSignInRequired implements Exception {
+  @override
+  String toString() =>
+      'Verify with Google once more to enable email sign-in securely.';
+}
+
 abstract class ParticipantRepository extends ChangeNotifier {
   DateTime now() => DateTime.now();
   String? uid;
@@ -73,6 +79,8 @@ abstract class ParticipantRepository extends ChangeNotifier {
   Set<String> claimRoles = {};
   String? claimRole;
   bool googleUser = false;
+  bool passwordUser = false;
+  String? pendingGoogleEmail;
   // Coarse, device-only position for "near you" browsing (Play list, Map).
   // Never written to Firestore, logs or analytics -- used only to build the
   // on-device query/sort. See requestBrowseLocation. One of: idle,
@@ -131,6 +139,7 @@ abstract class ParticipantRepository extends ChangeNotifier {
     }
     notifyListeners();
   }
+
   bool get canAdmin =>
       verified &&
       profile['role'] == 'admin' &&
@@ -146,6 +155,8 @@ abstract class ParticipantRepository extends ChangeNotifier {
       ? 'coach'
       : 'participant';
   Future<void> signInGoogle() => throw UnimplementedError();
+  Future<void> addAppPassword(String password) => throw UnimplementedError();
+  Future<void> reauthenticateGoogle() => throw UnimplementedError();
   Future<void> refreshAccess() => throw UnimplementedError();
   Future<void> refreshCatalogue() async {}
   Record? rsvp(String eventId) =>
@@ -173,11 +184,13 @@ abstract class ParticipantRepository extends ChangeNotifier {
   Future<void> signOut() => throw UnimplementedError();
   Future<void> saveProfile(Record changes) => throw UnimplementedError();
   Future<void> saveContact(Record changes) => throw UnimplementedError();
+
   /// Null means "remove the photo". Expects already-encoded JPEG bytes.
   Future<void> savePhoto(List<int>? jpegBytes) => throw UnimplementedError();
   Future<void> countMeIn(String eventId, {bool cancel = false}) =>
       throw UnimplementedError();
   Future<Record> countedPeople(String eventId) => throw UnimplementedError();
+
   /// Null if there's no photo (or it can't be reached); never throws.
   Future<String?> photoDownloadUrl() async => null;
   Future<void> signForm(Record form) => throw UnimplementedError();
@@ -269,19 +282,22 @@ class FirebaseParticipantRepository extends ParticipantRepository {
     );
     contactReady = false;
     _subscriptions.add(
-      db.doc('users/$uid/private/contact').snapshots().listen(
-        (s) {
-          contact = s.data() ?? {};
-          contactReady = true;
-          notifyListeners();
-        },
-        onError: (Object error) {
-          // Not counted in `ready`: contact is a narrower, newer slice of
-          // profile data and should never block the rest of the app.
-          contactReady = true;
-          notifyListeners();
-        },
-      ),
+      db
+          .doc('users/$uid/private/contact')
+          .snapshots()
+          .listen(
+            (s) {
+              contact = s.data() ?? {};
+              contactReady = true;
+              notifyListeners();
+            },
+            onError: (Object error) {
+              // Not counted in `ready`: contact is a narrower, newer slice of
+              // profile data and should never block the rest of the app.
+              contactReady = true;
+              notifyListeners();
+            },
+          ),
     );
     void watch(
       String collection,
@@ -388,6 +404,7 @@ class FirebaseParticipantRepository extends ParticipantRepository {
     claimRole = token.claims?['role'] as String?;
     claimRoles = Set<String>.from(token.claims?['roles'] as List? ?? []);
     googleUser = user.providerData.any((p) => p.providerId == 'google.com');
+    passwordUser = user.providerData.any((p) => p.providerId == 'password');
   }
 
   @override
@@ -399,51 +416,183 @@ class FirebaseParticipantRepository extends ParticipantRepository {
     }
   }
 
+  Future<({AuthCredential credential, String email})>
+  _nativeGoogleIdentity() async {
+    const serverId = String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
+    const iosClientId = String.fromEnvironment('FIREBASE_IOS_CLIENT_ID');
+    await GoogleSignIn.instance.initialize(
+      serverClientId: serverId.isEmpty ? null : serverId,
+      clientId:
+          defaultTargetPlatform == TargetPlatform.iOS && iosClientId.isNotEmpty
+          ? iosClientId
+          : null,
+    );
+    final account = await GoogleSignIn.instance.authenticate();
+    final token = account.authentication.idToken;
+    if (token == null) {
+      throw StateError('Google did not return a verified identity.');
+    }
+    return (
+      credential: GoogleAuthProvider.credential(idToken: token),
+      email: normalizeEmail(account.email),
+    );
+  }
+
+  @override
+  Future<void> reauthenticateGoogle() async {
+    final user = backend.auth.currentUser;
+    if (user == null || user.uid != uid) throw StateError('Sign in first.');
+    if (kIsWeb) {
+      await user.reauthenticateWithPopup(
+        GoogleAuthProvider()..setCustomParameters({
+          'prompt': 'select_account',
+          'login_hint': user.email ?? '',
+        }),
+      );
+    } else {
+      final identity = await _nativeGoogleIdentity();
+      if (identity.email != normalizeEmail(user.email!)) {
+        throw StateError('Choose the Google account for ${user.email}.');
+      }
+      await user.reauthenticateWithCredential(identity.credential);
+    }
+    if (backend.auth.currentUser?.uid != uid) {
+      throw StateError('Account identity changed unexpectedly.');
+    }
+  }
+
+  AuthCredential? _pendingGoogleCredential;
   @override
   Future<void> signInGoogle() async {
     UserCredential result;
-    if (kIsWeb) {
-      final provider = GoogleAuthProvider()
-        ..setCustomParameters({'prompt': 'select_account'});
-      result = await backend.auth.signInWithPopup(provider);
-    } else {
-      const serverId = String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
-      const iosClientId = String.fromEnvironment('FIREBASE_IOS_CLIENT_ID');
-      await GoogleSignIn.instance.initialize(
-        serverClientId: serverId.isEmpty ? null : serverId,
-        clientId:
-            defaultTargetPlatform == TargetPlatform.iOS &&
-                iosClientId.isNotEmpty
-            ? iosClientId
-            : null,
-      );
-      final account = await GoogleSignIn.instance.authenticate();
-      final idToken = account.authentication.idToken;
-      if (idToken == null) {
-        throw StateError('Google did not return a verified identity.');
+    AuthCredential? googleCredential;
+    String? googleEmail;
+    try {
+      if (kIsWeb) {
+        final provider = GoogleAuthProvider()
+          ..setCustomParameters({'prompt': 'select_account'});
+        result = await backend.auth.signInWithPopup(provider);
+      } else {
+        final identity = await _nativeGoogleIdentity();
+        googleEmail = identity.email;
+        googleCredential = identity.credential;
+        result = await backend.auth.signInWithCredential(googleCredential);
       }
-      result = await backend.auth.signInWithCredential(
-        GoogleAuthProvider.credential(idToken: idToken),
-      );
+    } on FirebaseAuthException catch (error) {
+      if (error.code == 'account-exists-with-different-credential' &&
+          (error.credential ?? googleCredential) != null &&
+          (error.email ?? googleEmail) != null) {
+        _pendingGoogleCredential = error.credential ?? googleCredential;
+        pendingGoogleEmail = normalizeEmail(error.email ?? googleEmail!);
+        throw StateError(
+          'Sign in with email and your existing app password for $pendingGoogleEmail once to connect Google to the same profile.',
+        );
+      }
+      rethrow;
     }
+    _pendingGoogleCredential = null;
+    pendingGoogleEmail = null;
     await _enter(result.user!);
   }
 
   @override
+  Future<void> addAppPassword(String password) async {
+    final user = backend.auth.currentUser;
+    if (user == null ||
+        !user.emailVerified ||
+        user.email == null ||
+        user.uid != uid) {
+      throw StateError(
+        'Sign in and verify your email before adding a password.',
+      );
+    }
+    if (user.providerData.any((p) => p.providerId == 'password')) {
+      throw StateError(
+        'Email sign-in is already connected. Use Forgot password to reset it.',
+      );
+    }
+    try {
+      // updatePassword adds password sign-in to this authenticated UID without
+      // changing its email. Avoid re-submitting the Google-owned email through
+      // linkWithCredential (EMAIL_EXISTS on some Auth projects/emulators).
+      await user.updatePassword(password);
+      if (backend.auth.currentUser?.uid != uid) {
+        throw StateError(
+          'Account identity changed unexpectedly. Contact Rally4Ever.',
+        );
+      }
+      await user.reload();
+      await _refreshClaims(backend.auth.currentUser!);
+      notifyListeners();
+    } on FirebaseAuthException catch (error) {
+      if (error.code == 'requires-recent-login') {
+        throw RecentSignInRequired();
+      }
+      if (error.code == 'credential-already-in-use' ||
+          error.code == 'email-already-in-use') {
+        throw StateError(
+          'This email is already connected to another account. Contact an admin; no profiles have been merged.',
+        );
+      }
+      rethrow;
+    }
+  }
+
+  @override
   Future<void> signIn(String email, String password) async {
-    final credential = await backend.auth.signInWithEmailAndPassword(
-      email: normalizeEmail(email),
-      password: password,
-    );
-    await _enter(credential.user!);
+    late UserCredential credential;
+    try {
+      credential = await backend.auth.signInWithEmailAndPassword(
+        email: normalizeEmail(email),
+        password: password,
+      );
+    } on FirebaseAuthException catch (error) {
+      if ([
+        'invalid-credential',
+        'wrong-password',
+        'user-not-found',
+      ].contains(error.code)) {
+        throw StateError(
+          'Email and app password did not match. If you first used Google, sign in with Google and add an app password in Me → Sign-in methods.',
+        );
+      }
+      rethrow;
+    }
+    final pending = _pendingGoogleCredential;
+    final pendingEmail = pendingGoogleEmail;
+    _pendingGoogleCredential = null;
+    pendingGoogleEmail = null;
+    if (pending != null &&
+        pendingEmail == normalizeEmail(credential.user!.email!)) {
+      try {
+        await credential.user!.linkWithCredential(pending);
+      } on FirebaseAuthException catch (error) {
+        if (error.code != 'provider-already-linked') {
+          throw StateError(
+            'The sign-in methods could not be connected. Sign in to your original account or contact an admin.',
+          );
+        }
+      }
+    }
+    await _enter(backend.auth.currentUser!);
   }
 
   @override
   Future<void> signUp(String email, String password) async {
-    final credential = await backend.auth.createUserWithEmailAndPassword(
-      email: normalizeEmail(email),
-      password: password,
-    );
+    late UserCredential credential;
+    try {
+      credential = await backend.auth.createUserWithEmailAndPassword(
+        email: normalizeEmail(email),
+        password: password,
+      );
+    } on FirebaseAuthException catch (error) {
+      if (error.code == 'email-already-in-use') {
+        throw StateError(
+          'This email already has an account. Sign in with Google or your app password. To add a password, use Me → Sign-in methods after signing in.',
+        );
+      }
+      rethrow;
+    }
     await credential.user!.sendEmailVerification();
     await _enter(credential.user!);
   }
@@ -451,9 +600,7 @@ class FirebaseParticipantRepository extends ParticipantRepository {
   @override
   Future<void> sendPasswordReset(String email) async {
     try {
-      await backend.auth.sendPasswordResetEmail(
-        email: normalizeEmail(email),
-      );
+      await backend.auth.sendPasswordResetEmail(email: normalizeEmail(email));
     } on FirebaseAuthException catch (e) {
       if (e.code == 'too-many-requests') throw PasswordResetRateLimited();
       // Every other code (user-not-found, invalid-email, ...) is swallowed
@@ -480,6 +627,9 @@ class FirebaseParticipantRepository extends ParticipantRepository {
     claimRole = null;
     claimRoles = {};
     googleUser = false;
+    passwordUser = false;
+    _pendingGoogleCredential = null;
+    pendingGoogleEmail = null;
     email = null;
     verified = false;
     profile = {};

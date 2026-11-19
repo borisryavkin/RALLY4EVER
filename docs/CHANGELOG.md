@@ -1,3 +1,9 @@
+## 2026-11-19 — linked Google and email sign-in
+
+- Added Me → Sign-in methods: Google-created members can securely set an app password on the same UID, with recent Google verification when required. Both providers retain role claims and existing data. Added pending-credential recovery, matching-email checks, collision errors, clearer login/help text and refreshed account/profile screenshots.
+- Applied real-project `allowDuplicateEmails=false` through the Identity Platform API; email/password was already enabled. No real password, Auth user, profile or role changed. See [SIGN_IN_METHODS.md](SIGN_IN_METHODS.md).
+- Analyzer clean; 114 Flutter tests (1 emulator-only skip), 37 isolated Auth/catalogue/rules tests passed. No upload for this increment yet; the requested next participant build follows the GPS/navigation changes.
+
 ## 2026-11-19 — discoverable admin and coach tools
 
 - Me → Admin (admin only) and Me → Coach tools (admin/coach); same participant UID retained. Play shortcuts remain. Replaced the placeholder staff view with session-specific rotating QR and actual RSVP/attendance roster/confirmation controls; pending scan details now live in that console.

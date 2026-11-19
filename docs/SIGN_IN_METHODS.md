@@ -1,0 +1,11 @@
+# One account with Google and email
+
+Google sign-in does not give Rally4Ever the person's Google password. A Google-created account can set its own app password through **Me → Sign-in methods → Enable email sign-in**. Recent Google verification is requested on the same UID when Firebase requires it. Passwords are sent only to Firebase Auth, never Firestore or logs. Roles/profile/RSVP/check-ins stay on the original UID.
+
+A verified password-first member can choose Continue with Google using the same email: Firebase links the trusted identity to the existing UID. `account-exists-with-different-credential` retains the pending credential only in memory and asks for the existing app password; it is linked only after successful authentication of the matching email. Wrong-account collisions are rejected; no account/profile is deleted or merged automatically. An unverified password-only identity may have its old password removed by Firebase when ownership is proven through Google; set a new app password after Google sign-in in that case.
+
+`registerIdentity` continues to use the authenticated, verified normalized email and a transaction on emailIdentities. Existing different-UID mappings, merged profiles needing manual resolution, disabled users and credentials already owned by another UID are not silently linked. Admin merge remains a dry-run/review workflow.
+
+The real project account-linking setting is applied through Identity Platform PATCH `signIn.allowDuplicateEmails=false` (with the quota-project header); no account or password was changed by that operation. Equivalent console path: Firebase Console → Authentication → Settings → User account linking → Link accounts that use the same email. Email/password was already enabled. API responses are reduced to booleans; never embed project Admin config/hash parameters in a client.
+
+Emulator proofs cover Google-first → set password → both logins, verified password-first → Google → password, and an existing Google credential owned by another UID being rejected. UID, claims, profile, RSVP and email mapping are retained. Native Google device OAuth is still a hardware/manual check. This source change is not in TestFlight build 12; it is included in the next requested participant build.

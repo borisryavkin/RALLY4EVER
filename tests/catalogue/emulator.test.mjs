@@ -238,3 +238,56 @@ test('existing legacy sessions edit in place without a fabricated program or rev
  assert.equal((await db.doc('events/legacy').get()).data().status,'cancelled');
  await rejects(catalogue.saveSession(admin,{...input,eventId:undefined}),'program-required');
 });
+
+test('Google-first account links an app password; both logins preserve UID, claims, profile and RSVP',async()=>{
+ const {initializeApp:clientApp,deleteApp:deleteClient}=await import('firebase/app');
+ const A=await import('firebase/auth');
+ const client=clientApp({apiKey:'demo-key',projectId:'demo-rally4ever',appId:'demo-linked-auth'},'google-first-link');
+ const auth=A.getAuth(client);A.connectAuthEmulator(auth,'http://127.0.0.1:23999',{disableWarnings:true});
+ const email='google-first-linked@example.test',password='Test-app-password-123!';
+ const token=Buffer.from(JSON.stringify({alg:'none',typ:'JWT'})).toString('base64url')+'.'+Buffer.from(JSON.stringify({iss:'https://accounts.google.com',sub:'google-first-link',email,email_verified:true,aud:'demo-rally4ever'})).toString('base64url')+'.';
+ try {
+   const google=await A.signInWithCredential(auth,A.GoogleAuthProvider.credential(token)),uid=google.user.uid;
+   await getAuth(app).setCustomUserClaims(uid,{role:'admin',roles:['participant','admin']});
+   await db.doc(`users/${uid}`).set(profile({uid,email,role:'admin'},Timestamp.now()));
+   await db.doc(`emailIdentities/${email}`).set({uid,emailLower:email});
+   await db.doc(`rsvps/example_${uid}`).set({eventId:'example',uid,cancelledAt:null});
+   await A.updatePassword(google.user,password);assert.equal(google.user.uid,uid);
+   await A.signOut(auth);
+   const viaPassword=await A.signInWithEmailAndPassword(auth,email,password);assert.equal(viaPassword.user.uid,uid);assert.equal((await A.getIdTokenResult(viaPassword.user,true)).claims.role,'admin');
+   await A.signOut(auth);
+   const viaGoogle=await A.signInWithCredential(auth,A.GoogleAuthProvider.credential(token));assert.equal(viaGoogle.user.uid,uid);
+   assert.deepEqual(viaGoogle.user.providerData.map(p=>p.providerId).sort(),['google.com','password']);
+   assert.equal((await db.doc(`emailIdentities/${email}`).get()).data().uid,uid);
+   assert.equal((await db.doc(`users/${uid}`).get()).data().role,'admin');assert.equal((await db.doc(`rsvps/example_${uid}`).get()).exists,true);
+ } finally {await deleteClient(client);}
+});
+
+test('verified password-first member can use Google with the same UID and retained password',async()=>{
+ const {initializeApp:clientApp,deleteApp:deleteClient}=await import('firebase/app');const A=await import('firebase/auth');
+ const client=clientApp({apiKey:'demo-key',projectId:'demo-rally4ever',appId:'demo-linked-auth'},'password-first-link'),auth=A.getAuth(client);
+ A.connectAuthEmulator(auth,'http://127.0.0.1:23999',{disableWarnings:true});
+ const email='password-first-linked@example.test',password='Test-app-password-123!';
+ try {
+   const first=await A.createUserWithEmailAndPassword(auth,email,password),uid=first.user.uid;
+   await getAuth(app).updateUser(uid,{emailVerified:true});await A.signOut(auth);
+   const token=Buffer.from(JSON.stringify({alg:'none',typ:'JWT'})).toString('base64url')+'.'+Buffer.from(JSON.stringify({iss:'https://accounts.google.com',sub:'password-first-link',email,email_verified:true,aud:'demo-rally4ever'})).toString('base64url')+'.';
+   const google=await A.signInWithCredential(auth,A.GoogleAuthProvider.credential(token));assert.equal(google.user.uid,uid);
+   await A.signOut(auth);assert.equal((await A.signInWithEmailAndPassword(auth,email,password)).user.uid,uid);
+ }finally{await deleteClient(client);}
+});
+
+test('linking a Google identity already owned by another account fails without merging either UID',async()=>{
+ const {initializeApp:clientApp,deleteApp:deleteClient}=await import('firebase/app');const A=await import('firebase/auth');
+ const client=clientApp({apiKey:'demo-key',projectId:'demo-rally4ever',appId:'demo-link-collision'},'link-collision'),auth=A.getAuth(client);
+ A.connectAuthEmulator(auth,'http://127.0.0.1:23999',{disableWarnings:true});
+ const token=Buffer.from(JSON.stringify({alg:'none',typ:'JWT'})).toString('base64url')+'.'+Buffer.from(JSON.stringify({sub:'collision-google',email:'google-owner@example.test',email_verified:true})).toString('base64url')+'.';
+ try {
+   const google=(await A.signInWithCredential(auth,A.GoogleAuthProvider.credential(token))).user.uid;
+   await A.signOut(auth);
+   const password=(await A.createUserWithEmailAndPassword(auth,'different-owner@example.test','Test-password-123!')).user;
+   await assert.rejects(A.linkWithCredential(password,A.GoogleAuthProvider.credential(token)),e=>e.code==='auth/credential-already-in-use');
+   assert.notEqual(password.uid,google);assert.equal((await getAuth(app).getUser(password.uid)).email,'different-owner@example.test');
+   assert.equal((await getAuth(app).getUser(google)).email,'google-owner@example.test');
+ } finally {await deleteClient(client);}
+});

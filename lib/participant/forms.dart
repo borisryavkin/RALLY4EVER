@@ -75,7 +75,7 @@ class _AccountFormState extends State<AccountForm> {
       ),
       const SizedBox(height: 8),
       const Text(
-        'Coaches: use your Google Workspace account. Access is approved by your admin.',
+        'Use Google or email with the same account. Coach access is approved by your admin.',
         style: TextStyle(fontSize: 12),
       ),
       const SizedBox(height: 16),
@@ -285,7 +285,7 @@ class _ForgotPasswordFormState extends State<ForgotPasswordForm> {
       ),
       const SizedBox(height: 16),
       const Text(
-        'If you normally use Google, tap Continue with Google instead.',
+        'First used Google? Sign in with Google, then open Me → Sign-in methods to add an app password.',
         style: TextStyle(fontSize: 12, color: slate),
       ),
     ],
@@ -310,7 +310,8 @@ const heardAboutOptions = {
   'other': 'Other',
 };
 const culturalBackgroundOptions = {
-  'aboriginal_torres_strait_islander': 'Aboriginal and/or Torres Strait Islander',
+  'aboriginal_torres_strait_islander':
+      'Aboriginal and/or Torres Strait Islander',
   'born_outside_australia': 'Born outside Australia',
   'neither': 'Neither',
   'prefer_not_to_say': 'Prefer not to say',
@@ -324,14 +325,10 @@ const culturalBackgroundExclusive = {'neither', 'prefer_not_to_say'};
 /// an old profile is migrated the moment it's next loaded for editing.
 Record migrateAbout(Record raw) {
   final about = Map<String, dynamic>.from(raw);
-  String? keyFor(Map<String, String> options, Object? label) =>
-      options.entries
-          .firstWhere(
-            (e) => e.value == label,
-            orElse: () => const MapEntry('', ''),
-          )
-          .key
-          .let((k) => k.isEmpty ? null : k);
+  String? keyFor(Map<String, String> options, Object? label) => options.entries
+      .firstWhere((e) => e.value == label, orElse: () => const MapEntry('', ''))
+      .key
+      .let((k) => k.isEmpty ? null : k);
   if (about['currentActivity'] is String) {
     final key = keyFor(occupationOptions, about.remove('currentActivity'));
     about['occupation'] = [?key];
@@ -340,7 +337,8 @@ Record migrateAbout(Record raw) {
     final key = keyFor(heardAboutOptions, about.remove('referral'));
     about['heardAbout'] = [?key];
   }
-  if (about.containsKey('referralOther') && !about.containsKey('heardAboutOther')) {
+  if (about.containsKey('referralOther') &&
+      !about.containsKey('heardAboutOther')) {
     about['heardAboutOther'] = about.remove('referralOther');
   }
   if (about['culturalBackground'] is String) {
@@ -405,8 +403,7 @@ class _ProfileStepState extends State<ProfileStep> {
   );
   late final emergencyName = TextEditingController(
     text:
-        (widget.contact['emergencyContact'] as Map?)?['name'] as String? ??
-        '',
+        (widget.contact['emergencyContact'] as Map?)?['name'] as String? ?? '',
   );
   late final emergencyMobile = TextEditingController(
     text:
@@ -463,6 +460,7 @@ class _ProfileStepState extends State<ProfileStep> {
       ],
     ),
   );
+
   /// Multiple chips can be selected at once; any key in [exclusive] clears
   /// every other selection the moment it's chosen (and vice versa).
   Widget multiChoices(
@@ -683,7 +681,11 @@ class _ProfileStepState extends State<ProfileStep> {
           occupationOptions,
           exclusive: occupationExclusive,
         ),
-        multiChoices('How did you hear about us?', 'heardAbout', heardAboutOptions),
+        multiChoices(
+          'How did you hear about us?',
+          'heardAbout',
+          heardAboutOptions,
+        ),
         if ((about['heardAbout'] as List).contains('other')) ...[
           const SizedBox(height: 4),
           TextField(
@@ -794,8 +796,9 @@ class _ProfileStepState extends State<ProfileStep> {
                     : null,
                 child: pickedPhotoBytes == null
                     ? Text(
-                        (widget.profile['firstName'] as String? ?? '?')
-                            .let((s) => s.isEmpty ? '?' : s[0].toUpperCase()),
+                        (widget.profile['firstName'] as String? ?? '?').let(
+                          (s) => s.isEmpty ? '?' : s[0].toUpperCase(),
+                        ),
                         style: const TextStyle(fontSize: 36),
                       )
                     : null,
@@ -1282,4 +1285,118 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
       ],
     );
   }
+}
+
+class SignInMethodsPanel extends StatefulWidget {
+  const SignInMethodsPanel({super.key, required this.repository});
+  final ParticipantRepository repository;
+  @override
+  State<SignInMethodsPanel> createState() => _SignInMethodsPanelState();
+}
+
+class _SignInMethodsPanelState extends State<SignInMethodsPanel> {
+  final password = TextEditingController(),
+      confirmation = TextEditingController();
+  bool busy = false, visible = false, needsVerification = false;
+  String? error;
+  @override
+  void dispose() {
+    password.dispose();
+    confirmation.dispose();
+    super.dispose();
+  }
+
+  Future<void> connect() async {
+    if (password.text.length < 8 || password.text != confirmation.text) {
+      setState(
+        () => error =
+            'Use at least 8 characters and enter the same password twice.',
+      );
+      return;
+    }
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      if (needsVerification) await widget.repository.reauthenticateGoogle();
+      await widget.repository.addAppPassword(password.text);
+      password.clear();
+      confirmation.clear();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          error = e.toString().replaceFirst('Bad state: ', '');
+          if (e is RecentSignInRequired) needsVerification = true;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        'One account, either sign-in method',
+        style: Theme.of(context).textTheme.headlineMedium,
+      ),
+      Text(widget.repository.email ?? ''),
+      const SizedBox(height: 16),
+      const Text(
+        'Your profile, role and attendance stay the same whichever method you use. Your Google password stays with Google; an app password is set separately.',
+      ),
+      const SizedBox(height: 16),
+      Text(
+        widget.repository.googleUser ? 'Google sign-in: connected' : 'Google sign-in: use a Google account with this same email on the sign-in screen.',
+      ),
+      const SizedBox(height: 12),
+      if (widget.repository.passwordUser)
+        const Panel(
+          child: Text(
+            'Email/password sign-in: connected. Use Forgot password on the sign-in screen to reset your app password.',
+          ),
+        )
+      else ...[
+        const Text('Add email/password sign-in to this account'),
+        const SizedBox(height: 12),
+        TextField(
+          key: const Key('link-password'),
+          controller: password,
+          obscureText: !visible,
+          autofillHints: const [AutofillHints.newPassword],
+          decoration: InputDecoration(
+            labelText: 'New app password',
+            suffixIcon: IconButton(
+              onPressed: () => setState(() => visible = !visible),
+              icon: Icon(visible ? Icons.visibility_off : Icons.visibility),
+              tooltip: visible ? 'Hide password' : 'Show password',
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          key: const Key('link-password-confirm'),
+          controller: confirmation,
+          obscureText: !visible,
+          decoration: const InputDecoration(labelText: 'Confirm app password'),
+        ),
+        if (error != null) Panel(color: pink, child: Text(error!)),
+        const SizedBox(height: 16),
+        FilledButton(
+          key: const Key('connect-email-password'),
+          onPressed: busy ? null : connect,
+          child: Text(
+            busy
+                ? 'Connecting…'
+                : needsVerification
+                ? 'Verify with Google & enable email sign-in'
+                : 'Enable email sign-in',
+          ),
+        ),
+      ],
+    ],
+  );
 }

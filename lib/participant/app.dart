@@ -732,6 +732,12 @@ class _ParticipantAppState extends State<ParticipantApp>
       'feedbackReminder' => feedbackReminder(context),
       'feedback' => feedback(context),
       'profile' => profile(context),
+      'signInMethods' => frame(
+        context,
+        title: 'Sign-in methods',
+        back: () => go('profile'),
+        children: [SignInMethodsPanel(repository: repo)],
+      ),
       'help' => help(context),
       'role' => roleScreen(context),
       'adminAccess' => frame(
@@ -1871,6 +1877,11 @@ class _ParticipantAppState extends State<ParticipantApp>
             tooltip: 'Edit details',
           ),
         ],
+      ),
+      OutlinedButton.icon(
+        onPressed: () => go('signInMethods'),
+        icon: const Icon(Icons.login),
+        label: const Text('Sign-in methods'),
       ),
       const SizedBox(height: 22),
       Row(
