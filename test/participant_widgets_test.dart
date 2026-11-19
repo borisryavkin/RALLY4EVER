@@ -585,6 +585,33 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     repo.dispose();
   });
+  testWidgets(
+    'Me tab: tapping the avatar offers Remove photo only when a photo exists, and removing it calls savePhoto(null)',
+    (tester) async {
+      final repo = FakeParticipantRepository();
+      await show(tester, repo, 'profile');
+      await tester.tap(find.byType(CircleAvatar).first);
+      await tester.pumpAndSettle();
+      expect(find.text('Take a photo'), findsOneWidget);
+      expect(find.text('Choose from library'), findsOneWidget);
+      expect(find.text('Remove photo'), findsNothing);
+      await tester.tapAt(const Offset(10, 10));
+      await tester.pumpAndSettle();
+
+      repo.profile['photoUpdatedAt'] = DateTime(2026, 11, 19);
+      repo.notifyListeners();
+      await tester.pumpAndSettle();
+      await tester.tap(find.byType(CircleAvatar).first);
+      await tester.pumpAndSettle();
+      expect(find.text('Remove photo'), findsOneWidget);
+      await tester.tap(find.text('Remove photo'));
+      await tester.pumpAndSettle();
+      expect(repo.photoRemoved, true);
+      expect(repo.calls.contains('savePhoto'), true);
+      await tester.pumpWidget(const SizedBox());
+      repo.dispose();
+    },
+  );
   group('Play/Map location', () {
     testWidgets('GPS granted: shows the reverse-geocoded suburb, no fallback buttons', (
       tester,

@@ -18,7 +18,8 @@
     "generate:sessions": "node scripts/generate-sessions.mjs",
     "seed:demo-sessions": "node scripts/seed-demo-sessions.mjs",
     "remove:demo-sessions": "node scripts/remove-demo-sessions.mjs",
-    "test:catalogue": "npm --prefix functions run build && node --test tests/catalogue/import.test.mjs tests/catalogue/profile-schema.test.mjs && node scripts/test-catalogue.mjs"
+    "test:catalogue": "npm --prefix functions run build && node --test tests/catalogue/import.test.mjs tests/catalogue/profile-schema.test.mjs && node scripts/test-catalogue.mjs",
+    "test:storage": "node scripts/test-storage.mjs"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^6.0.0",

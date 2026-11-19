@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -1754,6 +1755,53 @@ class _ParticipantAppState extends State<ParticipantApp>
     );
   }
 
+  Future<void> _editMePhoto(BuildContext context) async {
+    final hasPhoto = repo.profile['photoUpdatedAt'] != null;
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take a photo'),
+              onTap: () => Navigator.pop(context, 'camera'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choose from library'),
+              onTap: () => Navigator.pop(context, 'gallery'),
+            ),
+            if (hasPhoto)
+              ListTile(
+                leading: const Icon(Icons.delete_outline, color: coral),
+                title: const Text('Remove photo'),
+                onTap: () => Navigator.pop(context, 'remove'),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (choice == null || !context.mounted) return;
+    if (choice == 'remove') {
+      await action(() => repo.savePhoto(null));
+      return;
+    }
+    final picked = await ImagePicker().pickImage(
+      source: choice == 'camera' ? ImageSource.camera : ImageSource.gallery,
+    );
+    if (picked == null) return;
+    try {
+      final bytes = processPhotoBytes(await picked.readAsBytes());
+      await action(() => repo.savePhoto(bytes));
+    } on PhotoTooLarge {
+      setState(() => error = 'Choose a photo under 5 MB.');
+    } on PhotoUnreadable {
+      setState(() => error = 'That file could not be read as an image.');
+    }
+  }
+
   Widget profile(BuildContext context) => frame(
     context,
     title: 'Profile & preferences',
@@ -1761,25 +1809,45 @@ class _ParticipantAppState extends State<ParticipantApp>
     children: [
       Row(
         children: [
-          FutureBuilder<String?>(
-            key: ValueKey(repo.profile['photoUpdatedAt']),
-            future: repo.photoDownloadUrl(),
-            builder: (context, snapshot) => CircleAvatar(
-              radius: 28,
-              backgroundColor: navy,
-              foregroundColor: Colors.white,
-              backgroundImage: snapshot.data != null
-                  ? NetworkImage(snapshot.data!)
-                  : null,
-              child: snapshot.data == null
-                  ? Text(
-                      initials,
-                      style: const TextStyle(
-                        fontFamily: 'Figtree',
-                        fontSize: 24,
-                      ),
-                    )
-                  : null,
+          GestureDetector(
+            onTap: () => _editMePhoto(context),
+            child: Stack(
+              alignment: Alignment.bottomRight,
+              children: [
+                FutureBuilder<String?>(
+                  key: ValueKey(repo.profile['photoUpdatedAt']),
+                  future: repo.photoDownloadUrl(),
+                  builder: (context, snapshot) => CircleAvatar(
+                    radius: 28,
+                    backgroundColor: navy,
+                    foregroundColor: Colors.white,
+                    backgroundImage: snapshot.data != null
+                        ? NetworkImage(snapshot.data!)
+                        : null,
+                    child: snapshot.data == null
+                        ? Text(
+                            initials,
+                            style: const TextStyle(
+                              fontFamily: 'Figtree',
+                              fontSize: 24,
+                            ),
+                          )
+                        : null,
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: const BoxDecoration(
+                    color: coral,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.edit,
+                    color: Colors.white,
+                    size: 12,
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(width: 14),

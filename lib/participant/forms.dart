@@ -532,29 +532,17 @@ class _ProfileStepState extends State<ProfileStep> {
     setState(() => photoError = null);
     final picked = await ImagePicker().pickImage(source: source);
     if (picked == null) return;
-    final rawBytes = await picked.readAsBytes();
-    if (rawBytes.lengthInBytes > 5 * 1024 * 1024) {
+    try {
+      final processed = processPhotoBytes(await picked.readAsBytes());
+      setState(() {
+        pickedPhotoBytes = processed;
+        removePhoto = false;
+      });
+    } on PhotoTooLarge {
       setState(() => photoError = 'Choose a photo under 5 MB.');
-      return;
-    }
-    final decoded = img.decodeImage(rawBytes);
-    if (decoded == null) {
+    } on PhotoUnreadable {
       setState(() => photoError = 'That file could not be read as an image.');
-      return;
     }
-    final side = decoded.width < decoded.height ? decoded.width : decoded.height;
-    final square = img.copyCrop(
-      decoded,
-      x: (decoded.width - side) ~/ 2,
-      y: (decoded.height - side) ~/ 2,
-      width: side,
-      height: side,
-    );
-    final resized = img.copyResize(square, width: 512, height: 512);
-    setState(() {
-      pickedPhotoBytes = img.encodeJpg(resized, quality: 85);
-      removePhoto = false;
-    });
   }
 
   Future<void> save() async {
@@ -842,6 +830,29 @@ class _ProfileStepState extends State<ProfileStep> {
       ),
     ],
   );
+}
+
+class PhotoTooLarge implements Exception {}
+
+class PhotoUnreadable implements Exception {}
+
+/// Shared by onboarding's photo step and the Me tab's quick photo action:
+/// crop to a centred square, resize to 512px, re-encode as JPEG. Matches
+/// storage.rules' 5MB cap and image/* contentType requirement.
+List<int> processPhotoBytes(Uint8List rawBytes) {
+  if (rawBytes.lengthInBytes > 5 * 1024 * 1024) throw PhotoTooLarge();
+  final decoded = img.decodeImage(rawBytes);
+  if (decoded == null) throw PhotoUnreadable();
+  final side = decoded.width < decoded.height ? decoded.width : decoded.height;
+  final square = img.copyCrop(
+    decoded,
+    x: (decoded.width - side) ~/ 2,
+    y: (decoded.height - side) ~/ 2,
+    width: side,
+    height: side,
+  );
+  final resized = img.copyResize(square, width: 512, height: 512);
+  return img.encodeJpg(resized, quality: 85);
 }
 
 /// `+61` default, normalised to E.164. Leaves an already-E.164-looking value

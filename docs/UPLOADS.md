@@ -1,3 +1,9 @@
+## Profile photos: Storage configured end to end — 19 November 2026
+
+Firebase Storage is enabled on `rally4ever-3adaf` (`australia-southeast1`, default bucket `rally4ever-3adaf.firebasestorage.app`). Added `FIREBASE_STORAGE_BUCKET` to `config/staging.ios.json`/`config/staging.android.json` (both git-ignored) -- the client code to use it lazily/optionally already existed from an earlier fix. Deployed `storage.rules`: a signed-in user may read/write only their own `profilePhotos/{uid}/avatar.jpg` (image only, 5MB max); an admin, or a coach the person has actually been made visible to (the same `visibleToCoachUids` relationship phone/emergency-contact already uses), may also read it. No public read. Verified with 7 rules-emulator tests (`npm run test:storage`) and, separately, real REST calls against `rally4ever-3adaf` with two disposable throwaway accounts (deleted after): own upload/read 200, another user's read/write 403, a non-image upload 403.
+
+**Privacy**: a profile photo is visible only to its owner, to admins, and to a coach actually running a session that person is involved in -- never public, never visible to other participants or unrelated coaches. Only the Storage path is stored on the profile document (`photoUpdatedAt`, used for cache-busting); the image itself lives in Storage, governed by the rules above.
+
 # Build 6 internal tester upload — 18 November 2026
 
 Owner explicitly requested build 6 uploaded to TestFlight first, then Android. Uploaded the existing validated Stage 7 artifacts without rebuilding or changing signing/IDs.
