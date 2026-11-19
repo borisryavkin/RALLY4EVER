@@ -331,7 +331,7 @@ void main() {
     },
   );
   testWidgets(
-    'Google Workspace without claim stays participant and asks admin',
+    'Google Workspace without claim stays participant and shows no coach-access banner',
     (tester) async {
       final repo = FakeParticipantRepository(authenticated: false);
       await show(tester, repo, 'account');
@@ -343,9 +343,46 @@ void main() {
         find.text(
           'Ask your admin for coach access. Your participant profile is ready.',
         ),
-        findsOneWidget,
+        findsNothing,
       );
+      expect(find.text('Refresh access'), findsNothing);
       expect(find.text('Coach view'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      repo.dispose();
+    },
+  );
+  testWidgets(
+    'coach/admin still get their view button with the banner gone',
+    (tester) async {
+      final repo = FakeParticipantRepository();
+      repo.claimRole = 'coach';
+      repo.claimRoles = {'participant', 'coach'};
+      repo.profile['role'] = 'coach';
+      repo.profile['coachEnabled'] = true;
+      await show(tester, repo, 'home');
+      expect(
+        find.text(
+          'Ask your admin for coach access. Your participant profile is ready.',
+        ),
+        findsNothing,
+      );
+      expect(find.text('Coach view'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      repo.dispose();
+    },
+  );
+  testWidgets(
+    'returning to the foreground refreshes role/access quietly, with no button press',
+    (tester) async {
+      final repo = FakeParticipantRepository();
+      await show(tester, repo, 'home');
+      expect(repo.calls.contains('refreshAccess'), false);
+      final state = tester.state(find.byType(ParticipantApp))
+          as WidgetsBindingObserver;
+      state.didChangeAppLifecycleState(AppLifecycleState.paused);
+      state.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(repo.calls.contains('refreshAccess'), true);
       await tester.pumpWidget(const SizedBox());
       repo.dispose();
     },

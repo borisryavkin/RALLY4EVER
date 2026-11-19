@@ -110,6 +110,16 @@ class _ParticipantAppState extends State<ParticipantApp>
     return true;
   }
 
+  // Keeps role/claim access current without the user ever pressing
+  // anything: a newly granted coach (or revoked one) picks it up the next
+  // time they bring the app to the foreground, not just at sign-in.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && repo.uid != null) {
+      unawaited(repo.refreshAccess());
+    }
+  }
+
   void changed() {
     if (!mounted) return;
     setState(() {
@@ -1042,19 +1052,6 @@ class _ParticipantAppState extends State<ParticipantApp>
               .toList(),
         ),
         const SizedBox(height: 16),
-        if (repo.googleUser && !repo.canCoach && !repo.canAdmin) ...[
-          const Panel(
-            color: pink,
-            child: Text(
-              'Ask your admin for coach access. Your participant profile is ready.',
-            ),
-          ),
-          TextButton(
-            onPressed: () => action(repo.refreshAccess),
-            child: const Text('Refresh access'),
-          ),
-          const SizedBox(height: 12),
-        ],
         if (repo.role != 'participant') ...[
           OutlinedButton(
             onPressed: () => go('role'),

@@ -142,6 +142,7 @@ class FakeParticipantRepository extends ParticipantRepository {
 
   @override
   Future<void> refreshAccess() async {
+    calls.add('refreshAccess');
     notifyListeners();
   }
 

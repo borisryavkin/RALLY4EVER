@@ -1,3 +1,12 @@
+## Remove the coach-access banner from Play; refresh access quietly on resume — 19 November 2026
+
+- Removed the pink "Ask your admin for coach access" banner and its "Refresh access" link from `home()` in `lib/participant/app.dart` -- it only ever showed for `repo.googleUser && !repo.canCoach && !repo.canAdmin`, i.e. exactly ordinary participants, who should never see anything about coach access on Play. Left the separate "Refresh roles & access" text button on the profile screen alone -- that's not the banner, it's an existing, lower-key manual-refresh affordance the brief didn't ask to remove.
+- No existing coach-request flow was found anywhere (Me/Help or elsewhere), so none was added -- per the brief, just removed the banner.
+- `_ParticipantAppState` already mixed in `WidgetsBindingObserver` and registered itself, but never overrode `didChangeAppLifecycleState` -- added it to call `repo.refreshAccess()` (fire-and-forget) on `AppLifecycleState.resumed`, so a newly approved (or revoked) coach picks it up next time they foreground the app, not just at sign-in. Sign-in itself already refreshes claims in `_enter()`'s `_refreshClaims` call, unchanged.
+- Updated the one test that asserted the banner's text, replacing it with: the banner is gone for a plain participant; a coach/admin still gets their "Coach view"/"Admin view" button with the banner gone; resuming the app (via the observer directly, in a widget test) calls `refreshAccess` with no button press. `test/support/fake_participant.dart`'s fake now records `refreshAccess` in its `calls` list, matching the existing convention for other recorded calls.
+- Validation: `flutter analyze` clean; `flutter test` 90/90 (3 new/updated, no golden regressions).
+- Client code changed -- queued for the single rebuild/upload pass at the end of this batch, together with the location and profile-photo work still in progress.
+
 ## Populate Play/Map/Check-in with real and demo sessions — 19 November 2026
 
 - Re-ran `publish-programs.mjs`/`generate-sessions.mjs`: state unchanged since earlier today (28/61 programs published, 0 sessions generated -- still no program has a real coach account, not fabricated).
