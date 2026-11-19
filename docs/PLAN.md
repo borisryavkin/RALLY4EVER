@@ -17,3 +17,7 @@ After each stage run `flutter analyze`, `flutter test`, applicable Functions uni
 No Blaze upgrade, domain purchase, SMS, developer-account fee or production deployment now. Before a paid action provide purpose, current AUD estimate, free alternative and request approval. Total budget AUD $100; set AUD $20 alert only with authorized billing setup before any eventual billed deployment. Alerts do not cap spending. Ask before destructive actions or real-data changes; migration scripts must default to dry-run.
 
 Latest steering also brought forward Google Workspace sign-in, claim-only coach authorization, same-profile view switching and the admin email/role/event-assignment console. Full coach console and full admin analytics are still pending. No production providers or paid services were enabled.
+
+## 19 November: staff administration increment
+
+Me-tab role entries, program publishing, session venue/coach overrides, all-role management, staff rosters and rotating QR are implemented; see [ADMIN_TOOLS.md](ADMIN_TOOLS.md). Real staging proof and the internal-only iOS build are tracked in UPLOADS.md. Bulk coach operations, walk-in/correction UI and full admin analytics remain subsequent increments.

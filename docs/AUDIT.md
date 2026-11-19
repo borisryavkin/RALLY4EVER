@@ -192,3 +192,7 @@ Latest authorization requirement supersedes the earlier field-only coach role: c
 ## Tester release preparation update (17 November 2026)
 
 Current platform IDs, version/build, store state and signing/backend audit are recorded in [RELEASE.md](RELEASE.md). Version is now `1.0.1+5`, with native emulator/staging flavor preparation. Legacy backend remains unavailable for inspection; see [MIGRATION.md](MIGRATION.md). Neither staging readiness nor old-data migration is claimed. No upload/deployment/payment was performed by this preparation task; concurrent backend changes/deployment notes are recorded as unverified context in RELEASE.md.
+
+## Staff tools update — 19 November 2026
+
+The Play-page staff shortcut was the only entry point; full coach QR/roster UI and all-three-role editing were missing. They are now implemented with Me-tab entries, a dedicated Sessions manager (including in-place legacy edits), per-session venue/coach overrides and audited cancellation. [ADMIN_TOOLS.md](ADMIN_TOOLS.md) records exact taps, capability table, authorization and remaining bulk-operation/analytics limits. Owner account bootstrap and real Google ID-token/HTTP checks are recorded in CHANGELOG.md; internal-only release evidence is in UPLOADS.md. This increment does not migrate or delete participant data.
