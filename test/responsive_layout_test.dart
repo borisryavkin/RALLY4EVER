@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rally4ever/participant/app.dart';
@@ -7,8 +8,18 @@ import 'package:timezone/data/latest.dart' as tz;
 import 'support/fake_participant.dart';
 
 void main() {
-  setUpAll(() {
+  setUpAll(() async {
     tz.initializeTimeZones();
+    await (FontLoader(
+      'MaterialIcons',
+    )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
+    await (FontLoader(
+      'Inter',
+    )..addFont(rootBundle.load('assets/fonts/Inter.ttf'))).load();
+    await (FontLoader('Jellee')..addFont(
+          rootBundle.load('assets/fonts/Jellee_1223/TTF/Jellee-Bold.ttf'),
+        ))
+        .load();
   });
 
   Future<void> showHome(WidgetTester tester, Size size) async {
@@ -103,4 +114,57 @@ void main() {
       );
     },
   );
+  for (final size in [
+    const Size(393, 852),
+    const Size(800, 1280),
+    const Size(1280, 800),
+  ]) {
+    for (final page in [
+      'welcome1',
+      'welcome2',
+      'welcome3',
+      'account',
+      'home',
+      'profile',
+      'help',
+    ]) {
+      testWidgets('$page fills the screen at ${size.width}x${size.height}', (
+        tester,
+      ) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        await tester.pumpWidget(
+          ParticipantApp(
+            repository: FakeParticipantRepository(),
+            initialPage: page,
+            cameraEnabled: false,
+            mapTilesEnabled: false,
+          ),
+        );
+        await tester.pumpAndSettle();
+        final scaffold = find.byType(Scaffold).last;
+        expect(tester.getSize(scaffold).width, size.width);
+        expect(tester.takeException(), isNull);
+        if (page == 'welcome1' || page == 'account') {
+          await expectLater(
+            find.byType(ParticipantApp),
+            matchesGoldenFile(
+              '../docs/screenshots/android20/${page}_${size.width.toInt()}x${size.height.toInt()}.png',
+            ),
+          );
+        }
+
+        if (page.startsWith('welcome')) {
+          final box = tester.widget<Scaffold>(scaffold);
+          expect(box.backgroundColor, isNot(Colors.white));
+          expect(
+            tester.getSize(find.byType(FilledButton).last).width,
+            lessThanOrEqualTo(520),
+          );
+        }
+      });
+    }
+  }
 }

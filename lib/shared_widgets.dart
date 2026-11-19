@@ -552,19 +552,27 @@ class Support extends StatelessWidget {
         onTap: () => _call(context),
         child: Padding(
           padding: const EdgeInsets.all(10),
-          child: Row(
+          child: Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            runSpacing: 8,
             children: [
               Text(name),
-              const Spacer(),
-              const Icon(Icons.call, color: red, size: 18),
-              const SizedBox(width: 8),
-              Text(
-                phone,
-                style: const TextStyle(
-                  color: navy,
-                  fontWeight: FontWeight.w800,
-                  decoration: TextDecoration.underline,
-                ),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.call, color: red, size: 18),
+                  const SizedBox(width: 8),
+                  Text(
+                    phone,
+                    style: const TextStyle(
+                      color: navy,
+                      fontWeight: FontWeight.w800,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

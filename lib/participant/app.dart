@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -382,7 +381,7 @@ class _ParticipantAppState extends State<ParticipantApp>
         color: const Color(0xffe7e2de),
         child: Center(
           child: SizedBox(
-            width: math.min(constraints.maxWidth, 520),
+            width: constraints.maxWidth,
             child: Column(
               children: [
                 if (widget.lanTesting)
@@ -894,16 +893,21 @@ class _ParticipantAppState extends State<ParticipantApp>
     );
   }
 
-  Widget introViewport(Widget child) => !widget.lanTesting
-      ? child
-      : LayoutBuilder(
-          builder: (context, constraints) => SingleChildScrollView(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: IntrinsicHeight(child: child),
+  Widget introViewport(Widget child) => Center(
+    child: ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 520),
+      child: !widget.lanTesting
+          ? child
+          : LayoutBuilder(
+              builder: (context, constraints) => SingleChildScrollView(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                  child: IntrinsicHeight(child: child),
+                ),
+              ),
             ),
-          ),
-        );
+    ),
+  );
 
   String sessionAvailability(Record e) {
     if (e['status'] == 'cancelled') return 'Cancelled';
