@@ -227,3 +227,14 @@ test('cancellation works after program unpublish, preserves RSVP and scan record
  assert.equal((await db.doc('events/session-one').get()).data().status,'cancelled');
  assert.equal((await db.doc('checkins/session-one_participant-1').get()).data().status,'confirmed');
 });
+
+test('existing legacy sessions edit in place without a fabricated program or revision and reject new orphan creation',async()=>{
+ const e={...program(),status:'published',startsAt:Timestamp.fromMillis(now+86400000),endsAt:Timestamp.fromMillis(now+90000000),code:'LEGACY',coachUids:['coach-1']};
+ await db.doc('events/legacy').set(e);
+ const input={eventId:'legacy',revision:null,startsAt:new Date(now+86400000).toISOString(),endsAt:new Date(now+90000000).toISOString(),venue:program().venue,coachUids:['coach-2'],capacity:22,reason};
+ await catalogue.saveSession(admin,input);
+ const saved=(await db.doc('events/legacy').get()).data();assert.equal(saved.programId,undefined);assert.equal(saved.capacity,22);assert.equal(saved.revision,1);assert.equal(saved.code,'LEGACY');
+ await catalogue.cancelSession(admin,{eventId:'legacy',revision:1,reason});
+ assert.equal((await db.doc('events/legacy').get()).data().status,'cancelled');
+ await rejects(catalogue.saveSession(admin,{...input,eventId:undefined}),'program-required');
+});

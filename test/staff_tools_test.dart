@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rally4ever/participant/app.dart';
 import 'package:rally4ever/participant/coach_console.dart';
+import 'package:rally4ever/participant/catalogue_admin.dart';
+import 'package:timezone/data/latest.dart' as tz;
 import 'package:rally4ever/participant/repository.dart';
 import 'package:rally4ever/participant/theme.dart';
 
@@ -54,6 +56,7 @@ class StaffRepo extends FakeParticipantRepository {
 }
 
 void main() {
+  setUpAll(tz.initializeTimeZones);
   for (final role in ['participant', 'coach', 'admin']) {
     testWidgets('Me exposes only authorized tools for $role', (tester) async {
       final repo = StaffRepo(role);
@@ -108,6 +111,35 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Tell us a little about you'), findsNothing);
       expect(find.text('Admin view'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      repo.dispose();
+    },
+  );
+  testWidgets(
+    'legacy session editor prefills venue and exposes per-session coaches',
+    (tester) async {
+      final repo = StaffRepo('admin');
+      final session = {
+        ...repo.events.first,
+        'id': 'legacy',
+        'startsAt': repo.now().add(const Duration(days: 1)),
+        'endsAt': repo.now().add(const Duration(days: 1, hours: 1)),
+      };
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: rallyTheme(),
+          home: SessionEditor(
+            repository: repo,
+            program: {...session, 'id': null},
+            session: session,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Edit / cancel session'), findsOneWidget);
+      expect(find.text('Waverley Park, Bondi Junction'), findsOneWidget);
+      expect(find.textContaining('Times use Australia/Sydney'), findsOneWidget);
+      expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       repo.dispose();
     },

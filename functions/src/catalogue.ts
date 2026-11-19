@@ -91,7 +91,8 @@ export class CatalogueService {
   }
   async saveSession(who: Identity, value: unknown) {
     const d = input(value, ["programId", "eventId", "startsAt", "endsAt", "status", "reason", "revision", "capacity", "registrationStatus", "notes", "photoUrl", "venue", "coachUids", "timezone"]);
-    const programId = id(d.programId, "programId"), eventId = d.eventId ? id(d.eventId, "eventId") : randomUUID();
+    const programId = d.programId === undefined ? null : id(d.programId, "programId"), eventId = d.eventId ? id(d.eventId, "eventId") : randomUUID();
+    if (!programId && !d.eventId) fail("invalid-argument", "program-required", "Create sessions from a published program");
     const startsAt = parseSessionTime(d.startsAt), endsAt = parseSessionTime(d.endsAt);
     const reason = text(d.reason, "reason", 1000), status = choice(d.status ?? "published", ["published", "cancelled"], "session status");
     if (endsAt.toMillis() <= startsAt.toMillis() || endsAt.toMillis() - startsAt.toMillis() > 86400000)
@@ -99,8 +100,9 @@ export class CatalogueService {
     const { db } = this.service;
     await db.runTransaction(async (tx) => {
       if ((await this.service.actor(tx, who)).role !== "admin") fail("permission-denied", "admin-required", "Admin role required");
-      const ref = db.doc(`events/${eventId}`), p = (await tx.get(db.doc(`programs/${programId}`))).data(), old = await tx.get(ref);
-      if (!p || p.status !== "active") fail("failed-precondition", "inactive-program", "Publish an active program first");
+      const ref = db.doc(`events/${eventId}`), old = await tx.get(ref);
+      const p = programId ? (await tx.get(db.doc(`programs/${programId}`))).data() : old.data();
+      if (!p || (programId ? p.status !== "active" : !old.exists || p.programId != null)) fail("failed-precondition", "inactive-program", "Publish an active program first");
       if ((d.venue === undefined && (p.venue.lat == null || p.venue.lng == null))) fail("failed-precondition", "missing-location", "Verify the venue coordinates before scheduling");
       const venue = d.venue === undefined ? p.venue : validateVenue(d.venue);
       const coachUids = d.coachUids === undefined ? p.coachUids : strings(d.coachUids, "coachUids", 10).map(uid);
@@ -108,7 +110,7 @@ export class CatalogueService {
       try { new Intl.DateTimeFormat("en-AU",{timeZone:timezone}).format(); } catch { fail("invalid-argument","invalid-timezone","Choose a valid timezone"); }
       if (venue.lat == null || venue.lng == null) fail("failed-precondition","missing-location","Verify the venue coordinates");
       if (coachUids.length === 0) fail("failed-precondition", "missing-coach", "Assign a coach before scheduling");
-      if (old.exists && (old.data()!.programId !== programId || old.data()!.revision !== d.revision))
+      if (old.exists && ((old.data()!.programId ?? null) !== programId || (old.data()!.revision ?? null) !== (d.revision ?? null)))
         fail("aborted", "stale-session", "Session changed. Reload before saving");
       if (old.exists && old.data()!.startsAt.toMillis() <= this.service.now())
         fail("failed-precondition", "session-started", "Started sessions retain their original details");
@@ -122,14 +124,14 @@ export class CatalogueService {
       }
       if (old.exists && !(await tx.get(db.collection("checkins").where("eventId", "==", eventId).limit(1))).empty)
         fail("failed-precondition", "session-started", "Attendance has begun; retain the original session details");
-      const capacity = d.capacity === undefined ? p.capacity : d.capacity;
+      const capacity = d.capacity === undefined ? (p.capacity ?? null) : d.capacity;
       if (capacity !== null && (!Number.isInteger(capacity) || (capacity as number) < 1 || (capacity as number) > 5000)) fail("invalid-argument", "invalid-capacity", "Choose a valid session capacity");
-      const registrationStatus = d.registrationStatus === undefined ? p.registrationStatus : choice(d.registrationStatus, ["open", "full", "closed"], "reservations");
+      const registrationStatus = d.registrationStatus === undefined ? (p.registrationStatus ?? "open") : choice(d.registrationStatus, ["open", "full", "closed"], "reservations");
       const rsvps = await tx.get(db.collection("rsvps").where("eventId", "==", eventId).where("cancelledAt", "==", null));
       if (capacity != null && rsvps.size > (capacity as number)) fail("failed-precondition", "capacity-below-reservations", "Capacity is below existing reservations");
       const at = this.service.stamp();
-      const event = { programId, catalogueManaged: true, name: p.name, sport: p.sport, venue, timezone,
-        notes: d.notes === undefined ? p.notes : text(d.notes, "notes", 4000, 0), photoUrl: d.photoUrl === undefined ? p.photoUrl : photo(d.photoUrl), coachNames, coachUids,
+      const event = { ...(programId ? {programId} : {}), catalogueManaged: !!programId, name: p.name, sport: p.sport, venue, timezone,
+        notes: d.notes === undefined ? (p.notes ?? "") : text(d.notes, "notes", 4000, 0), photoUrl: d.photoUrl === undefined ? (p.photoUrl ?? "") : photo(d.photoUrl), coachNames, coachUids,
         capacity, registrationStatus, bookedCount: rsvps.size, startsAt, endsAt, status,
         code: old.data()?.code ?? `s-${eventId}`, requiredFormIds: old.data()?.requiredFormIds ?? ["conduct", "waiver"],
         geofenceRadiusM: old.data()?.geofenceRadiusM ?? 150, createdAt: old.data()?.createdAt ?? at,
@@ -146,7 +148,7 @@ export class CatalogueService {
       if((await this.service.actor(tx,who)).role!=="admin")fail("permission-denied","admin-required","Admin role required");
       const ref=db.doc(`events/${eventId}`), e=await tx.get(ref);
       if(!e.exists)fail("not-found","event-not-found","Session not found");
-      if(e.data()!.revision!==d.revision)fail("aborted","stale-session","Reload the session before cancelling");
+      if((e.data()!.revision??null)!==(d.revision??null))fail("aborted","stale-session","Reload the session before cancelling");
       if(e.data()!.endsAt.toMillis()<=this.service.now())fail("failed-precondition","session-ended","Ended sessions retain their status");
       const at=this.service.stamp();
       tx.update(ref,{status:"cancelled",registrationStatus:"closed",updatedAt:at,revision:(e.data()!.revision??0)+1});

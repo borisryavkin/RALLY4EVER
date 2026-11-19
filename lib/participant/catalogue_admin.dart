@@ -582,7 +582,7 @@ class _SessionEditorState extends State<SessionEditor> {
     final session = widget.session;
     zone = (session?['timezone'] ?? widget.program['timezone']) as String;
     final venue = (session?['venue'] ?? widget.program['venue']) as Map;
-    venueState = venue['state'] as String;
+    venueState = venue['state'] as String? ?? 'NSW';
     for (final key in ['name', 'address', 'suburb', 'postcode', 'lat', 'lng']) {
       venueFields[key] = TextEditingController(text: '${venue[key] ?? ''}');
     }
@@ -671,7 +671,7 @@ class _SessionEditorState extends State<SessionEditor> {
     setState(() => busy = true);
     try {
       await widget.repository.call('saveSession', {
-        'programId': widget.program['id'],
+        if (widget.program['id'] != null) 'programId': widget.program['id'],
         if (widget.session != null) 'eventId': widget.session!['id'],
         if (widget.session != null) 'revision': widget.session!['revision'],
         'venue': {
@@ -1020,8 +1020,11 @@ class _SessionManagementPanelState extends State<SessionManagementPanel> {
                       child: const Text('Edit / cancel / assign coaches'),
                     )
                   else
-                    const Text(
-                      'Legacy session: assign coaches through Users & coach assignment.',
+                    TextButton(
+                      onPressed: () => edit({...session, 'id': null}, session),
+                      child: const Text(
+                        'Edit / assign coaches (legacy session)',
+                      ),
                     ),
                 ],
               ),
