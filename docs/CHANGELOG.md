@@ -1,3 +1,10 @@
+## 2026-11-20 — separate navy Firebase web admin
+
+- Deployed **https://rally4ever-admin-3adaf.web.app** using only Hosting target `admin`; the default participant site remains unchanged. Added Google/email admin-only sign-in, full session field table/filters/inline editing, program publishing/session generation, users/coach assignments, attendance/CSV and exact-count demo cleanup with backups.
+- Added venue discovery/editor, 16:9 crop/compression, authenticated Storage previews, filename-code bulk matching, linked photo propagation and server removal of bearer download tokens. Deployed admin-write/authenticated-read Storage rules and enabled the documented Storage-to-Firestore service-agent permission and scoped browser CORS.
+- Claims plus protected profile gates enforce access and revocation. Automatic timestamps/revisions/audits preserve original attendance context and legacy standalone RSVP policy. Real admin edited/restored a session and uploaded a labelled test-venue image; real participant saw No access and HTTP 403 denials. No real demo cleanup or member deletion. Concurrent writes were preserved.
+- Validation: 48 catalogue/rules emulator checks + 5 import/profile unit tests, 27 Functions emulator tests, 15 Functions unit tests, 8 Storage tests, 6 web tests; clean analyzer and 118 Flutter tests passed (1 intentional skip). Build/runtime dependency audit passed. See [WEB_ADMIN.md](WEB_ADMIN.md) and [verification receipt](verification/web-admin.json) for URL, exact steps, real counts, backups, costs and limitations.
+
 ## 2026-11-19 — participant build 13 delivered
 
 - Uploaded GPS/navigation/filter/program/session-audit corrections as **1.0.2 (13)** using normal export. Verified Testing in internal group boris; external group untouched. Real staging project verified inside signed IPA.

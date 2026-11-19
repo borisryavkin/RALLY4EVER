@@ -1,1 +1,18 @@
-{"projects":{"default":"demo-rally4ever"}}
+{
+  "projects": {
+    "default": "demo-rally4ever"
+  },
+  "targets": {
+    "rally4ever-3adaf": {
+      "hosting": {
+        "admin": [
+          "rally4ever-admin-3adaf"
+        ],
+        "checkin": [
+          "rally4ever-checkin-3adaf"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}

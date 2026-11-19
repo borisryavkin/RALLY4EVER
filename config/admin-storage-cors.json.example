@@ -1,0 +1,8 @@
+[
+  {
+    "origin": ["https://rally4ever-admin-3adaf.web.app", "https://rally4ever-admin-3adaf.firebaseapp.com", "https://rally4ever-3adaf.web.app", "https://rally4ever.org", "http://localhost:57830", "http://127.0.0.1:57830", "http://localhost:57822"],
+    "method": ["GET", "HEAD"],
+    "responseHeader": ["Content-Type", "Content-Length"],
+    "maxAgeSeconds": 3600
+  }
+]

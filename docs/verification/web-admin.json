@@ -1,0 +1,119 @@
+{
+  "projectId": "rally4ever-3adaf",
+  "hostingTarget": "admin",
+  "url": "https://rally4ever-admin-3adaf.web.app",
+  "recordedAt": "2026-11-19T22:34:57.607Z",
+  "admin": {
+    "role": "admin",
+    "verified": true,
+    "checks": [
+      {
+        "function": "adminCatalogue",
+        "http": 200,
+        "status": "OK",
+        "counts": {
+          "events": 12,
+          "programs": 62,
+          "venues": 69
+        }
+      },
+      {
+        "function": "adminRemoveDemo",
+        "http": 200,
+        "status": "OK"
+      },
+      {
+        "function": "listUsers",
+        "http": 200,
+        "status": "OK",
+        "counts": {
+          "events": 12
+        }
+      }
+    ]
+  },
+  "participant": {
+    "role": "participant",
+    "verified": true,
+    "noAccessScreenObserved": true,
+    "checks": [
+      {
+        "function": "adminCatalogue",
+        "http": 403,
+        "status": "PERMISSION_DENIED",
+        "reason": "admin-claim-required"
+      },
+      {
+        "function": "adminSaveSession",
+        "http": 403,
+        "status": "PERMISSION_DENIED",
+        "reason": "admin-claim-required"
+      },
+      {
+        "function": "adminSaveVenue",
+        "http": 403,
+        "status": "PERMISSION_DENIED",
+        "reason": "admin-claim-required"
+      },
+      {
+        "function": "adminRemoveDemo",
+        "http": 403,
+        "status": "PERMISSION_DENIED",
+        "reason": "admin-claim-required"
+      },
+      {
+        "function": "listUsers",
+        "http": 403,
+        "status": "PERMISSION_DENIED",
+        "reason": "admin-required"
+      },
+      {
+        "function": "setUserRole",
+        "http": 403,
+        "status": "PERMISSION_DENIED",
+        "reason": "admin-required"
+      },
+      {
+        "storage": "participant venue write",
+        "http": 403,
+        "expected": 403
+      }
+    ]
+  },
+  "sessionEdit": {
+    "eventId": "demo-tennis-bondi-now",
+    "originalNotesRestored": true,
+    "legacyRsvpPolicyPreserved": true,
+    "revision": 5,
+    "audited": true
+  },
+  "venuePhoto": {
+    "venueId": "168ae1ac-cc76-4c34-bb78-243401b56129",
+    "code": "ADMIN-VERIFY-20261119",
+    "isDemo": true,
+    "bytes": 34556,
+    "contentType": "image/jpeg",
+    "dimensions": {
+      "width": 1600,
+      "height": 900
+    },
+    "authenticatedPreviewObserved": true,
+    "bearerDownloadTokenPresent": false,
+    "anonymousReadHTTP": 403
+  },
+  "countsBefore": {
+    "events": 12,
+    "programs": 62,
+    "venues": 0
+  },
+  "countsAfter": {
+    "events": 12,
+    "programs": 62,
+    "venues": 7
+  },
+  "originalIdsPreserved": {
+    "events": true,
+    "programs": true
+  },
+  "realDemoRemovalApplied": false
+}

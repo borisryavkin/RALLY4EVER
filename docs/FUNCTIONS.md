@@ -192,3 +192,16 @@ Additional errors: `permission-denied / admin-required` or `coach-claim-required
 ## Staff administration increment — 19 November 2026
 
 See [ADMIN_TOOLS.md](ADMIN_TOOLS.md) for the new `listStaffSessions`, `getEventConsole`, `cancelSession` contracts and expanded `setUserRole` inputs. `saveSession` accepts per-session `venue`, `timezone` and `coachUids`; creation requires a published `programId`, while editing an existing legacy event may omit programId and keeps the same ID. Details cannot change after a scan or session start. Cancellation is a separate admin-only, reasoned operation that retains all RSVP/check-in records, including original scan fields. No schema migration is required. Staff list/console requests are read-only; the console separately calls the existing rotateEventSecret to generate the five-minute QR.
+
+## Hosted administration callables (20 November 2026)
+
+The following are deployed only to `rally4ever-3adaf`, region `australia-southeast1`, existing codebase `attendance`. Each requires verified Firebase Auth, an admin custom claim and an active protected admin profile. Public HTTP transport permits browser preflight/Firebase tokens; handler authorization is mandatory. Full UI, deployment and proof: [WEB_ADMIN.md](WEB_ADMIN.md).
+
+| Callable | Input | Result | Main error reasons |
+|---|---|---|---|
+| `adminCatalogue` | `{}` | ISO-serialized `events`, `programs`, derived/stored `venues`, current form IDs/versions | `admin-claim-required`, `admin-required`, `catalogue-limit` |
+| `adminSaveSession` | optional `eventId`, current `revision`, whitelisted `changes` | `{eventId}` | `stale-session`, `duplicate-code`, `invalid-coach`, `invalid-forms`, `incomplete-session`, `attendance-started`, `capacity-below-reservations`, `invalid-time`, `invalid-timezone` |
+| `adminSaveVenue` | optional `venueId`, current `revision`, `venue` | `{venueId, updatedRecords}` | `stale-venue`, `duplicate-venue-code`, `invalid-photo`, `venue-photo-path`, `venue-too-large` |
+| `adminRemoveDemo` | preview `{}`; apply `{apply:true, expectedPaths:[...]}` from exact preview | preview count/per-collection counts/paths; apply removed count/paths | `demo-changed`, `demo-in-use`, `demo-too-large` |
+
+Permission failures are HTTP 403 `PERMISSION_DENIED`; missing sign-in is HTTP 401 `UNAUTHENTICATED`; validation is HTTP 400 `INVALID_ARGUMENT`; stale revisions/previews are HTTP 409 `ABORTED`; publication/original-context/reference constraints are `FAILED_PRECONDITION`. All writes use trusted server timestamps, increment revisions, and retain audit snapshots. Venue image finalization validates the owned path/type/size and removes download tokens before storing the reference. `saveProgram`, `listUsers`, `setUserRole`, `getEventConsole`, `coachDecision` and `assignEventCoaches` are reused by the web client; current protected admin claim checks also apply to their admin operations.
