@@ -1,3 +1,12 @@
+## Populate Play/Map/Check-in with real and demo sessions — 19 November 2026
+
+- Re-ran `publish-programs.mjs`/`generate-sessions.mjs`: state unchanged since earlier today (28/61 programs published, 0 sessions generated -- still no program has a real coach account, not fabricated).
+- No filter/query bug found: `matchesProgram()` and the home screen's inline sport check both lowercase-compare, so `sport: 'tennis'/'pickleball'` works regardless of UI label casing; the empty screens were purely a data problem, not a query bug.
+- Added `scripts/seed-demo-sessions.mjs` (dry run default, `--apply --coach-uid=<uid>`): 12 sessions, `isDemo: true`, `[DEMO]` name prefix, 6 tennis / 6 pickleball, real Sydney suburb coordinates (Bondi Junction, Epping, Parramatta, Manly, Chatswood, Sydney Olympic Park -- public suburb centres, not claimed real venues), mixed levels/prices/capacities, one starting ~40 minutes out for an immediate check-in test, two assigned `coachUids: [notoriskin@gmail.com's uid]` (admin already bypasses the coach-authorization check via `authorize()`'s `adminAllowed` path, so this account can already confirm/scan any session -- the explicit assignment is for display/notification parity, not a requirement). Applied: **12 created**.
+- Added `scripts/remove-demo-sessions.mjs` (dry run default, `--apply`): deletes only `events` with `isDemo == true` plus their `rsvps`/`checkins`; never touches `users`.
+- Proved it: a throwaway participant's real Firestore REST query for `events` (published/cancelled) returned **200**, 12 docs, 6 tennis / 6 pickleball, with the expected Sydney coordinates. Throwaway account and profile deleted after.
+- No client code changed -- pull to refresh in the app.
+
 ## Fix two more real-project permission denials; deploy stale Functions; migrate legacy profiles — 19 November 2026
 
 - **Root cause (one sentence): Cloud Functions on `rally4ever-3adaf` were still the pre-Stage-4 build, so every new sign-in's `registerIdentity` kept minting old-schema profiles (top-level `mobile`/`emergencyContact`) that the now-current rules correctly reject on the very next save.** Confirmed `functions/` had no uncommitted changes and the last commit touching `functions/src` (2eab16a, Stage 4) postdates the last real deploy (17 Nov 12:12, per Cloud Audit Logs) by a day -- Stage 4's Functions changes were committed but never shipped, only its rules were (last time).
