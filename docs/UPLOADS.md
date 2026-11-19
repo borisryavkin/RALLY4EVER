@@ -4,6 +4,12 @@ Firebase Storage is enabled on `rally4ever-3adaf` (`australia-southeast1`, defau
 
 **Privacy**: a profile photo is visible only to its owner, to admins, and to a coach actually running a session that person is involved in -- never public, never visible to other participants or unrelated coaches. Only the Storage path is stored on the profile document (`photoUpdatedAt`, used for cache-busting); the image itself lives in Storage, governed by the rules above.
 
+## Build 9 prepared — banner removal, device location, profile photos — 19 November 2026
+
+`1.0.1 (9)`, `org.rally4ever` (iOS) / `org.raly4ever` (Android). Built and verified locally (jarsigner valid, all six native libs stripped, `rally4ever-3adaf` confirmed embedded, correct bundle/package IDs, manifest's new location-usage string present). Android required a native build-config fix first: `geocoding_android`'s own `compileSdk` (33) was incompatible with one of its own dependencies -- fixed in `android/build.gradle.kts`/`android/app/build.gradle.kts` (see `docs/CHANGELOG.md`). Also found and reverted a stray, uncommitted `applicationId` change that would have produced an AAB with the wrong, unregistered package ID -- caught before building.
+
+**Not uploaded by this session** -- no App Store Connect API key or Play service account is configured here (same limitation as build 6: confirmed again, custom-token minting refused twice on `iam.serviceAccounts.signBlob`), so actual delivery needs a signed-in human click. Opened Transporter with the IPA loaded and the Play internal-testing track in the browser; upload status to be recorded here once completed.
+
 # Build 6 internal tester upload — 18 November 2026
 
 Owner explicitly requested build 6 uploaded to TestFlight first, then Android. Uploaded the existing validated Stage 7 artifacts without rebuilding or changing signing/IDs.
