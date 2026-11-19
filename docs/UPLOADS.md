@@ -1,3 +1,9 @@
+# Build 11 prepared — avatars, real logo, brand typography/colour — 19 November 2026
+
+`1.0.2 (11)`, `org.rally4ever` (iOS) / `org.raly4ever` (Android) -- next after build 10's upload, per that build's own guard. Built and verified locally: `rally4ever-3adaf` confirmed embedded (3 occurrences), correct bundle/package IDs, both `assets/fonts/Inter.ttf` and `assets/fonts/Jellee_1223/TTF/Jellee-Bold.ttf` confirmed bundled in `flutter_assets` on both platforms, Android launch-image PNGs present at all 5 densities, jarsigner valid, all six native libs stripped. iOS required the same SPM-package-graph-staleness fix as build 9 (`flutter clean && flutter pub get`, this time for the new `cached_network_image`/`sqflite_darwin` transitive dependency) -- no project config changed, just cache staleness. Flutter's own "default placeholder launch image" warning, present on every previous build, is gone.
+
+**Not uploaded by this session** -- no App Store Connect API key or Play service account is configured here. Opened Transporter with the IPA loaded and the Play internal-testing track in the browser; upload status to be recorded here once completed.
+
 # Version 1.0.2 (10) uploaded — 19 November 2026
 
 Owner requested the new build under a new version on both stores, preserving the existing internal-testing restriction. Selected `1.0.2 (10)` and built from clean committed source **47f33434f8371105bacc12ddc8cc93f89e41fa97** in a detached release checkout, excluding concurrent uncommitted avatar/font/branding work. The checkout remained clean after both builds. Existing iOS bundle `org.rally4ever`, Android package `org.raly4ever`, and signing keys were reused; no IDs or keys changed.
