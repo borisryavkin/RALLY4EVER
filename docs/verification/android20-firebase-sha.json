@@ -1,0 +1,11 @@
+{
+  "checkedAt": "2026-11-19T23:49:30.636Z",
+  "projectId": "rally4ever-3adaf",
+  "packageName": "org.rally4ever",
+  "appId": "1:55117668228:android:678ee9fc62957bf42607d1",
+  "registeredCertificates": [],
+  "uploadSha1": "11:51:C4:0F:AF:82:97:8B:80:1D:BF:D5:3F:1E:44:E7:EB:0F:AF:AD",
+  "uploadSha1Registered": false,
+  "playAppSigningSha1Registered": false,
+  "note": "No SHA certificates registered on this Firebase Android app. Play app-signing certificate itself must be obtained from Play Console; do not substitute the upload certificate."
+}

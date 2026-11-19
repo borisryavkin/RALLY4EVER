@@ -1,3 +1,38 @@
+# Android internal tester bundle — 1.0.3 (20)
+
+Prepared locally on 20 November 2026; not uploaded. **This section supersedes older package/version instructions below.** The latest owner instruction explicitly requests Android `org.rally4ever` (two l letters); the previous app/config used `org.raly4ever`. The local ignored Android Firebase config now uses the existing `org.rally4ever` Android registration on `rally4ever-3adaf`. This AAB can only be uploaded to a Play app whose package is exactly `org.rally4ever`; it cannot update an `org.raly4ever` listing.
+
+`pubspec.yaml`: **version: 1.0.3+20**. Existing upload keystore reused. Backup before edits: `backups/android-release-20-1795131672/` (private and ignored; includes original artifact/config/signing properties). No Firebase data or Auth accounts changed. No upload/deploy or spending.
+
+```sh
+cd /Users/borisryavkin/technical/flutter/rally4ever/rally4ever
+export PATH="/Users/borisryavkin/technical/flutter/flutter/bin:$PATH"
+flutter clean
+flutter pub get
+flutter build appbundle --release --flavor staging \
+  --dart-define-from-file=config/staging.android.json
+# Guarded wrapper equivalent; validates configuration before Flutter:
+./scripts/build-android-staging.sh --build-name 1.0.3 --build-number 20
+# Once built, inspect with the official bundletool jar already downloaded locally:
+python3 scripts/verify-android-bundle.py --bundletool /tmp/r4e-bundletool.jar
+```
+
+Do not reuse code 20 for a later changed upload. `scripts/validate-build.py`, wired to Gradle pre-build, refuses release/profile without real staging config and refuses emulator/LAN settings. Missing config also fails before Flutter through the wrapper. No config files, credentials or keystores are committed.
+
+Toolchain fix: installed official Mac ARM Android command-line tools at `~/Library/Android/sdk/cmdline-tools/latest` and accepted SDK licences. NDK `28.2.13676358` and its llvm-strip were already installed. Doctor now reports a healthy Android toolchain. Clean release build succeeded with standard symbol stripping; **no keepDebugSymbols workaround** or size penalty. The old generic stripping message was caused by missing command-line tools/apkanalyzer (also documented in the historical build record below), not a demonstrated native-library strip failure. Official download/checksum: https://developer.android.com/studio/ . SDK/tool downloads are free.
+
+Verified AAB: `build/app/outputs/bundle/stagingRelease/app-staging-release.aab`, **79,887,703 bytes** (79.89 MB / 76.19 MiB). `bundletool validate`, manifest, every ABI's `libapp.so` staging project marker, JAR signature and existing upload keystore comparison passed. Full hash/results: `docs/verification/android20-bundle.json`.
+
+Upload SHA-1: `11:51:C4:0F:AF:82:97:8B:80:1D:BF:D5:3F:1E:44:E7:EB:0F:AF:AD`. Firebase currently has **no SHA entries** for the `org.rally4ever` app: upload and Play app-signing fingerprints are not registered. Obtain the separate app-signing SHA-1 from Play Console → Setup/App integrity → App signing (or Test and release → App integrity, depending on console navigation). Add both fingerprints in Firebase → Project settings → General → Android app `org.rally4ever` → Add fingerprint. Add app-signing SHA-256 too for verified app links where applicable. This task reads and reports this state; it does not change provider settings or invent a Play certificate. Google Sign-In on Play-installed Android is not proven until the Play app-signing SHA is registered. Receipt: `docs/verification/android20-firebase-sha.json`.
+
+Layout: removed the global 520 px app constraint; onboarding retains a readable centred content column on a full-width matching brand background. Existing tablet rails and 720 px content cap now work. Fixed Help contact-row wrapping. Tests cover onboarding, sign-in, Play, Me and Help at 393×852, 800×1280, 1280×800; screenshots are under `docs/screenshots/android20/`.
+
+Upload manually only to **Play Internal testing**, selecting the AAB file above. No production track. No new costs incurred. Future rebuilds use a new code after checking Play Console.
+
+---
+
+## Historical release records (superseded by the Android section above)
+
 Current iOS tester build: **1.0.2 (13)**, delivered 19 November 2026 at 21:18 Sydney time and verified **Testing** in internal group **boris** (1 tester). Exported using normal `ios/ExportOptions.plist`; external-capable artifact, with no external group assignment. Source `7904cf2`, real Firebase project `rally4ever-3adaf`. The next build must be **14 or higher**, after checking both consoles.
 
 For the next iOS staging build (after rechecking the unused number):

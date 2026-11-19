@@ -397,3 +397,11 @@ Re-verification pass under a new staged task spec. The underlying fix (and the r
 - Stored Boris's pasted legal wording verbatim in four versioned form files; published version 2026-11-20 with compatibility fields for existing installs and byte comparisons after backup.
 - Reused the Ultimo draft and imported the UNSW program, with 34 + 2 actual Humanitix occurrences, approved venue coordinates, mandatory conduct/waiver, and no statewide listings. Coaches/capacity remain unspecified.
 - Added fail-closed publication guards, date-version consent support, optional photo/data receipts, and line-preserving form rendering. Native display changes require a subsequent app build.
+
+
+## 2026-11-20 — Android internal bundle 1.0.3 (20)
+- Used latest owner-requested package org.rally4ever and its existing Firebase Android registration; local config backed up and remains ignored. Existing upload signing key reused.
+- Installed missing official Android command-line tools, accepted licences; doctor passes and normal Flutter AAB build succeeds without keeping debug symbols.
+- Removed root width cap; onboarding now has full-width brand background. Fixed Help phone-link wrapping. Added 21 size/state checks and six reviewed screenshots at 393×852, 800×1280 and 1280×800 (26 responsive tests total).
+- Analysis clean, 141 Flutter tests pass (one existing skip), 10 release guard tests pass. Backup copies excluded from Dart analysis.
+- Bundletool, manifest, all ABI project markers, JAR signature and upload-keystore certificate verified. Firebase has no registered SHA certificates for this package; Play app-signing certificate must be obtained from Play Console and registered along with upload SHA. No upload, deployment, Firebase data changes, or costs.

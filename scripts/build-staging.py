@@ -12,7 +12,7 @@ def main():
     parser.add_argument('--platform', required=True, choices=('ios', 'android'))
     parser.add_argument('--mode', choices=('release', 'profile'), default='release')
     parser.add_argument('--build-number', type=int, required=True)
-    parser.add_argument('--build-name', default='1.0.2')
+    parser.add_argument('--build-name', default='1.0.3')
     parser.add_argument('--config', type=Path)
     parser.add_argument('--export-options', choices=('normal','internal'), default='normal')
     parser.add_argument('--check-only', action='store_true', help='Validate without starting Flutter')
