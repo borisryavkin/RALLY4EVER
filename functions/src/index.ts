@@ -1,3 +1,4 @@
+import { StaffService } from './staff';
 import { CatalogueService } from "./catalogue";
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
@@ -228,3 +229,9 @@ export const syncSessionAvailability = onDocumentWritten({document:"rsvps/{rsvpI
     for (const eventId of ids) await service.syncContactVisibility(eventId, rsvpUid);
   }
 });
+
+const staff = new StaffService(service);
+export const listStaffSessions = callable((who, data) => staff.listStaffSessions(who, data));
+export const getEventConsole = callable((who, data) => staff.getEventConsole(who, data));
+
+export const cancelSession = callable((who, data) => catalogue.cancelSession(who, data));

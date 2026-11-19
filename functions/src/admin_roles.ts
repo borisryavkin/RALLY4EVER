@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { Timestamp } from "firebase-admin/firestore";
+import { DocumentData, Timestamp } from "firebase-admin/firestore";
 import { getStorage } from "firebase-admin/storage";
 import { Identity, input, text, id, fail } from "./domain";
 import { AttendanceService, uid } from "./service";
@@ -57,116 +57,61 @@ export class AdminRoleService {
     };
   }
   async setUserRole(who: Identity, value: unknown) {
-    const d = input(value, ["uid", "role", "enabled", "reason"]),
-      targetUid = uid(d.uid),
-      reason = text(d.reason, "reason", 1000);
-    if (d.role !== "coach" || typeof d.enabled !== "boolean")
-      fail(
-        "invalid-argument",
-        "invalid-role",
-        "Only coach access can be granted or revoked here",
-      );
-    const { db, auth } = this.service,
-      operationId = randomBytes(16).toString("hex");
-    const targetRef = db.doc(`users/${targetUid}`),
-      lock = db.doc(`roleChanges/${targetUid}`),
-      audit = db.doc(`roleAudits/${operationId}`);
-    const target = await db.runTransaction(async (tx) => {
-      if ((await this.service.actor(tx, who)).role !== "admin")
-        fail("permission-denied", "admin-required", "Admin role required");
+    const d = input(value, ["uid", "role", "enabled", "reason"]);
+    const targetUid = uid(d.uid), reason = text(d.reason, "reason", 1000);
+    const legacy = d.enabled !== undefined;
+    if (!["participant", "coach", "admin"].includes(d.role as string) ||
+        (legacy && (d.role !== "coach" || typeof d.enabled !== "boolean")))
+      fail("invalid-argument", "invalid-role", "Choose participant, coach or admin");
+    const {db, auth} = this.service, operationId = randomBytes(16).toString("hex");
+    const targetRef = db.doc(`users/${targetUid}`), lock = db.doc(`roleChanges/${targetUid}`), audit = db.doc(`roleAudits/${operationId}`);
+    // Validate the Auth account before changing its protected profile gate.
+    await db.runTransaction(async tx => {
+      if ((await this.service.actor(tx, who)).role !== "admin") fail("permission-denied", "admin-required", "Admin role required");
+    });
+    if (targetUid === who.uid) fail("failed-precondition", "self-role-change", "Ask another admin to change your own access");
+    const account = await auth.getUser(targetUid);
+    if ((legacy ? d.enabled === true : d.role !== "participant") && (!account.emailVerified || account.disabled))
+      fail("failed-precondition", "email-unverified", "Verify the account before granting staff access");
+    const target: DocumentData = await db.runTransaction(async tx => {
+      if ((await this.service.actor(tx, who)).role !== "admin") fail("permission-denied", "admin-required", "Admin role required");
+      if (targetUid === who.uid) fail("failed-precondition", "self-role-change", "Ask another admin to change your own access");
       const [p, old] = await Promise.all([tx.get(targetRef), tx.get(lock)]);
-      if (!p.exists || p.data()!.mergedInto !== null)
-        fail("not-found", "profile-not-found", "Choose an active profile");
-      if (
-        old.data()?.status === "pending" &&
-        old.data()!.expiresAt.toMillis() > this.service.now()
-      )
-        fail(
-          "aborted",
-          "role-change-in-progress",
-          "Another role update is in progress",
-        );
-      // Fail closed while Auth and Firestore are updated across two systems.
-      tx.update(targetRef, {
-        coachEnabled: false,
-        updatedAt: this.service.stamp(),
-      });
-      tx.set(lock, {
-        operationId,
-        status: "pending",
-        expiresAt: Timestamp.fromMillis(this.service.now() + 60000),
-      });
-      tx.create(audit, {
-        operationId,
-        actorUid: who.uid,
-        targetUid,
-        reason,
-        enabled: d.enabled,
-        action: "coach-role",
-        createdAt: this.service.stamp(),
-        status: "pending",
-      });
-      return p.data()!;
+      if (!p.exists || p.data()!.mergedInto !== null) fail("not-found", "profile-not-found", "Choose an active profile");
+      if (old.data()?.status === "pending" && old.data()!.expiresAt.toMillis() > this.service.now()) fail("aborted", "role-change-in-progress", "Another role update is in progress");
+      const before = p.data()!;
+      const nextRole = legacy ? (before.role === "admin" ? "admin" : d.enabled ? "coach" : "participant") : d.role as string;
+      if (before.role === "admin" && nextRole !== "admin") {
+        const admins = await tx.get(db.collection("users").where("role", "==", "admin").where("mergedInto", "==", null));
+        if (admins.size <= 1) fail("failed-precondition", "last-admin", "Keep at least one active admin");
+      }
+      // The protected profile gate overrides stale claims immediately. Preserve
+      // participant access while Auth and Firestore are updated across systems.
+      tx.update(targetRef, {role: "participant", coachEnabled: false, updatedAt: this.service.stamp()});
+      tx.set(lock, {operationId, status:"pending", expiresAt:Timestamp.fromMillis(this.service.now()+60000)});
+      tx.create(audit, {operationId, actorUid:who.uid, targetUid, reason, action:legacy?"coach-role":"set-role", requestedRole:d.role, previousRole:before.role, createdAt:this.service.stamp(), status:"pending"});
+      return {...before, nextRole};
     });
     try {
-      const account = await auth.getUser(targetUid);
-      if (d.enabled && (!account.emailVerified || account.disabled))
-        fail(
-          "failed-precondition",
-          "email-unverified",
-          "The coach must verify their account first",
-        );
       const previous = account.customClaims ?? {};
-      const roles = new Set<string>(
-        (Array.isArray(previous.roles) ? previous.roles : []).filter(
-          (r: string) => r !== "coach",
-        ),
-      );
+      const roles = new Set<string>((Array.isArray(previous.roles)?previous.roles:[]).filter((r:string)=>!["participant","coach","admin"].includes(r)));
       roles.add("participant");
-      if (target.role === "admin") roles.add("admin");
-      if (d.enabled) roles.add("coach");
-      const role =
-        target.role === "admin" ? "admin" : d.enabled ? "coach" : "participant";
-      await auth.setCustomUserClaims(targetUid, {
-        ...previous,
-        role,
-        roles: [...roles],
+      const coachEnabled = legacy ? d.enabled === true : target.nextRole === "coach" || (target.nextRole === "admin" && target.coachEnabled === true);
+      if (target.nextRole === "admin") roles.add("admin");
+      if (coachEnabled) roles.add("coach");
+      await auth.setCustomUserClaims(targetUid, {...previous, role:target.nextRole, roles:[...roles]});
+      await db.runTransaction(async tx=>{
+        if ((await this.service.actor(tx,who)).role !== "admin") fail("permission-denied","admin-required","Admin role required");
+        const current=await tx.get(lock);
+        if(current.data()?.operationId!==operationId)fail("aborted","role-change-in-progress","Role operation superseded");
+        tx.update(targetRef,{role:target.nextRole,coachEnabled,updatedAt:this.service.stamp()});
+        tx.update(lock,{status:"applied"});tx.update(audit,{status:"applied",role:target.nextRole,coachEnabled,appliedAt:this.service.stamp()});
       });
-      await db.runTransaction(async (tx) => {
-        if ((await this.service.actor(tx, who)).role !== "admin")
-          fail("permission-denied", "admin-required", "Admin role required");
-        const current = await tx.get(lock);
-        if (current.data()?.operationId !== operationId)
-          fail(
-            "aborted",
-            "role-change-in-progress",
-            "Role operation superseded",
-          );
-        tx.update(targetRef, {
-          role,
-          coachEnabled: d.enabled,
-          updatedAt: this.service.stamp(),
-        });
-        tx.update(lock, { status: "applied" });
-        tx.update(audit, {
-          status: "applied",
-          appliedAt: this.service.stamp(),
-        });
-      });
-      return {
-        uid: targetUid,
-        roles: [...roles],
-        coachEnabled: d.enabled,
-        auditId: operationId,
-        refreshRequired: true,
-      };
-    } catch (error) {
-      await db.runTransaction(async (tx) => {
-        const current = await tx.get(lock);
-        if (current.data()?.operationId === operationId) {
-          tx.update(lock, { status: "failed" });
-          tx.update(audit, { status: "failed" });
-        }
+      return {uid:targetUid,role:target.nextRole,roles:[...roles],coachEnabled,auditId:operationId,refreshRequired:true};
+    } catch(error) {
+      await db.runTransaction(async tx=>{
+        const current=await tx.get(lock);
+        if(current.data()?.operationId===operationId){tx.update(lock,{status:"failed"});tx.update(audit,{status:"failed"});}
       });
       throw error;
     }
@@ -183,6 +128,7 @@ export class AdminRoleService {
       if (
         !a.emailVerified ||
         !(
+          a.customClaims?.role === "admin" || a.customClaims?.roles?.includes("admin") ||
           a.customClaims?.role === "coach" ||
           a.customClaims?.roles?.includes("coach")
         )
@@ -205,7 +151,7 @@ export class AdminRoleService {
         if (
           !p ||
           p.mergedInto !== null ||
-          p.coachEnabled === false ||
+          (p.role === "coach" && p.coachEnabled === false) ||
           !["coach", "admin"].includes(p.role)
         )
           fail(

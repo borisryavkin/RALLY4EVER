@@ -166,3 +166,64 @@ test('profile migration dry-run writes nothing; apply backs up and rollback pres
   assert.equal((await db.doc('users/participant-1').get()).data().firstName,'Changed after migration');
  }finally{await rm(dir,{recursive:true,force:true});}
 });
+
+test('session overrides venue, timezone, capacity and coach without mutating program',async()=>{
+ await createProgram();
+ await session({venue:{...program().venue,name:'Alternate venue',lat:-31.95,lng:115.86,state:'WA'},timezone:'Australia/Perth',coachUids:['coach-2'],capacity:18});
+ const e=(await db.doc('events/session-one').get()).data();
+ assert.equal(e.venue.name,'Alternate venue');assert.equal(e.timezone,'Australia/Perth');assert.deepEqual(e.coachUids,['coach-2']);assert.equal(e.capacity,18);
+ assert.deepEqual((await db.doc('programs/program-one').get()).data().coachUids,['coach-1']);
+ await rejects(catalogue.saveSession(who('participant-1'),{programId:'program-one',startsAt:new Date(now+86400000).toISOString(),endsAt:new Date(now+90000000).toISOString(),reason}),'admin-required');
+});
+
+test('admin sees every console and rotating QR; coach only assigned; Workspace email alone denied',async()=>{
+ const {StaffService}=require('./lib/staff');const service=catalogue.service,staff=new StaffService(service);
+ await createProgram();await session();await session({coachUids:['coach-2']},'session-two');
+ assert.equal((await staff.listStaffSessions(admin,{})).events.length,2);
+ assert.equal((await staff.listStaffSessions(who('coach-1','coach'),{})).events.length,1);
+ await staff.getEventConsole(admin,{eventId:'session-two'});
+ const qr=await service.rotateEventSecret(admin,{eventId:'session-two'});assert.match(qr.url,/^https:\/\/rally4ever.org\/c\/[^?]+\?k=/);
+ await rejects(staff.getEventConsole(who('coach-1','coach'),{eventId:'session-two'}),'event-role-required');
+ await rejects(service.rotateEventSecret(who('coach-1','coach'),{eventId:'session-two'}),'event-role-required');
+ await rejects(staff.listStaffSessions({...who('participant-1'),email:'someone@rally4ever.org'},{}),'staff-required');
+ await rejects(staff.listStaffSessions(who('coach-1'),{}),'staff-required');
+ await db.doc('users/coach-1').update({role:'participant',coachEnabled:false});
+ await rejects(staff.getEventConsole(who('coach-1','coach'),{eventId:'session-one'}),'event-role-required');
+});
+
+test('console separates RSVP intent and actual attendance, exposing distance and original scan time',async()=>{
+ const {StaffService}=require('./lib/staff');await createProgram();await session();
+ await db.doc('rsvps/session-one_participant-1').set({uid:'participant-1',eventId:'session-one',cancelledAt:null});
+ await db.doc('checkins/session-one_participant-2').set({uid:'participant-2',eventId:'session-one',status:'pending',scannedAt:Timestamp.fromMillis(now),distanceM:42,walkIn:true,corrections:[]});
+ const result=await new StaffService(catalogue.service).getEventConsole(admin,{eventId:'session-one'});
+ assert.equal(result.roster.find(p=>p.uid==='participant-1').checkinStatus,null);
+ const arrival=result.roster.find(p=>p.uid==='participant-2');assert.equal(arrival.countedIn,false);assert.equal(arrival.distanceM,42);assert.equal(arrival.scannedAt,new Date(now).toISOString());
+});
+
+test('role callable grants all three roles and revoked coach loses access with stale token',async()=>{
+ const {AdminRoleService}=require('./lib/admin_roles');const roles=new AdminRoleService(catalogue.service),auth=getAuth(app);
+ for(const uid of ['participant-1','coach-1']){
+   try {await auth.createUser({uid,email:`${uid}@example.test`,emailVerified:true});}catch(e){if(e.code!=='auth/uid-already-exists'&&e.code!=='auth/email-already-exists')throw e;}
+ }
+ const granted=await roles.setUserRole(admin,{uid:'participant-1',role:'admin',reason});assert.equal(granted.role,'admin');
+ assert.equal((await auth.getUser('participant-1')).customClaims.role,'admin');
+ await roles.setUserRole(admin,{uid:'participant-1',role:'coach',reason});
+ assert.equal((await auth.getUser('participant-1')).customClaims.role,'coach');
+ await roles.setUserRole(admin,{uid:'participant-1',role:'participant',reason});
+ assert.equal((await auth.getUser('participant-1')).customClaims.role,'participant');
+ await rejects(roles.setUserRole(who('participant-1'),{uid:'coach-1',role:'admin',reason}),'admin-required');
+ await rejects(roles.setUserRole(admin,{uid:'admin-1',role:'participant',reason}),'self-role-change');
+ await createProgram();await session();
+ await roles.setUserRole(admin,{uid:'coach-1',role:'participant',reason});
+ await rejects(catalogue.service.rotateEventSecret(who('coach-1','coach'),{eventId:'session-one'}),'event-role-required');
+ assert.equal((await db.collection('roleAudits').get()).size,4);
+});
+
+test('cancellation works after program unpublish, preserves RSVP and scan records, participant denied',async()=>{
+ await createProgram();await session();await db.doc('programs/program-one').update({status:'draft'});
+ await db.doc('checkins/session-one_participant-1').set({eventId:'session-one',uid:'participant-1',status:'confirmed'});
+ await rejects(catalogue.cancelSession(who('participant-1'),{eventId:'session-one',revision:1,reason}),'admin-required');
+ await catalogue.cancelSession(admin,{eventId:'session-one',revision:1,reason});
+ assert.equal((await db.doc('events/session-one').get()).data().status,'cancelled');
+ assert.equal((await db.doc('checkins/session-one_participant-1').get()).data().status,'confirmed');
+});

@@ -7,8 +7,7 @@ import { requireRealStagingProject, projectId } from './seed-staging.mjs';
 
 // Grants the admin role to one *existing* Auth user on the real staging
 // project, by email. There is no in-app way to create the first admin --
-// functions/src/admin_roles.ts's setUserRole callable explicitly refuses to
-// grant anything but "coach", and requires an existing admin to call it.
+// setUserRole requires an existing admin to call it.
 // This script is the trusted, out-of-band bootstrap for that first account.
 export async function bootstrapAdmin(email) {
   requireRealStagingProject();

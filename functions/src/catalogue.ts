@@ -24,9 +24,15 @@ function photo(value: unknown): string {
   }
   return result;
 }
+export function validateVenue(value: unknown) {
+  const v = input(value, ["name", "address", "suburb", "postcode", "state", "lat", "lng"]);
+  if ((v.lat == null) !== (v.lng == null)) fail("invalid-argument","invalid-location","Supply both latitude and longitude");
+  return {name:text(v.name,"venue name",200), address:text(v.address??"","address",500,0), suburb:text(v.suburb,"suburb",100),
+    postcode:text(v.postcode??"","postcode",10,0),state:choice(v.state,STATES,"state"),lat:v.lat==null?null:coordinate(v.lat,"lat"),lng:v.lng==null?null:coordinate(v.lng,"lng")};
+}
 export function validateProgram(value: unknown) {
   const d = input(value, ["name", "sport", "status", "venue", "timezone", "scheduleText", "coachUids", "coachNames", "notes", "photoUrl", "capacity", "registrationStatus"]);
-  const v = input(d.venue, ["name", "address", "suburb", "postcode", "state", "lat", "lng"]);
+  const v = validateVenue(d.venue);
   const zone = text(d.timezone, "timezone", 100);
   try { new Intl.DateTimeFormat("en-AU", { timeZone: zone }).format(); }
   catch { fail("invalid-argument", "invalid-timezone", "Choose a valid timezone"); }
@@ -38,9 +44,7 @@ export function validateProgram(value: unknown) {
   return {
     name: text(d.name, "name", 200), sport: choice(d.sport, ["tennis", "pickleball"], "sport"),
     status: choice(d.status, ["draft", "active", "archived"], "status"),
-    venue: { name: text(v.name, "venue name", 200), address: text(v.address ?? "", "address", 500, 0),
-      suburb: text(v.suburb, "suburb", 100), postcode: text(v.postcode ?? "", "postcode", 10, 0),
-      state: choice(v.state, STATES, "state"), lat: v.lat == null ? null : coordinate(v.lat, "lat"), lng: v.lng == null ? null : coordinate(v.lng, "lng") },
+    venue: v,
     timezone: zone, scheduleText: text(d.scheduleText, "schedule", 500),
     coachUids: strings(d.coachUids ?? [], "coachUids").map(uid), coachNames: strings(d.coachNames ?? [], "coachNames"),
     notes: text(d.notes ?? "", "notes", 4000, 0), photoUrl: photo(d.photoUrl), capacity,
@@ -76,7 +80,7 @@ export class CatalogueService {
       if (old.exists && d.revision !== old.data()!.revision) fail("aborted", "stale-program", "Program changed. Reload before saving");
       for (const coachId of program.coachUids) {
         const coach = (await tx.get(db.doc(`users/${coachId}`))).data();
-        if (!coach || coach.mergedInto !== null || coach.role !== "coach" || coach.coachEnabled === false)
+        if (!coach || coach.mergedInto !== null || !["coach", "admin"].includes(coach.role) || (coach.role === "coach" && coach.coachEnabled === false))
           fail("failed-precondition", "invalid-coach", "Assign an active coach account");
       }
       const at = this.service.stamp();
@@ -86,7 +90,7 @@ export class CatalogueService {
     return { programId };
   }
   async saveSession(who: Identity, value: unknown) {
-    const d = input(value, ["programId", "eventId", "startsAt", "endsAt", "status", "reason", "revision", "capacity", "registrationStatus", "notes", "photoUrl"]);
+    const d = input(value, ["programId", "eventId", "startsAt", "endsAt", "status", "reason", "revision", "capacity", "registrationStatus", "notes", "photoUrl", "venue", "coachUids", "timezone"]);
     const programId = id(d.programId, "programId"), eventId = d.eventId ? id(d.eventId, "eventId") : randomUUID();
     const startsAt = parseSessionTime(d.startsAt), endsAt = parseSessionTime(d.endsAt);
     const reason = text(d.reason, "reason", 1000), status = choice(d.status ?? "published", ["published", "cancelled"], "session status");
@@ -97,17 +101,24 @@ export class CatalogueService {
       if ((await this.service.actor(tx, who)).role !== "admin") fail("permission-denied", "admin-required", "Admin role required");
       const ref = db.doc(`events/${eventId}`), p = (await tx.get(db.doc(`programs/${programId}`))).data(), old = await tx.get(ref);
       if (!p || p.status !== "active") fail("failed-precondition", "inactive-program", "Publish an active program first");
-      if (p.venue.lat == null || p.venue.lng == null) fail("failed-precondition", "missing-location", "Verify the venue coordinates before scheduling");
-      if (p.coachUids.length === 0) fail("failed-precondition", "missing-coach", "Assign a coach before scheduling");
+      if ((d.venue === undefined && (p.venue.lat == null || p.venue.lng == null))) fail("failed-precondition", "missing-location", "Verify the venue coordinates before scheduling");
+      const venue = d.venue === undefined ? p.venue : validateVenue(d.venue);
+      const coachUids = d.coachUids === undefined ? p.coachUids : strings(d.coachUids, "coachUids", 10).map(uid);
+      const timezone = d.timezone === undefined ? p.timezone : text(d.timezone,"timezone",100);
+      try { new Intl.DateTimeFormat("en-AU",{timeZone:timezone}).format(); } catch { fail("invalid-argument","invalid-timezone","Choose a valid timezone"); }
+      if (venue.lat == null || venue.lng == null) fail("failed-precondition","missing-location","Verify the venue coordinates");
+      if (coachUids.length === 0) fail("failed-precondition", "missing-coach", "Assign a coach before scheduling");
       if (old.exists && (old.data()!.programId !== programId || old.data()!.revision !== d.revision))
         fail("aborted", "stale-session", "Session changed. Reload before saving");
       if (old.exists && old.data()!.startsAt.toMillis() <= this.service.now())
         fail("failed-precondition", "session-started", "Started sessions retain their original details");
       if (startsAt.toMillis() <= this.service.now()) fail("invalid-argument", "past-session", "Create a future session");
-      for (const coachId of p.coachUids) {
+      const coachNames: string[] = [];
+      for (const coachId of coachUids) {
         const coach = (await tx.get(db.doc(`users/${coachId}`))).data();
-        if (!coach || coach.role !== "coach" || coach.coachEnabled === false || coach.mergedInto !== null)
+        if (!coach || !["coach", "admin"].includes(coach.role) || (coach.role === "coach" && coach.coachEnabled === false) || coach.mergedInto !== null)
           fail("failed-precondition", "invalid-coach", "Assign an active coach account");
+        coachNames.push(coach.firstName || "Coach");
       }
       if (old.exists && !(await tx.get(db.collection("checkins").where("eventId", "==", eventId).limit(1))).empty)
         fail("failed-precondition", "session-started", "Attendance has begun; retain the original session details");
@@ -117,8 +128,8 @@ export class CatalogueService {
       const rsvps = await tx.get(db.collection("rsvps").where("eventId", "==", eventId).where("cancelledAt", "==", null));
       if (capacity != null && rsvps.size > (capacity as number)) fail("failed-precondition", "capacity-below-reservations", "Capacity is below existing reservations");
       const at = this.service.stamp();
-      const event = { programId, catalogueManaged: true, name: p.name, sport: p.sport, venue: p.venue, timezone: p.timezone,
-        notes: d.notes === undefined ? p.notes : text(d.notes, "notes", 4000, 0), photoUrl: d.photoUrl === undefined ? p.photoUrl : photo(d.photoUrl), coachNames: p.coachNames, coachUids: p.coachUids,
+      const event = { programId, catalogueManaged: true, name: p.name, sport: p.sport, venue, timezone,
+        notes: d.notes === undefined ? p.notes : text(d.notes, "notes", 4000, 0), photoUrl: d.photoUrl === undefined ? p.photoUrl : photo(d.photoUrl), coachNames, coachUids,
         capacity, registrationStatus, bookedCount: rsvps.size, startsAt, endsAt, status,
         code: old.data()?.code ?? `s-${eventId}`, requiredFormIds: old.data()?.requiredFormIds ?? ["conduct", "waiver"],
         geofenceRadiusM: old.data()?.geofenceRadiusM ?? 150, createdAt: old.data()?.createdAt ?? at,
@@ -127,6 +138,20 @@ export class CatalogueService {
       tx.create(db.collection("catalogueAudits").doc(), { kind: "session", eventId, programId, actorUid: who.uid, reason, before: old.data() ?? null, after: event, createdAt: at });
     });
     return { eventId };
+  }
+  async cancelSession(who: Identity, value: unknown) {
+    const d=input(value,["eventId","reason","revision"]), eventId=id(d.eventId,"eventId"), reason=text(d.reason,"reason",1000);
+    const {db}=this.service;
+    await db.runTransaction(async tx=>{
+      if((await this.service.actor(tx,who)).role!=="admin")fail("permission-denied","admin-required","Admin role required");
+      const ref=db.doc(`events/${eventId}`), e=await tx.get(ref);
+      if(!e.exists)fail("not-found","event-not-found","Session not found");
+      if(e.data()!.revision!==d.revision)fail("aborted","stale-session","Reload the session before cancelling");
+      if(e.data()!.endsAt.toMillis()<=this.service.now())fail("failed-precondition","session-ended","Ended sessions retain their status");
+      const at=this.service.stamp();
+      tx.update(ref,{status:"cancelled",registrationStatus:"closed",updatedAt:at,revision:(e.data()!.revision??0)+1});
+      tx.create(db.collection("catalogueAudits").doc(),{kind:"session-cancel",eventId,actorUid:who.uid,reason,before:e.data(),createdAt:at});
+    });return {eventId,status:"cancelled"};
   }
   async setRsvp(who: Identity, value: unknown) {
     const d = input(value, ["eventId", "cancel"]), eventId = id(d.eventId, "eventId");
