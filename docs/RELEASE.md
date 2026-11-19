@@ -1,3 +1,13 @@
+Current iOS tester build: **1.0.2 (12)**, delivered to App Store Connect on 19 November 2026 at 15:13 Sydney time and verified Testing in internal group `boris`; full status is recorded in [UPLOADS.md](UPLOADS.md). Build 12 includes discoverable admin/coach tools and real staging configuration. The script now requires **13 or higher** for another build; check the consoles first. Native IDs/signing remain unchanged. Exact staff tap paths are in [ADMIN_TOOLS.md](ADMIN_TOOLS.md).
+
+For the next iOS staging build (after rechecking the unused number):
+
+```sh
+FLUTTER_BIN=/Users/borisryavkin/technical/flutter/flutter/bin/flutter ./scripts/build-ios-staging.sh --build-name 1.0.2 --build-number 13
+```
+
+This validates `config/staging.ios.json` and uses `ios/ExportOptions.internal.plist`; do not omit staging config or enable emulator flags. Android's equivalent remains `./scripts/build-android-staging.sh --build-name 1.0.2 --build-number 13` using `config/staging.android.json`, but no Android upload was requested/performed for this staff-tools increment.
+
 # Tester release preparation
 
 Version **1.0.2 (10)** is uploaded: TestFlight shows Testing in internal group `boris`, and Play Internal testing shows Active. See [UPLOADS.md](UPLOADS.md). The next build must be **11 or higher**, after checking both consoles; scripts now default to version `1.0.2`. Earlier sections retain historical preparation details.
@@ -194,3 +204,7 @@ Check the actual IPA filename rather than assuming it. [Firebase iOS CLI](https:
 Remaining owner inputs/actions: confirm Apple team, staging project data classification and registered Firebase app configs; confirm Android package availability, historical version codes and upload certificate; review app privacy disclosures/Data Safety, support/privacy URLs and encryption/export compliance; enable needed capabilities with existing signing; supply Google OAuth URL configuration and SHA fingerprints; approve backend readiness/costs; approve website association changes; nominate new internal testers/group. No existing external testers are to receive these builds.
 
 See [MIGRATION.md](MIGRATION.md) before connecting existing member data. This preparation task performed no legacy production migration, distribution or deployment; concurrent backend deployment notes are separate and unverified here.
+
+### Build 12 export questionnaire
+
+Build 12 was initially Missing Compliance because its Info.plist does not contain an export declaration. Inspected Runner and confirmed BoringSSL is bundled through dependencies. Declared standard encryption in addition to OS encryption, with no France distribution for this Australia-only internal build. Revisit this classification before any broader distribution, changed crypto dependencies or France availability. Do not blindly add an OS-only/no-encryption assertion. [Apple documentation](https://developer.apple.com/help/app-store-connect/reference/app-information/export-compliance-documentation-for-encryption/).

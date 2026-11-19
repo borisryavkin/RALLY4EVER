@@ -5,7 +5,7 @@
 - New staff/cancellation callables, updated audited role grants with stale-token revocation, per-session overrides and emulator regression tests. Details and remaining limits in [ADMIN_TOOLS.md](ADMIN_TOOLS.md).
 - Validation: analyzer clean; Flutter 111 passed, 1 intentional emulator-only skip; 34 isolated catalogue/rules tests passed; 20 original rules/Auth tests and 27 Functions emulator tests passed; 14 Functions unit tests and 10 release-guard tests passed. Seven new staff widget tests cover role entries, profile-stream routing readiness, legacy session editor, QR/roster confirmations, revocation and unassigned-session denial.
 - Real staging: bootstrapped existing owner Google account without changing UID/profile identity; actual app-issued ID token reports admin. HTTP 200 for admin listPrograms (61), listUsers (4), listStaffSessions (12). Existing participant Google account gets HTTP 403 / PERMISSION_DENIED for all three. No participant/Auth/profile/event deletion; no program/session migration. Existing project only; no billing upgrade or new credential created.
-- Internal TestFlight build preparation/upload tracked in [UPLOADS.md](UPLOADS.md).
+- Uploaded iOS 1.0.2 (12), source b63bc09, and verified Testing in internal group boris. IPA embeds rally4ever-3adaf and registered app ID; signature valid; internal-only export. No external-group/production/Android release. Full checksum and Apple warning/compliance notes in [UPLOADS.md](UPLOADS.md). Next build guard requires 13+.
 
 ## Brand update v5: Jellee/Inter typography, colour contrast fixes, real logo — 19 November 2026
 

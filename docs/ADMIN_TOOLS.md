@@ -45,3 +45,7 @@ Firestore rules are unchanged: role/identity fields stay protected; participants
 ## Validation and release evidence
 
 See the task's latest entry in [CHANGELOG.md](CHANGELOG.md) and [UPLOADS.md](UPLOADS.md) for completed test counts, real HTTP results and the uploaded build. Run the read-only local access probe with `node scripts/check-staff-staging.mjs`, then open `http://localhost:57821`; choose existing Google accounts only. Tokens remain in browser memory; local `/tmp/r4e-staging-access-proof-*.json` reports contain claims/status/counts, never tokens or keys. No browser-hosted admin deployment or new Firebase Web app registration is included.
+
+### Real-project check results
+
+On 19 November: bootstrap preserved owner UID `C0m1PlHfF3eXVsKoJX78U3HPmyt1`; actual Google/Firebase ID token returned `role=admin`, `roles=[participant,admin]`. HTTP results: admin `listPrograms` 200 (61), `listUsers` 200 (4), `listStaffSessions` 200 (12); an existing participant received 403 / `PERMISSION_DENIED` for all three. The real Flutter app loaded those admin screens and issued a real Epping-session QR. Before/after counts remained 4 profiles, 61 programs, 12 events and 5 Auth accounts. No real participant was promoted/demoted for the test. Emulator tests separately verify role grants, revoked-coach stale-token rejection, Workspace-email-only rejection, admin-any/coach-assigned QR access, edits and cancellation preserving scan records.
