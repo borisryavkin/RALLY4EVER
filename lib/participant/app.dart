@@ -1799,7 +1799,8 @@ class _ParticipantAppState extends State<ParticipantApp>
                   radius: 28,
                   textStyle: const TextStyle(
                     color: Colors.white,
-                    fontFamily: 'Figtree',
+                    fontFamily: 'Jellee',
+                    fontWeight: FontWeight.w700,
                     fontSize: 24,
                   ),
                 ),

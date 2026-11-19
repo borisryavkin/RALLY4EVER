@@ -49,6 +49,21 @@ def validate(flavor, encoded, root, mode='debug'):
         for key in ('FIREBASE_API_KEY', 'FIREBASE_APP_ID', 'FIREBASE_MESSAGING_SENDER_ID'):
             if not values.get(key, '').strip() or any(marker in values[key].upper() for marker in ('REPLACE', 'PLACEHOLDER', 'YOUR_')):
                 raise ValueError('Registered platform-specific staging Firebase config is required')
+    if mode != 'debug':
+        # Real (profile/release) builds must ship the real brand fonts, not
+        # silently fall back to the platform default -- debug/test builds
+        # are exempt so tests keep running even before the font files exist.
+        required = [
+            'assets/fonts/Jellee_1223/TTF/Jellee-Bold.ttf',
+            'assets/fonts/Inter.ttf',
+        ]
+        missing = [path for path in required if not (root / path).is_file()]
+        if missing:
+            raise ValueError(
+                'Missing brand font file(s) for a non-debug build: '
+                + ', '.join(missing)
+                + ' -- supply them (see pubspec.yaml) before building release/profile'
+            )
     return flavor
 
 

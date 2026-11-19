@@ -25,6 +25,12 @@ class BuildGuardTests(unittest.TestCase):
         self.config = dict(APP_ENV='staging', STAGING_PROJECT_ID='rally4ever-3adaf',
                            FIREBASE_PROJECT_ID='rally4ever-3adaf', FIREBASE_API_KEY='fixture',
                            FIREBASE_APP_ID='fixture', FIREBASE_MESSAGING_SENDER_ID='fixture')
+        # validate() requires the real brand fonts to exist for non-debug
+        # builds; stub presence only (content is irrelevant to that check).
+        for font in ('assets/fonts/Jellee_1223/TTF/Jellee-Bold.ttf', 'assets/fonts/Inter.ttf'):
+            path = self.root / font
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(b'')
 
     def test_demo_only_artifacts(self):
         self.assertEqual(guard.validate('emulator', encode(dict(USE_FIREBASE_EMULATORS='true')), self.root), 'emulator')
@@ -65,6 +71,21 @@ class BuildGuardTests(unittest.TestCase):
                     guard.validate('staging', encode(incomplete), self.root, mode)
             with self.assertRaises(ValueError):
                 guard.validate('emulator', encode({'USE_FIREBASE_EMULATORS': 'true'}), self.root, mode)
+
+    def test_missing_brand_fonts_fail_release_profile_but_not_debug(self):
+        (self.root / 'assets/fonts/Inter.ttf').unlink()
+        for mode in ('release', 'profile'):
+            with self.subTest(mode=mode):
+                with self.assertRaises(ValueError) as cm:
+                    guard.validate('staging', encode(self.config), self.root, mode)
+                self.assertIn('Missing brand font file', str(cm.exception))
+                self.assertIn('Inter.ttf', str(cm.exception))
+        # debug never needs the real fonts -- the platform default is fine
+        # so tests keep running even without them.
+        self.assertEqual(
+            guard.validate('emulator', encode(dict(USE_FIREBASE_EMULATORS='true')), self.root, 'debug'),
+            'emulator',
+        )
 
     def test_xcode_and_gradle_wiring(self):
         root = Path(__file__).resolve().parents[2]

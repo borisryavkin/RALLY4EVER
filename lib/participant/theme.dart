@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
 
-const navy = Color(0xff001751);
-const coral = Color(0xffff4b4c);
-const pink = Color(0xffffb7b7);
-const cream = Color(0xfff2eeeb);
-const slate = Color(0xff4d5b80);
-const grey = Color(0xff929292);
+import '../theme/colors.dart';
+import '../theme/typography.dart';
+
+export '../theme/colors.dart';
 
 ThemeData rallyTheme() => ThemeData(
   useMaterial3: true,
@@ -19,28 +17,9 @@ ThemeData rallyTheme() => ThemeData(
     onPrimary: Colors.white,
   ),
   textTheme: const TextTheme(
-    headlineLarge: TextStyle(
-      fontFamily: 'Figtree',
-      fontSize: 34,
-      height: 1.05,
-      fontWeight: FontWeight.w800,
-      color: navy,
-      letterSpacing: -1,
-    ),
-    headlineMedium: TextStyle(
-      fontFamily: 'Figtree',
-      fontSize: 27,
-      height: 1.12,
-      fontWeight: FontWeight.w800,
-      color: navy,
-      letterSpacing: -.6,
-    ),
-    titleLarge: TextStyle(
-      fontFamily: 'Figtree',
-      fontSize: 20,
-      fontWeight: FontWeight.w800,
-      color: navy,
-    ),
+    headlineLarge: AppTypography.display,
+    headlineMedium: AppTypography.h1,
+    titleLarge: AppTypography.h2,
     titleMedium: TextStyle(fontWeight: FontWeight.w700, color: navy),
     bodyMedium: TextStyle(fontSize: 14, height: 1.5, color: slate),
     bodySmall: TextStyle(fontSize: 12, height: 1.45, color: slate),
@@ -62,11 +41,7 @@ ThemeData rallyTheme() => ThemeData(
     style: FilledButton.styleFrom(
       minimumSize: const Size.fromHeight(48),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-      textStyle: const TextStyle(
-        fontFamily: 'Inter',
-        fontWeight: FontWeight.w700,
-        fontSize: 14,
-      ),
+      textStyle: AppTypography.button,
     ),
   ),
   outlinedButtonTheme: OutlinedButtonThemeData(
@@ -82,12 +57,7 @@ ThemeData rallyTheme() => ThemeData(
     foregroundColor: navy,
     elevation: 0,
     centerTitle: false,
-    titleTextStyle: TextStyle(
-      fontFamily: 'Figtree',
-      fontWeight: FontWeight.w700,
-      fontSize: 20,
-      color: navy,
-    ),
+    titleTextStyle: AppTypography.h2,
   ),
   navigationBarTheme: const NavigationBarThemeData(
     backgroundColor: Colors.white,
@@ -113,7 +83,14 @@ class Panel extends StatelessWidget {
     borderRadius: BorderRadius.circular(18),
     child: Padding(
       padding: EdgeInsets.all(padding),
-      child: SizedBox(width: double.infinity, child: child),
+      // Every brand background colour except navy itself needs navy text to
+      // meet AA contrast (e.g. plain slate body text on a pink panel is
+      // only ~4.07:1); default to that here so no caller has to remember to
+      // override text colour per panel background.
+      child: DefaultTextStyle.merge(
+        style: TextStyle(color: color == navy ? Colors.white : navy),
+        child: SizedBox(width: double.infinity, child: child),
+      ),
     ),
   );
 }

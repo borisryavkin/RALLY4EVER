@@ -1129,9 +1129,9 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
           Text(
             'Checked in. Waiting for your coach',
             style: TextStyle(
-              fontFamily: 'Figtree',
+              fontFamily: 'Jellee',
               fontSize: 26,
-              fontWeight: FontWeight.w800,
+              fontWeight: FontWeight.w700,
               color: navy,
             ),
           ),
