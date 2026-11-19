@@ -10,12 +10,12 @@ service firebase.storage {
       return request.auth != null && request.auth.token.email_verified == true;
     }
     function owner(uid) { return signedIn() && request.auth.uid == uid; }
-    // Mirrors firestore.rules' role()/admin(): the Firestore profile's role
-    // field, not the Auth claim -- see that file's comment on why.
+    // Both the admin claim and protected profile must authorize access.
     function role() {
       return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.role;
     }
-    function admin() { return signedIn() && role() == 'admin'; }
+    function admin() { return signedIn() && request.auth.token.get('role', '') == 'admin' && role() == 'admin'
+      && firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data.get('mergedInto', null) == null; }
     // Same relationship firestore.rules' private/contact already grants
     // phone/emergency-contact read on: a coach actually running an event
     // this person is involved in, maintained server-side in
@@ -30,6 +30,12 @@ service firebase.storage {
         && request.resource.size <= 5 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
       allow delete: if owner(uid);
+    }
+    match /venues/{venueId}/{fileName} {
+      allow read: if signedIn();
+      allow create, update: if admin() && request.resource.size <= 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/(jpeg|png|webp)');
+      allow delete: if admin();
     }
     match /{allPaths=**} { allow read, write: if false; }
   }

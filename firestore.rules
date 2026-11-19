@@ -14,7 +14,7 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data
         .get('role', request.auth.token.get('role', 'participant'));
     }
-    function admin() { return active() && role() == 'admin'; }
+    function admin() { return active() && role() == 'admin' && request.auth.token.get('role', '') == 'admin'; }
     function own(uid) { return active() && request.auth.uid == uid; }
     function coachClaim() {
       return request.auth.token.get('role', '') == 'coach'
@@ -133,6 +133,8 @@ service cloud.firestore {
       allow read: if active() && (resource.data.status in ['active', 'archived'] || admin());
       allow write: if false; // Validated, audited admin callables only.
     }
+    match /venues/{venueId} { allow read: if active(); allow write: if false; }
+    match /demoRemovalBackups/{backupId} { allow read: if admin(); allow write: if false; }
     match /catalogueAudits/{auditId} { allow read: if admin(); allow write: if false; }
     function legacyEvent(eventId) {
       return !get(/databases/$(database)/documents/events/$(eventId)).data.get('catalogueManaged', false);

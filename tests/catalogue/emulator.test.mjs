@@ -299,3 +299,56 @@ test('session save and cancel need no typed reason and still record actor/time/b
  const audits=(await db.collection('catalogueAudits').where('eventId','==','automatic-audit').get()).docs.map(d=>d.data());
  assert.equal(audits.length,2);assert.ok(audits.every(a=>a.actorUid==='admin-1'&&a.createdAt));assert.ok(audits.some(a=>a.after?.status==='published'));
 });
+
+const {AdminConsoleService,venueId}=require('./lib/admin_console');
+const consoleService=()=>new AdminConsoleService(catalogue.service);
+const adminSession=()=>({...Object.fromEntries(Object.entries(program()).filter(([k])=>k!=='scheduleText')),status:'draft',code:'test-session-code',startsAt:new Date(now+86400000).toISOString(),endsAt:new Date(now+90000000).toISOString(),geofenceRadiusM:150,requiredFormIds:[],isDemo:true,seedBatch:'admin-tests',programId:null});
+test('web admin requires admin claim AND active profile for every endpoint',async()=>{
+ const c=consoleService();for(const fn of [()=>c.catalogue(who('participant-1'),{}),()=>c.saveSession(who('participant-1'),{changes:{}}),()=>c.saveVenue(who('participant-1'),{}),()=>c.demo(who('participant-1'),{})])await rejects(fn,'admin-claim-required');
+ await rejects(()=>c.catalogue(who('admin-1'),{}),'admin-claim-required');
+ await db.doc('users/admin-1').update({role:'participant'});await rejects(()=>c.catalogue(admin,{}),'admin-required');
+});
+test('admin session fields, derived counts, revisions and before/after audit are server controlled',async()=>{
+ const c=consoleService();await c.saveSession(admin,{eventId:'web-session',changes:adminSession()});
+ await c.saveSession(admin,{eventId:'web-session',revision:1,changes:{notes:'Updated without reason',status:'published'}});
+ const d=(await db.doc('events/web-session').get()).data();assert.equal(d.revision,2);assert.equal(d.bookedCount,0);assert.equal(d.coachNames[0],'coach-1');assert.equal(d.updatedBy,'admin-1');assert.ok(d.updatedAt instanceof Timestamp);
+ await rejects(()=>c.saveSession(admin,{eventId:'web-session',revision:1,changes:{notes:'Stale'}}),'stale-session');
+ await rejects(()=>c.saveSession(admin,{eventId:'web-session',revision:2,changes:{bookedCount:999}}),'unknown-field');
+ assert.equal((await db.collection('catalogueAudits').where('kind','==','admin-session').get()).size,2);
+});
+test('session validation protects capacity, forms, duplicate codes and original scan context',async()=>{
+ const c=consoleService();await c.saveSession(admin,{eventId:'web-session',changes:adminSession()});
+ await db.doc('rsvps/web-session_participant-1').set({eventId:'web-session',uid:'participant-1',cancelledAt:null});
+ await db.doc('rsvps/web-session_participant-2').set({eventId:'web-session',uid:'participant-2',cancelledAt:null});
+ await rejects(()=>c.saveSession(admin,{eventId:'web-session',revision:1,changes:{capacity:1}}),'capacity-below-reservations');
+ await rejects(()=>c.saveSession(admin,{changes:{...adminSession(),code:'test-session-code'}}),'duplicate-code');
+ await rejects(()=>c.saveSession(admin,{changes:{...adminSession(),code:'another',requiredFormIds:['missing']}}),'invalid-forms');
+ await db.doc('checkins/web-session_participant-1').set({eventId:'web-session',uid:'participant-1',status:'confirmed',scannedAt:Timestamp.now()});
+ await rejects(()=>c.saveSession(admin,{eventId:'web-session',revision:1,changes:{geofenceRadiusM:200}}),'attendance-started');
+ await c.saveSession(admin,{eventId:'web-session',revision:1,changes:{notes:'Original scan preserved',capacity:3}});
+ assert.equal((await db.doc('checkins/web-session_participant-1').get()).data().status,'confirmed');
+});
+test('venue catalogue includes legacy courts and uploaded photos propagate without moving original scans',async()=>{
+ await createProgram();await session();const c=consoleService(),key=venueId(program().venue);const data=await c.catalogue(admin,{});assert.equal(data.venues.length,1);
+ await db.doc('events/started').set({...adminSession(),venue:program().venue,startsAt:Timestamp.fromMillis(now-60000),endsAt:Timestamp.fromMillis(now+60000)});
+ const photoUrl=`gs://rally4ever-3adaf.firebasestorage.app/venues/${key}/test.jpg`;
+ await c.saveVenue(admin,{venueId:key,revision:0,venue:{...program().venue,code:'COURT-ONE',lat:-33.89,photoUrl}});
+ assert.equal((await db.doc('programs/program-one').get()).data().photoUrl,photoUrl);
+ assert.equal((await db.doc('events/session-one').get()).data().venue.lat,-33.89);
+ assert.equal((await db.doc('events/started').get()).data().venue.lat,program().venue.lat);
+ assert.equal((await db.doc('events/started').get()).data().photoUrl,photoUrl);
+ await rejects(()=>c.saveVenue(admin,{venueId:key,revision:0,venue:{...program().venue,code:'COURT-ONE'}}),'stale-venue');
+});
+test('demo removal previews exact IDs, detects changes and backs up before deleting only demo sessions',async()=>{
+ const c=consoleService();await c.saveSession(admin,{eventId:'demo-one',changes:adminSession()});await c.saveSession(admin,{eventId:'real-one',changes:{...adminSession(),code:'real-one',isDemo:false}});
+ const preview=await c.demo(admin,{});assert.deepEqual(preview.eventIds,['demo-one']);
+ await rejects(()=>c.demo(admin,{apply:true,expectedIds:[]}), 'demo-changed');
+ const result=await c.demo(admin,{apply:true,expectedIds:preview.eventIds});assert.equal(result.removed,1);assert.equal((await db.doc('events/real-one').get()).exists,true);assert.equal((await db.collection('demoRemovalBackups').get()).size,1);assert.equal((await db.collection('users').get()).size,accounts.length);
+});
+test('rules deny stale or missing admin claim on private admin records and drafts',async()=>{
+ await createProgram({status:'draft'},'private-draft');
+ const missing=env.authenticatedContext('admin-1',{email_verified:true}).firestore();
+ await assertFails(getDoc(doc(missing,'programs/private-draft')));
+ const valid=env.authenticatedContext('admin-1',{email_verified:true,role:'admin'}).firestore();await assertSucceeds(getDoc(doc(valid,'programs/private-draft')));
+ await db.doc('users/admin-1').update({role:'participant'});await assertFails(getDoc(doc(valid,'programs/private-draft')));
+});

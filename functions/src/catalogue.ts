@@ -19,15 +19,15 @@ function photo(value: unknown): string {
   if (result) {
     let url: URL;
     try { url = new URL(result); } catch { fail("invalid-argument", "invalid-photo", "Use an HTTPS photo URL"); }
-    if (url!.protocol !== "https:" || url!.username || url!.password)
+    if ((url!.protocol !== "https:" && !/^gs:\/\/rally4ever-3adaf\.firebasestorage\.app\/venues\//.test(result)) || url!.username || url!.password)
       fail("invalid-argument", "invalid-photo", "Use an HTTPS photo URL");
   }
   return result;
 }
 export function validateVenue(value: unknown) {
-  const v = input(value, ["name", "address", "suburb", "postcode", "state", "lat", "lng"]);
+  const v = input(value, ["name", "address", "suburb", "postcode", "state", "lat", "lng", "id", "code", "photoUrl"]);
   if ((v.lat == null) !== (v.lng == null)) fail("invalid-argument","invalid-location","Supply both latitude and longitude");
-  return {name:text(v.name,"venue name",200), address:text(v.address??"","address",500,0), suburb:text(v.suburb,"suburb",100),
+  return {...(v.id?{id:id(v.id,'venueId')}:{}),...(v.code?{code:id(v.code,'venue code')}:{}),...(v.photoUrl?{photoUrl:photo(v.photoUrl)}:{}),name:text(v.name,"venue name",200), address:text(v.address??"","address",500,0), suburb:text(v.suburb,"suburb",100),
     postcode:text(v.postcode??"","postcode",10,0),state:choice(v.state,STATES,"state"),lat:v.lat==null?null:coordinate(v.lat,"lat"),lng:v.lng==null?null:coordinate(v.lng,"lng")};
 }
 export function validateProgram(value: unknown) {
@@ -73,7 +73,7 @@ export class CatalogueService {
   async saveProgram(who: Identity, value: unknown) {
     const d = input(value, ["programId", "program", "reason", "revision"]), program = validateProgram(d.program);
     const programId = d.programId ? id(d.programId, "programId") : randomUUID();
-    const reason = text(d.reason, "reason", 1000), { db } = this.service;
+    const reason = d.reason === undefined ? "Program updated" : text(d.reason, "reason", 1000), { db } = this.service;
     await db.runTransaction(async (tx) => {
       if ((await this.service.actor(tx, who)).role !== "admin") fail("permission-denied", "admin-required", "Admin role required");
       const ref = db.doc(`programs/${programId}`), old = await tx.get(ref);

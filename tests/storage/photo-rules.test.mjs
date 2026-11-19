@@ -9,8 +9,8 @@ let env;
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xdb, ...new Array(100).fill(0)]);
 const jpegMeta = { contentType: 'image/jpeg' };
 
-const storage = (uid) =>
-  env.authenticatedContext(uid, { email_verified: true }).storage();
+const storage = (uid, role = uid === 'admin-1' ? 'admin' : 'participant') =>
+  env.authenticatedContext(uid, { email_verified: true, role }).storage();
 
 async function seedProfile(uid, role, extra = {}) {
   await env.withSecurityRulesDisabled(async (ctx) => {
@@ -88,4 +88,17 @@ test('owner can delete their own photo; another user cannot', async () => {
   await env.withSecurityRulesDisabled((ctx) => uploadBytes(ref(ctx.storage(), mine.fullPath), jpeg, jpegMeta));
   await assertFails(deleteObject(ref(storage('participant-2'), mine.fullPath)));
   await assertSucceeds(deleteObject(mine));
+});
+
+test('venue photos require admin claim AND active profile; authenticated users can read', async () => {
+ const path='venues/court-one/photo.jpg';
+ await assertSucceeds(uploadBytes(ref(storage('admin-1'),path),jpeg,jpegMeta));
+ await assertSucceeds(getBytes(ref(storage('participant-1'),path)));
+ await assertFails(uploadBytes(ref(storage('participant-1'),path),jpeg,jpegMeta));
+ await assertFails(uploadBytes(ref(storage('coach-1'),path),jpeg,jpegMeta));
+ await assertFails(uploadBytes(ref(storage('admin-1','participant'),path),jpeg,jpegMeta));
+ await assertFails(getBytes(ref(env.unauthenticatedContext().storage(),path)));
+ await assertFails(uploadBytes(ref(storage('admin-1'),'venues/court-one/code.html'),jpeg,{contentType:'text/html'}));
+ await seedProfile('admin-1','participant');
+ await assertFails(uploadBytes(ref(storage('admin-1'),path),jpeg,jpegMeta));
 });

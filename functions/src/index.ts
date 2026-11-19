@@ -1,3 +1,4 @@
+import {AdminConsoleService} from './admin_console';
 import { StaffService } from './staff';
 import { CatalogueService } from "./catalogue";
 import { initializeApp } from "firebase-admin/app";
@@ -235,3 +236,9 @@ export const listStaffSessions = callable((who, data) => staff.listStaffSessions
 export const getEventConsole = callable((who, data) => staff.getEventConsole(who, data));
 
 export const cancelSession = callable((who, data) => catalogue.cancelSession(who, data));
+
+const adminConsole = new AdminConsoleService(service);
+export const adminCatalogue = callable((who,data)=>adminConsole.catalogue(who,data));
+export const adminSaveSession = callable((who,data)=>adminConsole.saveSession(who,data));
+export const adminSaveVenue = callable((who,data)=>adminConsole.saveVenue(who,data));
+export const adminRemoveDemo = callable((who,data)=>adminConsole.demo(who,data));

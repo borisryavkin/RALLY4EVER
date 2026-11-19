@@ -54,7 +54,8 @@ export class AttendanceService {
         "Register or resolve your profile first",
       );
     let role = p.role ?? who.role ?? "participant";
-    if (role === "coach" && (who.role !== "coach" || p.coachEnabled === false))
+    if ((role === "admin" && who.role !== "admin") ||
+        (role === "coach" && (who.role !== "coach" || p.coachEnabled === false)))
       role = "participant";
     return { ...p, role };
   }
