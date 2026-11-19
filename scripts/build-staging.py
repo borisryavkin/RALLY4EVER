@@ -16,8 +16,8 @@ def main():
     parser.add_argument('--config', type=Path)
     parser.add_argument('--check-only', action='store_true', help='Validate without starting Flutter')
     args = parser.parse_args()
-    if args.build_number < 7:
-        parser.error('Builds through 6 are consumed; recheck stores and choose 7 or higher')
+    if args.build_number < 10:
+        parser.error('Build 9 is consumed (uploaded); recheck stores and choose 10 or higher')
     root = Path(__file__).resolve().parent.parent
     config = (args.config or root / f'config/staging.{args.platform}.json').resolve()
     # The validator reads JSON itself; config values never appear in commands/logs.

@@ -22,7 +22,10 @@ val keystoreProperties = Properties().apply {
 
 android {
     namespace = "org.rally4ever"
-    compileSdk = flutter.compileSdkVersion
+    // geocoding_android requires compiling against API 34+; the installed
+    // Flutter SDK's own flutter.compileSdkVersion default (33) is too old.
+    // targetSdk/minSdk are unaffected -- see Gradle's own advice on this.
+    compileSdk = maxOf(flutter.compileSdkVersion, 34)
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

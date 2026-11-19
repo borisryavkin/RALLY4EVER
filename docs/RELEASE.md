@@ -1,6 +1,6 @@
 # Tester release preparation
 
-Builds through 6 have now been uploaded to internal testing; see [UPLOADS.md](UPLOADS.md). Use the guarded scripts below for the next build (7 or higher, after checking both consoles). Earlier sections retain historical preparation details.
+Builds through 6 have been uploaded to internal testing; see [UPLOADS.md](UPLOADS.md). Builds 7 and 8 were built locally (sign-in-startup-failure fix) but never uploaded, superseded by build 9 (location/photos/banner-removal batch). Use the guarded scripts below for the next build (10 or higher, after checking both consoles). Earlier sections retain historical preparation details.
 
 ## Upload update — 17 November 2026
 
@@ -80,18 +80,18 @@ Use the opt-in phone-web commands in [SETUP.md](SETUP.md) for LAN. Emulator buil
 
 Release and profile builds now fail at build time without explicit staging Firebase configuration. Emulator mode is debug-only: an unflavored release/profile build cannot fall back to it. Xcode validates before Flutter compilation; Gradle passes each variant's build mode to the same guard. A constant-evaluation check also rejects invalid non-debug Dart compilations, including web. Missing config, mixed emulator/LAN flags, and the wrong project are rejected without contacting Firebase.
 
-Use the scripts so flavor/config flags cannot be forgotten. They validate the ignored platform JSON before invoking Flutter, require an unused build number, and never upload or deploy. Builds through **6** have been uploaded; recheck both stores before choosing **7 or higher**:
+Use the scripts so flavor/config flags cannot be forgotten. They validate the ignored platform JSON before invoking Flutter, require an unused build number, and never upload or deploy. Build 6 has been uploaded; 7 and 8 were built but not uploaded; recheck both stores before choosing **10 or higher** for the next one:
 
 ```sh
-./scripts/build-ios-staging.sh --build-number 7
-./scripts/build-android-staging.sh --build-number 7
+./scripts/build-ios-staging.sh --build-number 10
+./scripts/build-android-staging.sh --build-number 10
 
 # Validate configuration only; no compilation, signing or upload:
-./scripts/build-ios-staging.sh --build-number 7 --check-only
+./scripts/build-ios-staging.sh --build-number 10 --check-only
 
 # Local profile build (not a TestFlight artifact):
-./scripts/build-ios-staging.sh --build-number 7 --mode profile
-./scripts/build-android-staging.sh --build-number 7 --mode profile
+./scripts/build-ios-staging.sh --build-number 10 --mode profile
+./scripts/build-android-staging.sh --build-number 10 --mode profile
 ```
 
 Defaults: release mode, version `1.0.1`, and `config/staging.ios.json` or `config/staging.android.json`. Use `--config /private/path/config.json` for another local config, `--build-name` for an approved version, and `FLUTTER_BIN=/path/to/flutter` for a specific SDK. Keep config and signing keys out of git. Profile photos are optional: `FIREBASE_STORAGE_BUCKET` may name an existing configured bucket, but must not be guessed. Without it, Auth/Firestore/Functions still start; photo actions report that photos are unavailable. Do not enable paid Storage just to unblock sign-in. Startup failures now stay on a retryable connection screen with a support code, rather than displaying emulator instructions in TestFlight.
