@@ -3,15 +3,18 @@ import { initializeApp, deleteApp, applicationDefault } from 'firebase-admin/app
 import { getFirestore } from 'firebase-admin/firestore';
 import { requireRealStagingProject, projectId } from './seed-staging.mjs';
 
-// Deletes only events/{id} docs with isDemo === true, and their rsvps and
-// checkins (so no orphaned attendance references a deleted demo session).
-// Never touches users/profiles. Dry run by default.
-export async function removeDemoSessions({ apply = false } = {}) {
+// Deletes only events/{id} docs with isDemo === true (optionally narrowed
+// further to one seedBatch), and their rsvps and checkins (so no orphaned
+// attendance references a deleted demo session). Never matches on title --
+// matches by field only. Never touches users/profiles. Dry run by default.
+export async function removeDemoSessions({ apply = false, seedBatch } = {}) {
   requireRealStagingProject();
   const app = initializeApp({ credential: applicationDefault(), projectId }, `remove-demo-sessions-${Date.now()}`);
   const db = getFirestore(app);
   try {
-    const demo = await db.collection('events').where('isDemo', '==', true).get();
+    let query = db.collection('events').where('isDemo', '==', true);
+    if (seedBatch) query = query.where('seedBatch', '==', seedBatch);
+    const demo = await query.get();
     const ids = demo.docs.map((d) => d.id);
     if (!apply) return { dryRun: true, count: ids.length, eventIds: ids };
 
@@ -37,9 +40,10 @@ export async function removeDemoSessions({ apply = false } = {}) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const args = process.argv.slice(2);
-  if (args.some((a) => a !== '--apply')) {
-    throw new Error('Usage: node scripts/remove-demo-sessions.mjs [--apply]. Default is dry-run.');
+  if (args.some((a) => a !== '--apply' && !a.startsWith('--seed-batch='))) {
+    throw new Error('Usage: node scripts/remove-demo-sessions.mjs [--apply] [--seed-batch=<value>]. Default is dry-run.');
   }
-  const result = await removeDemoSessions({ apply: args.includes('--apply') });
+  const seedBatch = args.find((a) => a.startsWith('--seed-batch='))?.slice('--seed-batch='.length);
+  const result = await removeDemoSessions({ apply: args.includes('--apply'), seedBatch });
   console.log(JSON.stringify(result, null, 2));
 }

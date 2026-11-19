@@ -1,3 +1,10 @@
+## Demo sessions: no "[DEMO]" wording anywhere in the UI — 19 November 2026
+
+- `scripts/seed-demo-sessions.mjs`: titles are now ordinary ("Social Tennis, Bondi Junction" instead of "[DEMO] Social tennis"), venue names drop "(demo)" (now e.g. "Bondi Junction Courts" -- a generic descriptor, not a claim that a specifically-named real facility exists there), notes drop "Invented demo data -- not a real session.", and the two coach-assigned sessions' `coachNames` now read the assigned account's real first name (falls back to "Coach", never "Demo coach"). `isDemo: true` plus a new `seedBatch: "demo-2026-11"` remain the only markers, both data-only -- confirmed nothing in `lib/` or `functions/src/` ever reads `isDemo`.
+- Added `--fix-existing-names` to the same script for the 12 sessions already seeded with the old wording: dry run showed all 12 needing the rename, reviewed, then applied. **12 before → 12 after, 0 remaining with old wording.**
+- `scripts/remove-demo-sessions.mjs` already matched on `isDemo == true`, never on title -- confirmed, and added an optional `--seed-batch=` filter for when more than one batch exists later.
+- **Finding them in Firebase**: console → Firestore → collection **`events`** → Filter → field `isDemo`, operator `==`, value `true` (Boolean, not string). Add a second filter on `seedBatch == "demo-2026-11"` to scope to just this batch.
+
 ## Profile photos end to end: Storage rules, Me tab quick edit, real proof — 19 November 2026
 
 - Confirmed the default bucket (`rally4ever-3adaf.firebasestorage.app`, already enabled in `australia-southeast1`) and added the missing `FIREBASE_STORAGE_BUCKET` to both `config/staging.*.json` (git-ignored) -- the client's lazy/optional Storage initialization already existed from an earlier fix but had nothing to point at.
