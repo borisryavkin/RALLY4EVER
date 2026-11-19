@@ -128,34 +128,33 @@ void main() {
       );
     },
   );
-  testWidgets('catalogue filters by postcode, sport, state and archive', (
-    tester,
-  ) async {
-    final repo = FakeParticipantRepository()
-      ..catalogueReady = true
-      ..programs = [
-        program(),
-        program(id: 'perth', state: 'WA', sport: 'pickleball'),
-        program(id: 'old', status: 'archived'),
-      ];
-    await show(tester, ProgramBrowser(repository: repo, onSelect: (_) {}));
-    expect(find.text('Perth social pickleball'), findsOneWidget);
-    await tester.enterText(find.byKey(const Key('program-search')), '2022');
-    await tester.pumpAndSettle();
-    expect(find.text('Perth social pickleball'), findsNothing);
-    await tester.enterText(find.byKey(const Key('program-search')), '');
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Pickleball'));
-    await tester.pumpAndSettle();
-    expect(find.text('Bondi community tennis'), findsNothing);
-    await tester.tap(find.text('All').first);
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byType(SwitchListTile));
-    await tester.tap(find.byType(SwitchListTile));
-    await tester.pumpAndSettle();
-    expect(find.text('Perth social pickleball'), findsNothing);
-    expect(find.text('Bondi community tennis'), findsOneWidget);
-  });
+  testWidgets(
+    'catalogue filters published programs and hides archived entries',
+    (tester) async {
+      final repo = FakeParticipantRepository()
+        ..catalogueReady = true
+        ..programs = [
+          program(),
+          program(id: 'perth', state: 'WA', sport: 'pickleball'),
+          program(id: 'old', status: 'archived'),
+        ];
+      await show(tester, ProgramBrowser(repository: repo, onSelect: (_) {}));
+      expect(find.text('Perth social pickleball'), findsOneWidget);
+      await tester.enterText(find.byKey(const Key('program-search')), '2022');
+      await tester.pumpAndSettle();
+      expect(find.text('Perth social pickleball'), findsNothing);
+      await tester.enterText(find.byKey(const Key('program-search')), '');
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Pickleball'));
+      await tester.pumpAndSettle();
+      expect(find.text('Bondi community tennis'), findsNothing);
+      await tester.tap(find.text('All').first);
+      await tester.pumpAndSettle();
+      expect(find.byType(SwitchListTile), findsNothing);
+      expect(find.text('Perth social pickleball'), findsOneWidget);
+      expect(find.text('Archived programs'), findsNothing);
+    },
+  );
   testWidgets(
     'program detail shows coaches, notes and real calendar sessions',
     (tester) async {
@@ -198,30 +197,26 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
-  testWidgets(
-    'catalogue map shows program marker without requiring a dated session',
-    (tester) async {
-      final repo = FakeParticipantRepository()
-        ..catalogueReady = true
-        ..programs = [program()]
-        ..events = [];
-      await tester.pumpWidget(
-        ParticipantApp(
-          repository: repo,
-          initialPage: 'map',
-          cameraEnabled: false,
-          mapTilesEnabled: false,
-        ),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('1 programs on the map'), findsOneWidget);
-      expect(find.byTooltip('Bondi community tennis'), findsOneWidget);
-      await tester.tap(find.byTooltip('Bondi community tennis'));
-      await tester.pumpAndSettle();
-      expect(find.text('Your regular rally'), findsOneWidget);
-      await tester.pumpWidget(const SizedBox.shrink());
-    },
-  );
+  testWidgets('session map does not count unscheduled programs as sessions', (
+    tester,
+  ) async {
+    final repo = FakeParticipantRepository()
+      ..catalogueReady = true
+      ..programs = [program()]
+      ..events = [];
+    await tester.pumpWidget(
+      ParticipantApp(
+        repository: repo,
+        initialPage: 'map',
+        cameraEnabled: false,
+        mapTilesEnabled: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('0 sessions nearby'), findsOneWidget);
+    expect(find.byTooltip('Bondi community tennis'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
   testWidgets(
     'catalogue error is clear and does not masquerade as zero programs',
     (tester) async {
@@ -362,7 +357,10 @@ void main() {
     'a restored member with no GPS falls back to their own postcode, never a hardcoded Sydney default',
     (tester) async {
       final perth = program(id: 'perth', state: 'WA', sport: 'pickleball');
-      (perth['venue'] as Map).addAll(<String, Object>{'lat': -31.95, 'lng': 115.86});
+      (perth['venue'] as Map).addAll(<String, Object>{
+        'lat': -31.95,
+        'lng': 115.86,
+      });
       final repo = FakeParticipantRepository()
         ..catalogueReady = true
         ..programs = [program(), perth]

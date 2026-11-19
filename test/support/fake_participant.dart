@@ -32,6 +32,7 @@ class FakeParticipantRepository extends ParticipantRepository {
     events = [
       {
         'id': 'event-1',
+        'status': 'published',
         'eventId': 'event-1',
         'code': 'EVENT-1',
         'name': 'Weeknight Rally',
@@ -50,6 +51,7 @@ class FakeParticipantRepository extends ParticipantRepository {
       },
       {
         'id': 'event-2',
+        'status': 'published',
         'eventId': 'event-2',
         'code': 'EVENT-2',
         'name': 'Saturday Social',
@@ -68,6 +70,7 @@ class FakeParticipantRepository extends ParticipantRepository {
       },
       {
         'id': 'event-3',
+        'status': 'published',
         'eventId': 'event-3',
         'code': 'EVENT-3',
         'name': 'Tuesday Rally',
@@ -85,6 +88,7 @@ class FakeParticipantRepository extends ParticipantRepository {
       rsvps = [
         {
           'uid': uid,
+          'status': 'published',
           'eventId': 'event-1',
           'createdAt': now,
           'cancelledAt': null,
@@ -319,6 +323,7 @@ class FakeParticipantRepository extends ParticipantRepository {
         ],
         'events': [
           {
+            'status': 'published',
             'eventId': 'event-1',
             'name': 'Weeknight Rally',
             'coachUids': ['participant-2'],

@@ -291,3 +291,11 @@ test('linking a Google identity already owned by another account fails without m
    assert.equal((await getAuth(app).getUser(google)).email,'google-owner@example.test');
  } finally {await deleteClient(client);}
 });
+
+test('session save and cancel need no typed reason and still record actor/time/before/after',async()=>{
+ await createProgram();
+ await catalogue.saveSession(admin,{programId:'program-one',eventId:'automatic-audit',startsAt:new Date(now+86400000).toISOString(),endsAt:new Date(now+90000000).toISOString()});
+ await catalogue.cancelSession(admin,{eventId:'automatic-audit',revision:1});
+ const audits=(await db.collection('catalogueAudits').where('eventId','==','automatic-audit').get()).docs.map(d=>d.data());
+ assert.equal(audits.length,2);assert.ok(audits.every(a=>a.actorUid==='admin-1'&&a.createdAt));assert.ok(audits.some(a=>a.after?.status==='published'));
+});

@@ -55,7 +55,23 @@ class _ParticipantAppState extends State<ParticipantApp>
   bool _locationRequestedThisSession = false;
   DateTime? _lastLocationFetch;
   bool busy = false, agreed = false, pendingSubmission = false;
-  int tab = 0;
+  int get tab => switch (page) {
+    'map' => 1,
+    'profile' ||
+    'signInMethods' ||
+    'role' ||
+    'adminAccess' ||
+    'adminSessions' ||
+    'adminCatalogue' ||
+    'coachTools' => 3,
+    'help' => 4,
+    'checkin' || 'scan' || 'waiting' || 'confirmed' => 2,
+    'details' || 'agreements' => detailsReturn == 'profile' ? 3 : 2,
+    _ => page.startsWith('profile') ? 3 : 0,
+  };
+  String detailsReturn = 'scan';
+  bool editingProfile = false;
+  final mapController = MapController();
   CheckInLink? scanned;
   Record? scanLocation;
   Record? people;
@@ -76,12 +92,6 @@ class _ParticipantAppState extends State<ParticipantApp>
     selectedId = widget.initialEventId;
     error = widget.startupError;
     repo.addListener(changed);
-    tab = switch (page) {
-      'map' => 1,
-      'profile' => 3,
-      'help' => 4,
-      _ => 0,
-    };
     if (page == 'people' && event != null) {
       unawaited(
         repo.countedPeople(eid(event!)).then((value) {
@@ -121,7 +131,10 @@ class _ParticipantAppState extends State<ParticipantApp>
   // time they bring the app to the foreground, not just at sign-in.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) return;
+    if (state != AppLifecycleState.resumed) {
+      repo.stopBrowseLocation();
+      return;
+    }
     if (repo.uid != null) unawaited(repo.refreshAccess());
     // "Returns to the app after a while": a single fresh fix on resume,
     // never a continuous stream -- this is the one place browse location
@@ -134,7 +147,7 @@ class _ParticipantAppState extends State<ParticipantApp>
           _lastLocationFetch == null ||
           DateTime.now().difference(_lastLocationFetch!) >
               const Duration(minutes: 10);
-      if (stale || repo.locationStatus != 'granted') {
+      if (stale || repo.locationStatus != 'granted' || repo.uid != null) {
         _requestBrowseLocation();
       }
     }
@@ -151,7 +164,12 @@ class _ParticipantAppState extends State<ParticipantApp>
   void changed() {
     if (!mounted) return;
     setState(() {
-      if (repo.uid == null) areaChosen = false;
+      if (repo.uid == null) {
+        areaChosen = false;
+        editingProfile = false;
+        sport = 'All';
+        detailsReturn = 'scan';
+      }
       if (repo.uid != null &&
           repo.ready &&
           ['account', 'welcome1', 'welcome2', 'welcome3'].contains(page)) {
@@ -190,6 +208,7 @@ class _ParticipantAppState extends State<ParticipantApp>
     timer?.cancel();
     repo.removeListener(changed);
     if (widget.repository == null) repo.dispose();
+    mapController.dispose();
     qrInput.dispose();
     unawaited(scanner?.dispose() ?? Future<void>.value());
     super.dispose();
@@ -277,7 +296,9 @@ class _ParticipantAppState extends State<ParticipantApp>
           .isNotEmpty;
   void nextAfterScan() {
     if (!mounted) return;
+    detailsReturn = 'scan';
     if (!detailsComplete()) {
+      detailsReturn = 'scan';
       go('details');
       return;
     }
@@ -526,7 +547,6 @@ class _ParticipantAppState extends State<ParticipantApp>
     Icons.favorite_border,
   ];
   void _navigateTo(int i) {
-    tab = i;
     go(['home', 'map', 'checkin', 'profile', 'help'][i]);
   }
 
@@ -646,9 +666,17 @@ class _ParticipantAppState extends State<ParticipantApp>
               } else {
                 await repo.saveProfile(changes);
               }
-              go(step == 7 ? 'home' : 'profile${step + 1}');
+              go(
+                step == 7
+                    ? (editingProfile ? 'profile' : 'home')
+                    : 'profile${step + 1}',
+              );
             }),
-            onSkip: () => go(step == 7 ? 'home' : 'profile${step + 1}'),
+            onSkip: () => go(
+              step == 7
+                  ? (editingProfile ? 'profile' : 'home')
+                  : 'profile${step + 1}',
+            ),
           ),
         ],
       );
@@ -711,12 +739,16 @@ class _ParticipantAppState extends State<ParticipantApp>
       'details' => frame(
         context,
         title: 'Before you play',
-        back: () => go('scan'),
+        back: () => go(detailsReturn),
         children: [
           DetailsForm(
             profile: repo.profile,
             onSave: (changes) => action(() async {
               await repo.saveProfile(changes);
+              if (detailsReturn == 'profile') {
+                go('profile');
+                return;
+              }
               if (event != null && repo.missingForms(event!).isNotEmpty) {
                 go('agreements');
               } else {
@@ -939,6 +971,11 @@ class _ParticipantAppState extends State<ParticipantApp>
                     color: highlight ? Colors.white70 : slate,
                   ),
                 ),
+                if (selectedMapPoint != null && venuePoint(e) != null)
+                  Text(
+                    sessionDistanceLabel(e, selectedMapPoint!),
+                    key: Key('distance-${eid(e)}'),
+                  ),
                 const SizedBox(height: 12),
                 Row(
                   children: [
@@ -968,6 +1005,13 @@ class _ParticipantAppState extends State<ParticipantApp>
         ),
       );
 
+  List<Record> get nearbySessions => nearbySessionRecords(
+    repo.events,
+    now: repo.now(),
+    centre: selectedMapPoint,
+    sport: sport,
+    programs: repo.programs,
+  );
   bool nearSelectedArea(Record record) {
     final point = selectedMapPoint, target = venuePoint(record);
     if (point != null && target != null) {
@@ -1000,16 +1044,13 @@ class _ParticipantAppState extends State<ParticipantApp>
 
   Widget home(BuildContext context) {
     _ensureBrowseLocationRequested();
-    final active = repo.events
-        .where(
-          (e) =>
-              dateOf(e['endsAt']).isAfter(repo.now()) &&
-              (nearSelectedArea(e) || repo.countedIn(eid(e))) &&
-              (sport == 'All' ||
-                  (e['sport'] as String? ?? '').toLowerCase() ==
-                      sport.toLowerCase()),
-        )
-        .toList();
+    final active = nearbySessions;
+    final countedElsewhere = repo.events.where(
+      (e) =>
+          repo.countedIn(eid(e)) &&
+          !active.any((n) => eid(n) == eid(e)) &&
+          dateOf(e['endsAt']).isAfter(repo.now()),
+    );
     return frame(
       context,
       navigation: true,
@@ -1088,6 +1129,11 @@ class _ParticipantAppState extends State<ParticipantApp>
             e,
             highlight: repo.countedIn(eid(e)) || repo.checkin(eid(e)) != null,
           ),
+        if (countedElsewhere.isNotEmpty) ...[
+          const Text('Your other counted-in sessions'),
+          for (final e in countedElsewhere)
+            eventCard(context, e, highlight: true),
+        ],
         if (nearbyPrograms.isNotEmpty) ...[
           const SizedBox(height: 18),
           Text(
@@ -1532,7 +1578,7 @@ class _ParticipantAppState extends State<ParticipantApp>
     return frame(
       context,
       title: 'Quick agreements',
-      back: () => go('details'),
+      back: () => go(detailsReturn == 'profile' ? 'profile' : 'details'),
       children: [
         Text(
           'Before you play',
@@ -1872,7 +1918,10 @@ class _ParticipantAppState extends State<ParticipantApp>
             ),
           ),
           IconButton(
-            onPressed: () => go('profile1'),
+            onPressed: () {
+              editingProfile = true;
+              go('profile1');
+            },
             icon: const Icon(Icons.edit_outlined),
             tooltip: 'Edit details',
           ),
@@ -1925,7 +1974,10 @@ class _ParticipantAppState extends State<ParticipantApp>
         Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: InkWell(
-            onTap: () => go('agreements'),
+            onTap: () {
+              detailsReturn = 'profile';
+              go('agreements');
+            },
             child: Panel(
               child: Row(
                 children: [
@@ -2005,7 +2057,10 @@ class _ParticipantAppState extends State<ParticipantApp>
       ],
       const SizedBox(height: 18),
       OutlinedButton(
-        onPressed: () => go('details'),
+        onPressed: () {
+          detailsReturn = 'profile';
+          go('details');
+        },
         child: const Text('Update safety details'),
       ),
       TextButton(
@@ -2206,7 +2261,7 @@ class _ParticipantAppState extends State<ParticipantApp>
     final p = repo.programs
         .where((p) => p['id'] == selectedProgramId)
         .firstOrNull;
-    if (p == null) {
+    if (p == null || p['status'] != 'active') {
       return frame(
         context,
         title: 'Program',
@@ -2308,7 +2363,10 @@ class _ParticipantAppState extends State<ParticipantApp>
     if (!areaChosen) {
       final here = repo.deviceLocation;
       if (repo.locationStatus == 'granted' && here != null) {
-        return LatLng(here['lat'] as double, here['lng'] as double);
+        return LatLng(
+          (here['lat'] as num).toDouble(),
+          (here['lng'] as num).toDouble(),
+        );
       }
       // Only once GPS is denied/off/timed out: fall back to a known
       // program sharing the member's own home postcode, never a silent
@@ -2440,9 +2498,22 @@ class _ParticipantAppState extends State<ParticipantApp>
     children: [
       Positioned.fill(
         child: FlutterMap(
-          key: ValueKey(area),
+          key: ValueKey(
+            '$area|${selectedMapPoint?.latitude}|${selectedMapPoint?.longitude}',
+          ),
+          mapController: mapController,
           options: MapOptions(
             initialCenter: mapCenter,
+            initialCameraFit: nearbySessions.isEmpty
+                ? null
+                : CameraFit.bounds(
+                    bounds: LatLngBounds.fromPoints([
+                      mapCenter,
+                      ...nearbySessions.map((e) => venuePoint(e)!),
+                    ]),
+                    padding: const EdgeInsets.fromLTRB(40, 120, 40, 230),
+                    maxZoom: 14,
+                  ),
             initialZoom: selectedMapPoint == null ? 4 : 12,
           ),
           children: [
@@ -2453,17 +2524,15 @@ class _ParticipantAppState extends State<ParticipantApp>
               ),
             MarkerLayer(
               markers: [
-                for (final p in repo.programs.where(
-                  (p) =>
-                      matchesProgram(p, sport: sport) && venuePoint(p) != null,
-                ))
+                for (final e in nearbySessions)
                   Marker(
-                    point: venuePoint(p)!,
+                    point: venuePoint(e)!,
                     width: 50,
                     height: 50,
                     child: IconButton(
-                      onPressed: () => selectProgram(p),
-                      tooltip: p['name'] as String,
+                      key: Key('session-marker-${eid(e)}'),
+                      onPressed: () => select(e, 'session'),
+                      tooltip: e['name'] as String,
                       icon: const Icon(
                         Icons.location_on,
                         color: coral,
@@ -2471,32 +2540,24 @@ class _ParticipantAppState extends State<ParticipantApp>
                       ),
                     ),
                   ),
-                ...repo.events
-                    .where(
-                      (e) =>
-                          venuePoint(e) != null &&
-                          e['status'] != 'cancelled' &&
-                          !repo.programs.any((p) => p['id'] == e['programId']),
-                    )
-                    .map(
-                      (e) => Marker(
-                        point: LatLng(
-                          (e['venue']['lat'] as num).toDouble(),
-                          (e['venue']['lng'] as num).toDouble(),
-                        ),
-                        width: 50,
-                        height: 50,
-                        child: IconButton(
-                          onPressed: () => select(e, 'session'),
-                          tooltip: e['name'] as String,
-                          icon: const Icon(
-                            Icons.location_on,
-                            color: coral,
-                            size: 38,
-                          ),
-                        ),
+                if (repo.locationStatus == 'granted' &&
+                    repo.deviceLocation != null)
+                  Marker(
+                    point: LatLng(
+                      (repo.deviceLocation!['lat'] as num).toDouble(),
+                      (repo.deviceLocation!['lng'] as num).toDouble(),
+                    ),
+                    width: 24,
+                    height: 24,
+                    child: Container(
+                      key: const Key('user-location-dot'),
+                      decoration: BoxDecoration(
+                        color: Colors.blue,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 3),
                       ),
                     ),
+                  ),
               ],
             ),
             const RichAttributionWidget(
@@ -2518,6 +2579,22 @@ class _ParticipantAppState extends State<ParticipantApp>
               const SizedBox(width: 8),
               Expanded(child: Text(areaLabel)),
               locationBarActions(),
+              IconButton(
+                key: const Key('centre-on-me'),
+                tooltip: 'Centre on me',
+                icon: const Icon(Icons.my_location),
+                onPressed: () async {
+                  await repo.requestBrowseLocation();
+                  if (mounted && repo.deviceLocation != null) {
+                    setState(() => areaChosen = false);
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (mounted && page == 'map') {
+                        mapController.move(mapCenter, 14);
+                      }
+                    });
+                  }
+                },
+              ),
             ],
           ),
         ),
@@ -2532,20 +2609,15 @@ class _ParticipantAppState extends State<ParticipantApp>
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                repo.programs.isEmpty
-                    ? '${repo.events.length} sessions nearby'
-                    : '${repo.programs.where((p) => matchesProgram(p, sport: sport) && venuePoint(p) != null).length} programs on the map',
+                '${nearbySessions.length} sessions nearby',
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               const SizedBox(height: 8),
               Text(
-                repo.programs.isEmpty
-                    ? 'Tap a marker to see its session.'
-                    : 'Tap a marker for the program and session dates.',
+                'Tap a marker to see its session. Within 50 km of the search centre.',
               ),
               TextButton(
-                onPressed: () =>
-                    go(repo.programs.isEmpty ? 'home' : 'programs'),
+                onPressed: () => go('home'),
                 child: const Text('List view'),
               ),
             ],

@@ -151,7 +151,7 @@ class BuildGuardTests(unittest.TestCase):
                 self.assertIn(f'--dart-define-from-file={config.resolve()}', args)
                 self.assertIn('--build-number=13', args)
                 if target == 'ipa':
-                    self.assertIn('--export-options-plist=ios/ExportOptions.internal.plist', args)
+                    self.assertIn('--export-options-plist=ios/ExportOptions.plist', args)
 
     def test_ios_location_usage_descriptions_do_not_enable_background_tracking(self):
         import plistlib

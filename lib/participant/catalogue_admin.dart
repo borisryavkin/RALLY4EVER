@@ -573,7 +573,6 @@ class _SessionEditorState extends State<SessionEditor> {
     }
   }
 
-  final reason = TextEditingController();
   final capacity = TextEditingController(), notes = TextEditingController();
   String registration = 'open', status = 'published';
   @override
@@ -612,7 +611,6 @@ class _SessionEditorState extends State<SessionEditor> {
     for (final controller in venueFields.values) {
       controller.dispose();
     }
-    reason.dispose();
     capacity.dispose();
     notes.dispose();
     super.dispose();
@@ -661,11 +659,8 @@ class _SessionEditorState extends State<SessionEditor> {
   }
 
   Future<void> save() async {
-    if (start == null ||
-        end == null ||
-        !end!.isAfter(start!) ||
-        reason.text.trim().isEmpty) {
-      setState(() => error = 'Choose a start, a later end and a reason.');
+    if (start == null || end == null || !end!.isAfter(start!)) {
+      setState(() => error = 'Choose a start and a later end.');
       return;
     }
     setState(() => busy = true);
@@ -691,7 +686,6 @@ class _SessionEditorState extends State<SessionEditor> {
         'status': status,
         'startsAt': start!.toUtc().toIso8601String(),
         'endsAt': end!.toUtc().toIso8601String(),
-        'reason': reason.text.trim(),
       });
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
@@ -826,12 +820,6 @@ class _SessionEditorState extends State<SessionEditor> {
           decoration: const InputDecoration(labelText: 'Session notes'),
         ),
         const SizedBox(height: 12),
-        TextField(
-          controller: reason,
-          decoration: const InputDecoration(
-            labelText: 'Reason for session change',
-          ),
-        ),
         if (error != null) Panel(color: pink, child: Text(error!)),
         const SizedBox(height: 20),
         FilledButton(
@@ -907,37 +895,30 @@ class _SessionManagementPanelState extends State<SessionManagementPanel> {
   }
 
   Future<void> cancel(Record session) async {
-    final controller = TextEditingController();
-    final reason = await showDialog<String>(
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Cancel session'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(labelText: 'Cancellation reason'),
+        title: const Text('Cancel session?'),
+        content: Text(
+          'Cancel ${session['name']}? Attendance history will be retained.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(context, false),
             child: const Text('Back'),
           ),
           FilledButton(
-            onPressed: () {
-              if (controller.text.trim().isNotEmpty) {
-                Navigator.pop(context, controller.text.trim());
-              }
-            },
+            onPressed: () => Navigator.pop(context, true),
             child: const Text('Cancel session'),
           ),
         ],
       ),
     );
-    if (reason == null) return;
+    if (confirmed != true) return;
     try {
       await widget.repository.call('cancelSession', {
         'eventId': session['id'],
         'revision': session['revision'],
-        'reason': reason,
       });
       await load();
     } catch (e) {

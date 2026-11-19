@@ -88,6 +88,12 @@ abstract class ParticipantRepository extends ChangeNotifier {
   String locationStatus = 'idle';
   Record? deviceLocation;
   String? nearbyLabel;
+  StreamSubscription<Position>? _browsePositions;
+  void stopBrowseLocation() {
+    unawaited(_browsePositions?.cancel() ?? Future<void>.value());
+    _browsePositions = null;
+  }
+
   Future<void> requestBrowseLocation() async {
     if (locationStatus == 'requesting') return;
     locationStatus = 'requesting';
@@ -114,13 +120,31 @@ abstract class ParticipantRepository extends ChangeNotifier {
     try {
       final p = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.low,
+          accuracy: LocationAccuracy.high,
         ),
       ).timeout(const Duration(seconds: 6));
       deviceLocation = {'lat': p.latitude, 'lng': p.longitude};
       locationStatus = 'granted';
       notifyListeners();
       unawaited(_reverseGeocode(p.latitude, p.longitude));
+      _browsePositions ??=
+          Geolocator.getPositionStream(
+            locationSettings: const LocationSettings(
+              accuracy: LocationAccuracy.high,
+              distanceFilter: 20,
+            ),
+          ).listen(
+            (p) {
+              deviceLocation = {'lat': p.latitude, 'lng': p.longitude};
+              locationStatus = 'granted';
+              notifyListeners();
+            },
+            onError: (_) {
+              locationStatus = 'timeout';
+              notifyListeners();
+            },
+            cancelOnError: true,
+          );
     } catch (_) {
       // Timeout or a platform failure after permission was granted: fall
       // back the same way as a denial, never crash or hang the screen.
@@ -219,6 +243,11 @@ abstract class ParticipantRepository extends ChangeNotifier {
     List<String> tags,
     String comment,
   ) => throw UnimplementedError();
+  @override
+  void dispose() {
+    unawaited(_browsePositions?.cancel() ?? Future<void>.value());
+    super.dispose();
+  }
 }
 
 class DisabledParticipantRepository extends ParticipantRepository {}
@@ -329,7 +358,7 @@ class FirebaseParticipantRepository extends ParticipantRepository {
     _subscriptions.add(
       db
           .collection('programs')
-          .where('status', whereIn: ['active', 'archived'])
+          .where('status', isEqualTo: 'active')
           .snapshots()
           .listen(
             (snapshot) {
@@ -389,7 +418,7 @@ class FirebaseParticipantRepository extends ParticipantRepository {
     try {
       final rows = await backend.firestore
           .collection('programs')
-          .where('status', whereIn: ['active', 'archived'])
+          .where('status', isEqualTo: 'active')
           .get();
       programs = rows.docs.map((d) => {...d.data(), 'id': d.id}).toList();
     } catch (error) {

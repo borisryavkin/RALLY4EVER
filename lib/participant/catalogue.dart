@@ -142,20 +142,14 @@ class ProgramBrowser extends StatefulWidget {
 
 class _ProgramBrowserState extends State<ProgramBrowser> {
   String search = '', sport = 'All', state = 'All';
-  bool archived = false;
   @override
   Widget build(BuildContext context) {
     final repo = widget.repository;
     final rows =
         repo.programs
             .where(
-              (p) => matchesProgram(
-                p,
-                search: search,
-                sport: sport,
-                state: state,
-                archived: archived,
-              ),
+              (p) =>
+                  matchesProgram(p, search: search, sport: sport, state: state),
             )
             .toList()
           ..sort((a, b) => '${a['name']}'.compareTo('${b['name']}'));
@@ -216,16 +210,10 @@ class _ProgramBrowserState extends State<ProgramBrowser> {
           onChanged: (v) => setState(() => state = v!),
         ),
         const SizedBox(height: 12),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Archived programs'),
-          value: archived,
-          onChanged: (v) => setState(() => archived = v),
-        ),
         if (repo.catalogueReady && repo.catalogueError == null && rows.isEmpty)
           Panel(
             child: Text(
-              archived ? 'No archived programs match your search.' : 'No published programs match your search. Try another suburb or state.',
+              'No published programs match your search. Try another suburb or state.',
             ),
           ),
         if (!repo.catalogueReady && repo.catalogueError == null) ...[
@@ -296,3 +284,43 @@ class CataloguePhoto extends StatelessWidget {
     );
   }
 }
+
+const nearbyRadiusKm = 50.0;
+List<Record> nearbySessionRecords(
+  Iterable<Record> events, {
+  required DateTime now,
+  LatLng? centre,
+  String sport = 'All',
+  double radiusKm = nearbyRadiusKm,
+  Iterable<Record> programs = const [],
+}) {
+  final published = {for (final p in programs) p['id']: p['status']};
+  final distance = const Distance();
+  final rows = events
+      .where(
+        (e) =>
+            e['status'] == 'published' &&
+            dateOf(e['endsAt']).isAfter(now) &&
+            venuePoint(e) != null &&
+            (e['programId'] == null || published[e['programId']] == 'active') &&
+            (sport == 'All' ||
+                '${e['sport']}'.toLowerCase() == sport.toLowerCase()) &&
+            (centre == null ||
+                distance.as(LengthUnit.Kilometer, centre, venuePoint(e)!) <=
+                    radiusKm),
+      )
+      .toList();
+  rows.sort((a, b) {
+    final d = centre == null
+        ? 0
+        : distance(
+            centre,
+            venuePoint(a)!,
+          ).compareTo(distance(centre, venuePoint(b)!));
+    return d != 0 ? d : dateOf(a['startsAt']).compareTo(dateOf(b['startsAt']));
+  });
+  return rows;
+}
+
+String sessionDistanceLabel(Record e, LatLng centre) =>
+    '${const Distance().as(LengthUnit.Kilometer, centre, venuePoint(e)!).toStringAsFixed(1)} km';

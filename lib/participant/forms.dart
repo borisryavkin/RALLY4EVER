@@ -137,10 +137,6 @@ class _AccountFormState extends State<AccountForm> {
           ),
         ),
       const SizedBox(height: 16),
-      const Text(
-        'Coaches use their pre-created account. Tools appear according to your role.',
-        style: TextStyle(fontSize: 12, color: slate),
-      ),
     ],
   );
 }

@@ -1,3 +1,9 @@
+## 2026-11-19 — participant GPS, navigation and session editing fixes
+
+- Unified nearby session filtering/ordering/counts with GPS blue dot and recenter; Rose Bay/Bondi/Epping/Parramatta regression tests. Route-derived tab highlight, per-session All filter, Me-origin safety/form/settings navigation, and published-only participant programs.
+- Removed typed session-change/cancel reasons while retaining automatic audits. Removed obsolete coach-account text; requested non-exempt-encryption flag false and normal export defaults. See [PARTICIPANT_FIXES.md](PARTICIPANT_FIXES.md).
+- Analyzer clean; 117 Flutter tests, 38 isolated Auth/catalogue/rules tests, 10 release guards pass. Next requested build follows the Hosting QR/photo integration so its scanner accepts the new site.
+
 ## 2026-11-19 — linked Google and email sign-in
 
 - Added Me → Sign-in methods: Google-created members can securely set an app password on the same UID, with recent Google verification when required. Both providers retain role claims and existing data. Added pending-credential recovery, matching-email checks, collision errors, clearer login/help text and refreshed account/profile screenshots.

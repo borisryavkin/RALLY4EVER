@@ -94,7 +94,7 @@ export class CatalogueService {
     const programId = d.programId === undefined ? null : id(d.programId, "programId"), eventId = d.eventId ? id(d.eventId, "eventId") : randomUUID();
     if (!programId && !d.eventId) fail("invalid-argument", "program-required", "Create sessions from a published program");
     const startsAt = parseSessionTime(d.startsAt), endsAt = parseSessionTime(d.endsAt);
-    const reason = text(d.reason, "reason", 1000), status = choice(d.status ?? "published", ["published", "cancelled"], "session status");
+    const reason = d.reason === undefined ? "Session updated" : text(d.reason, "reason", 1000), status = choice(d.status ?? "published", ["published", "cancelled"], "session status");
     if (endsAt.toMillis() <= startsAt.toMillis() || endsAt.toMillis() - startsAt.toMillis() > 86400000)
       fail("invalid-argument", "invalid-time", "Session end must follow start, within 24 hours");
     const { db } = this.service;
@@ -142,7 +142,7 @@ export class CatalogueService {
     return { eventId };
   }
   async cancelSession(who: Identity, value: unknown) {
-    const d=input(value,["eventId","reason","revision"]), eventId=id(d.eventId,"eventId"), reason=text(d.reason,"reason",1000);
+    const d=input(value,["eventId","reason","revision"]), eventId=id(d.eventId,"eventId"), reason=d.reason===undefined?"Session cancelled":text(d.reason,"reason",1000);
     const {db}=this.service;
     await db.runTransaction(async tx=>{
       if((await this.service.actor(tx,who)).role!=="admin")fail("permission-denied","admin-required","Admin role required");

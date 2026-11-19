@@ -14,6 +14,7 @@ def main():
     parser.add_argument('--build-number', type=int, required=True)
     parser.add_argument('--build-name', default='1.0.2')
     parser.add_argument('--config', type=Path)
+    parser.add_argument('--export-options', choices=('normal','internal'), default='normal')
     parser.add_argument('--check-only', action='store_true', help='Validate without starting Flutter')
     args = parser.parse_args()
     if args.build_number < 13:
@@ -37,7 +38,8 @@ def main():
         f'--build-name={args.build_name}', f'--build-number={args.build_number}',
     ]
     if target == 'ipa':
-        command.append('--export-options-plist=ios/ExportOptions.internal.plist')
+        export = 'ios/ExportOptions.plist' if args.export_options == 'normal' else 'ios/ExportOptions.internal.plist'
+        command.append(f'--export-options-plist={export}')
     subprocess.run(command, cwd=root, check=True)
 
 
