@@ -233,6 +233,16 @@ class FakeParticipantRepository extends ParticipantRepository {
     notifyListeners();
   }
 
+  // Null means "resolves successfully but to no URL" (shouldn't normally
+  // happen once photoUpdatedAt is set); throwing simulates a Storage error.
+  String? simulatedPhotoUrl;
+  Object? simulatedPhotoUrlError;
+  @override
+  Future<String?> photoDownloadUrl() async {
+    if (simulatedPhotoUrlError != null) throw simulatedPhotoUrlError!;
+    return simulatedPhotoUrl;
+  }
+
   @override
   Future<void> countMeIn(String eventId, {bool cancel = false}) async {
     rsvps = [

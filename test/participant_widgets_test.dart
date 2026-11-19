@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -695,6 +696,66 @@ void main() {
       await tester.tap(find.text('Use my location'));
       await tester.pumpAndSettle();
       expect(find.text('Near Bondi Junction'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      repo.dispose();
+    });
+  });
+  group('UserAvatar', () {
+    testWidgets('photo present: attempts to render the resolved photo, not the initial alone', (
+      tester,
+    ) async {
+      final repo = FakeParticipantRepository()
+        ..profile['photoUpdatedAt'] = DateTime(2026, 11, 19)
+        ..simulatedPhotoUrl = 'https://example.test/avatar.jpg';
+      await show(tester, repo, 'home');
+      expect(find.byType(CachedNetworkImage), findsOneWidget);
+      expect(
+        tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage)).imageUrl,
+        'https://example.test/avatar.jpg',
+      );
+      await tester.pumpWidget(const SizedBox());
+      repo.dispose();
+    });
+    testWidgets('photo missing: shows the initial, no image widget at all', (
+      tester,
+    ) async {
+      final repo = FakeParticipantRepository();
+      await show(tester, repo, 'home');
+      expect(find.byType(CachedNetworkImage), findsNothing);
+      expect(find.text('P'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      repo.dispose();
+    });
+    testWidgets('photo load error: resolving the download URL throws, falls back to the initial', (
+      tester,
+    ) async {
+      final repo = FakeParticipantRepository()
+        ..profile['photoUpdatedAt'] = DateTime(2026, 11, 19)
+        ..simulatedPhotoUrlError = Exception('storage unavailable');
+      await show(tester, repo, 'home');
+      expect(find.byType(CachedNetworkImage), findsNothing);
+      expect(find.text('P'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      repo.dispose();
+    });
+    testWidgets('photo changed live: a profile update alone (no rebuild/restart) swaps initial for photo', (
+      tester,
+    ) async {
+      final repo = FakeParticipantRepository();
+      await show(tester, repo, 'home');
+      expect(find.byType(CachedNetworkImage), findsNothing);
+      expect(find.text('P'), findsOneWidget);
+
+      repo.profile['photoUpdatedAt'] = DateTime(2026, 11, 19);
+      repo.simulatedPhotoUrl = 'https://example.test/new-avatar.jpg';
+      repo.notifyListeners();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CachedNetworkImage), findsOneWidget);
+      expect(
+        tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage)).imageUrl,
+        'https://example.test/new-avatar.jpg',
+      );
       await tester.pumpWidget(const SizedBox());
       repo.dispose();
     });

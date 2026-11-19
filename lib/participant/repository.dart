@@ -40,6 +40,13 @@ String friendlyFunctionsError(FirebaseFunctionsException e) {
   return looksRaw ? _fallbackFunctionsError : message;
 }
 
+/// Shared by every avatar in the app (see UserAvatar in user_avatar.dart) and
+/// the onboarding photo step's own live preview.
+String initialsFor(Record profile) {
+  final firstName = profile['firstName'] as String? ?? '';
+  return firstName.isEmpty ? 'M' : firstName.substring(0, 1).toUpperCase();
+}
+
 abstract class ParticipantRepository extends ChangeNotifier {
   DateTime now() => DateTime.now();
   String? uid;
@@ -546,16 +553,28 @@ class FirebaseParticipantRepository extends ParticipantRepository {
     await saveProfile({'photoUpdatedAt': FieldValue.serverTimestamp()});
   }
 
+  // Resolving a Storage download URL is its own network round trip (the URL
+  // itself is then cached on-disk/in-memory by CachedNetworkImage); cache it
+  // per (uid, photoUpdatedAt) so every UserAvatar showing the same photo in
+  // the same frame -- or across rebuilds, until the photo actually changes
+  // -- reuses one resolved URL instead of re-resolving it each time.
+  final Map<String, Future<String?>> _photoUrlCache = {};
   @override
-  Future<String?> photoDownloadUrl() async {
-    if (profile['photoUpdatedAt'] == null) return null;
-    try {
-      return await backend.storage
-          .ref('profilePhotos/$uid/avatar.jpg')
-          .getDownloadURL();
-    } on FirebaseException {
-      return null;
-    }
+  Future<String?> photoDownloadUrl() {
+    final updatedAt = profile['photoUpdatedAt'];
+    if (updatedAt == null || uid == null) return Future.value(null);
+    final stamp = updatedAt is Timestamp
+        ? updatedAt.millisecondsSinceEpoch
+        : updatedAt;
+    return _photoUrlCache.putIfAbsent('$uid:$stamp', () async {
+      try {
+        return await backend.storage
+            .ref('profilePhotos/$uid/avatar.jpg')
+            .getDownloadURL();
+      } on FirebaseException {
+        return null;
+      }
+    });
   }
 
   @override

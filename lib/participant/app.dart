@@ -16,6 +16,7 @@ import 'catalogue.dart';
 import 'catalogue_admin.dart';
 import 'repository.dart';
 import 'theme.dart';
+import 'user_avatar.dart';
 
 class ParticipantApp extends StatefulWidget {
   const ParticipantApp({
@@ -1008,16 +1009,7 @@ class _ParticipantAppState extends State<ParticipantApp>
                 ],
               ),
             ),
-            CircleAvatar(
-              backgroundColor: navy,
-              child: Text(
-                initials,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
+            UserAvatar(repository: repo),
           ],
         ),
         const SizedBox(height: 20),
@@ -1117,10 +1109,6 @@ class _ParticipantAppState extends State<ParticipantApp>
       ],
     );
   }
-
-  String get initials => (repo.profile['firstName'] as String? ?? 'M').isEmpty
-      ? 'M'
-      : (repo.profile['firstName'] as String).substring(0, 1).toUpperCase();
   DateTime zoned(dynamic value, Record e) {
     try {
       return tz.TZDateTime.from(
@@ -1814,25 +1802,13 @@ class _ParticipantAppState extends State<ParticipantApp>
             child: Stack(
               alignment: Alignment.bottomRight,
               children: [
-                FutureBuilder<String?>(
-                  key: ValueKey(repo.profile['photoUpdatedAt']),
-                  future: repo.photoDownloadUrl(),
-                  builder: (context, snapshot) => CircleAvatar(
-                    radius: 28,
-                    backgroundColor: navy,
-                    foregroundColor: Colors.white,
-                    backgroundImage: snapshot.data != null
-                        ? NetworkImage(snapshot.data!)
-                        : null,
-                    child: snapshot.data == null
-                        ? Text(
-                            initials,
-                            style: const TextStyle(
-                              fontFamily: 'Figtree',
-                              fontSize: 24,
-                            ),
-                          )
-                        : null,
+                UserAvatar(
+                  repository: repo,
+                  radius: 28,
+                  textStyle: const TextStyle(
+                    color: Colors.white,
+                    fontFamily: 'Figtree',
+                    fontSize: 24,
                   ),
                 ),
                 Container(
