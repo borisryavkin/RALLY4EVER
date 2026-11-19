@@ -11,9 +11,7 @@
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Rally4Ever uses your photo library so you can choose an optional profile photo.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Rally4Ever uses your location to find nearby sessions and check that you are at the venue when you check in.</string>
-	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-	<string>Rally4ever uses your location to help you find nearby programs when you use the app.</string>
+	<string>Rally4Ever uses your location to show sessions near where you are, and to check that you are at the venue when you check in.</string>
 	<key>io.flutter.embedded_views_preview</key>
 	<true/>
 	<key>CFBundleDisplayName</key>

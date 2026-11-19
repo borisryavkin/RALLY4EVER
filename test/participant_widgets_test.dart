@@ -585,4 +585,91 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     repo.dispose();
   });
+  group('Play/Map location', () {
+    testWidgets('GPS granted: shows the reverse-geocoded suburb, no fallback buttons', (
+      tester,
+    ) async {
+      final repo = FakeParticipantRepository()
+        ..simulatedLocationResult = 'granted'
+        ..simulatedNearbyLabel = 'Epping';
+      await show(tester, repo, 'home');
+      expect(repo.calls.contains('requestBrowseLocation'), true);
+      expect(find.text('Near Epping'), findsOneWidget);
+      expect(find.text('Use my location'), findsNothing);
+      expect(find.text('Open settings'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      repo.dispose();
+    });
+    testWidgets('services off: falls back to the home postcode with the fallback label and a retry button', (
+      tester,
+    ) async {
+      final repo = FakeParticipantRepository()
+        ..simulatedLocationResult = 'servicesOff';
+      repo.profile['postcode'] = '2121';
+      await show(tester, repo, 'home');
+      expect(find.text('Near 2121 (your home postcode)'), findsOneWidget);
+      expect(find.text('Use my location'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      repo.dispose();
+    });
+    testWidgets('permanently denied: offers Open settings instead of a retry', (
+      tester,
+    ) async {
+      final repo = FakeParticipantRepository()
+        ..simulatedLocationResult = 'deniedForever';
+      repo.profile['postcode'] = '2000';
+      await show(tester, repo, 'home');
+      expect(find.text('Open settings'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      repo.dispose();
+    });
+    testWidgets('no home postcode set: falls back to a plain "Near you", not a blank postcode', (
+      tester,
+    ) async {
+      final repo = FakeParticipantRepository()
+        ..simulatedLocationResult = 'denied';
+      repo.profile['postcode'] = '';
+      await show(tester, repo, 'home');
+      expect(find.text('Near you'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      repo.dispose();
+    });
+    testWidgets('manual override via Change, then Use my location returns to GPS', (
+      tester,
+    ) async {
+      final repo = FakeParticipantRepository()
+        ..catalogueReady = true
+        ..programs = [
+          {
+            'id': 'p1',
+            'status': 'active',
+            'name': 'Chatswood tennis',
+            'sport': 'tennis',
+            'venue': {
+              'name': 'Chatswood Courts',
+              'suburb': 'Chatswood',
+              'postcode': '2067',
+              'state': 'NSW',
+              'lat': -33.7967,
+              'lng': 151.1807,
+            },
+          },
+        ]
+        ..simulatedLocationResult = 'granted'
+        ..simulatedNearbyLabel = 'Bondi Junction';
+      await show(tester, repo, 'home');
+      expect(find.text('Near Bondi Junction'), findsOneWidget);
+      await tester.tap(find.text('Change'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Chatswood 2067'));
+      await tester.pumpAndSettle();
+      expect(find.text('Near Chatswood 2067'), findsOneWidget);
+      expect(find.text('Use my location'), findsOneWidget);
+      await tester.tap(find.text('Use my location'));
+      await tester.pumpAndSettle();
+      expect(find.text('Near Bondi Junction'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      repo.dispose();
+    });
+  });
 }

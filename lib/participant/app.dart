@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:timezone/timezone.dart' as tz;
@@ -47,6 +48,8 @@ class _ParticipantAppState extends State<ParticipantApp>
   Future<void> Function()? _lastFailedAction;
   String locationSearch = '';
   bool areaChosen = false;
+  bool _locationRequestedThisSession = false;
+  DateTime? _lastLocationFetch;
   bool busy = false, agreed = false, pendingSubmission = false;
   int tab = 0;
   CheckInLink? scanned;
@@ -67,7 +70,6 @@ class _ParticipantAppState extends State<ParticipantApp>
       WidgetsBinding.instance.addPostFrameCallback((_) => changed());
     }
     selectedId = widget.initialEventId;
-    syncProfileArea();
     error = widget.startupError;
     repo.addListener(changed);
     tab = switch (page) {
@@ -115,16 +117,37 @@ class _ParticipantAppState extends State<ParticipantApp>
   // time they bring the app to the foreground, not just at sign-in.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && repo.uid != null) {
-      unawaited(repo.refreshAccess());
+    if (state != AppLifecycleState.resumed) return;
+    if (repo.uid != null) unawaited(repo.refreshAccess());
+    // "Returns to the app after a while": a single fresh fix on resume,
+    // never a continuous stream -- this is the one place browse location
+    // refreshes outside the first-open trigger in home()/map(). Also
+    // retries right away (ignoring staleness) whenever the last attempt
+    // didn't end up granted, so coming back from Settings after allowing
+    // location picks it up immediately rather than waiting ten minutes.
+    if (!areaChosen) {
+      final stale =
+          _lastLocationFetch == null ||
+          DateTime.now().difference(_lastLocationFetch!) >
+              const Duration(minutes: 10);
+      if (stale || repo.locationStatus != 'granted') {
+        _requestBrowseLocation();
+      }
     }
+  }
+
+  // One-shot per trigger (first open of Play/Map, or a stale resume) --
+  // never called on every rebuild or every GPS tick. Reused by the list,
+  // the map and distance sorting via selectedMapPoint below.
+  void _requestBrowseLocation() {
+    _lastLocationFetch = DateTime.now();
+    unawaited(repo.requestBrowseLocation());
   }
 
   void changed() {
     if (!mounted) return;
     setState(() {
       if (repo.uid == null) areaChosen = false;
-      syncProfileArea();
       if (repo.uid != null &&
           ['account', 'welcome1', 'welcome2', 'welcome3'].contains(page)) {
         page =
@@ -920,19 +943,6 @@ class _ParticipantAppState extends State<ParticipantApp>
           ),
         ),
       );
-  void syncProfileArea() {
-    if (areaChosen || repo.programs.isEmpty) return;
-    final postcode = '${repo.profile['postcode'] ?? ''}';
-    final p = repo.programs
-        .where(
-          (p) => p['status'] == 'active' && p['venue']['postcode'] == postcode,
-        )
-        .firstOrNull;
-    if (p != null) {
-      area = '${p['venue']['suburb']} ${p['venue']['postcode']}';
-      areaChosen = true;
-    }
-  }
 
   bool nearSelectedArea(Record record) {
     final point = selectedMapPoint, target = venuePoint(record);
@@ -965,6 +975,7 @@ class _ParticipantAppState extends State<ParticipantApp>
   }
 
   Widget home(BuildContext context) {
+    _ensureBrowseLocationRequested();
     final active = repo.events
         .where(
           (e) =>
@@ -1009,26 +1020,17 @@ class _ParticipantAppState extends State<ParticipantApp>
           ],
         ),
         const SizedBox(height: 20),
-        InkWell(
-          onTap: () => go('location'),
-          child: Panel(
-            padding: 12,
-            child: Row(
-              children: [
-                const Icon(Icons.location_on_outlined, color: coral, size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Near $area',
-                    style: const TextStyle(fontSize: 12),
-                  ),
-                ),
-                const Text(
-                  'Change',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                ),
-              ],
-            ),
+        Panel(
+          padding: 12,
+          child: Row(
+            children: [
+              const Icon(Icons.location_on_outlined, color: coral, size: 18),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(areaLabel, style: const TextStyle(fontSize: 12)),
+              ),
+              locationBarActions(),
+            ],
           ),
         ),
         const SizedBox(height: 20),
@@ -2254,6 +2256,39 @@ class _ParticipantAppState extends State<ParticipantApp>
     ],
   );
   LatLng? get selectedMapPoint {
+    // The device's current position is the default search centre; a
+    // manually chosen place (areaChosen) always overrides it.
+    if (!areaChosen) {
+      final here = repo.deviceLocation;
+      if (repo.locationStatus == 'granted' && here != null) {
+        return LatLng(here['lat'] as double, here['lng'] as double);
+      }
+      // Only once GPS is denied/off/timed out: fall back to a known
+      // program sharing the member's own home postcode, never a silent
+      // default -- see areaLabel for the "(your home postcode)" label that
+      // accompanies this.
+      const fallbackStatuses = {
+        'denied',
+        'deniedForever',
+        'servicesOff',
+        'timeout',
+      };
+      if (fallbackStatuses.contains(repo.locationStatus)) {
+        final postcode = '${repo.profile['postcode'] ?? ''}';
+        if (postcode.isNotEmpty) {
+          final match = repo.programs
+              .where(
+                (p) =>
+                    p['status'] == 'active' &&
+                    p['venue']['postcode'] == postcode,
+              )
+              .firstOrNull;
+          if (match != null && venuePoint(match) != null) {
+            return venuePoint(match)!;
+          }
+        }
+      }
+    }
     for (final p in repo.programs) {
       if ('${p['venue']['suburb']} ${p['venue']['postcode']}' == area &&
           venuePoint(p) != null) {
@@ -2265,7 +2300,76 @@ class _ParticipantAppState extends State<ParticipantApp>
 
   LatLng get mapCenter => selectedMapPoint ?? const LatLng(-25, 133);
 
-  Widget map(BuildContext context) => Scaffold(
+  // What the "Near ..." bar on Play/Map shows, and whether it's GPS, a
+  // manual choice, or the home-postcode fallback (only ever surfaced once
+  // location is denied/off/timed out -- never silently preferred over GPS).
+  String get areaLabel {
+    if (areaChosen) return 'Near $area';
+    if (repo.locationStatus == 'granted') {
+      return 'Near ${repo.nearbyLabel ?? 'you'}';
+    }
+    if (repo.locationStatus == 'requesting' ||
+        repo.locationStatus == 'idle') {
+      return 'Finding your location…';
+    }
+    final postcode = '${repo.profile['postcode'] ?? ''}';
+    if (postcode.isNotEmpty) return 'Near $postcode (your home postcode)';
+    return 'Near you';
+  }
+
+  // first-open trigger for Play/Map; a no-op after the first call this
+  // session (the lifecycle observer handles the "returned after a while"
+  // refresh separately). Call at the top of home()/map()'s build.
+  void _ensureBrowseLocationRequested() {
+    if (_locationRequestedThisSession || areaChosen) return;
+    _locationRequestedThisSession = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _requestBrowseLocation();
+    });
+  }
+
+  // Shared by the Play and Map location bars: "Use my location" to return
+  // to GPS from a manual choice or retry after a denial/timeout, "Open
+  // settings" specifically once permission is permanently denied, and
+  // "Change" to search a place or postcode manually -- see go('location').
+  Widget locationBarActions() => Row(
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      if (areaChosen ||
+          repo.locationStatus == 'denied' ||
+          repo.locationStatus == 'servicesOff' ||
+          repo.locationStatus == 'timeout')
+        TextButton(
+          onPressed: () {
+            setState(() => areaChosen = false);
+            _requestBrowseLocation();
+          },
+          child: const Text(
+            'Use my location',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+        )
+      else if (!areaChosen && repo.locationStatus == 'deniedForever')
+        TextButton(
+          onPressed: Geolocator.openAppSettings,
+          child: const Text(
+            'Open settings',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+        ),
+      TextButton(
+        onPressed: () => go('location'),
+        child: const Text(
+          'Change',
+          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+        ),
+      ),
+    ],
+  );
+
+  Widget map(BuildContext context) {
+    _ensureBrowseLocationRequested();
+    return Scaffold(
     // The map itself stays full-bleed on a tablet (unlike text content, a
     // map benefits from the extra width) -- only the nav chrome adapts.
     bottomNavigationBar: isWide(context) ? null : bottomNav(),
@@ -2283,7 +2387,9 @@ class _ParticipantAppState extends State<ParticipantApp>
             ],
           )
         : _mapBody(context),
-  );
+    );
+  }
+
   Widget _mapBody(BuildContext context) => Stack(
       children: [
         Positioned.fill(
@@ -2367,11 +2473,8 @@ class _ParticipantAppState extends State<ParticipantApp>
               children: [
                 const Icon(Icons.search, size: 18),
                 const SizedBox(width: 8),
-                Expanded(child: Text(area)),
-                TextButton(
-                  onPressed: () => go('location'),
-                  child: const Text('Change'),
-                ),
+                Expanded(child: Text(areaLabel)),
+                locationBarActions(),
               ],
             ),
           ),

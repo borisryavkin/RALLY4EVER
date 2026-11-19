@@ -5,6 +5,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
@@ -65,6 +66,64 @@ abstract class ParticipantRepository extends ChangeNotifier {
   Set<String> claimRoles = {};
   String? claimRole;
   bool googleUser = false;
+  // Coarse, device-only position for "near you" browsing (Play list, Map).
+  // Never written to Firestore, logs or analytics -- used only to build the
+  // on-device query/sort. See requestBrowseLocation. One of: idle,
+  // requesting, granted, denied, deniedForever, servicesOff, timeout.
+  String locationStatus = 'idle';
+  Record? deviceLocation;
+  String? nearbyLabel;
+  Future<void> requestBrowseLocation() async {
+    if (locationStatus == 'requesting') return;
+    locationStatus = 'requesting';
+    notifyListeners();
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      locationStatus = 'servicesOff';
+      notifyListeners();
+      return;
+    }
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.deniedForever) {
+      locationStatus = 'deniedForever';
+      notifyListeners();
+      return;
+    }
+    if (permission == LocationPermission.denied) {
+      locationStatus = 'denied';
+      notifyListeners();
+      return;
+    }
+    try {
+      final p = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.low,
+        ),
+      ).timeout(const Duration(seconds: 6));
+      deviceLocation = {'lat': p.latitude, 'lng': p.longitude};
+      locationStatus = 'granted';
+      notifyListeners();
+      unawaited(_reverseGeocode(p.latitude, p.longitude));
+    } catch (_) {
+      // Timeout or a platform failure after permission was granted: fall
+      // back the same way as a denial, never crash or hang the screen.
+      locationStatus = 'timeout';
+      notifyListeners();
+    }
+  }
+
+  Future<void> _reverseGeocode(double lat, double lng) async {
+    try {
+      final places = await placemarkFromCoordinates(lat, lng);
+      final name = places.firstOrNull?.locality?.trim();
+      nearbyLabel = (name != null && name.isNotEmpty) ? name : null;
+    } catch (_) {
+      nearbyLabel = null;
+    }
+    notifyListeners();
+  }
   bool get canAdmin =>
       verified &&
       profile['role'] == 'admin' &&

@@ -355,14 +355,15 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
   testWidgets(
-    'a restored member uses their program postcode instead of the Sydney default',
+    'a restored member with no GPS falls back to their own postcode, never a hardcoded Sydney default',
     (tester) async {
       final perth = program(id: 'perth', state: 'WA', sport: 'pickleball');
       (perth['venue'] as Map).addAll(<String, Object>{'lat': -31.95, 'lng': 115.86});
       final repo = FakeParticipantRepository()
         ..catalogueReady = true
         ..programs = [program(), perth]
-        ..events = [];
+        ..events = []
+        ..simulatedLocationResult = 'denied';
       repo.profile['postcode'] = '6000';
       await tester.pumpWidget(
         ParticipantApp(
@@ -373,7 +374,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Perth 6000'), findsOneWidget);
+      expect(find.text('Near 6000 (your home postcode)'), findsOneWidget);
       expect(
         tester
             .widget<FlutterMap>(find.byType(FlutterMap))

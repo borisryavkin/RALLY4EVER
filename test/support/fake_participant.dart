@@ -146,6 +146,26 @@ class FakeParticipantRepository extends ParticipantRepository {
     notifyListeners();
   }
 
+  // Controls what requestBrowseLocation() below simulates, standing in for
+  // Geolocator/geocoding in widget tests. 'granted' (default), 'denied',
+  // 'deniedForever', 'servicesOff' and 'timeout' mirror locationStatus.
+  String simulatedLocationResult = 'granted';
+  Record simulatedDeviceLocation = const {'lat': -33.8926, 'lng': 151.2511};
+  String? simulatedNearbyLabel = 'Bondi Junction';
+  @override
+  Future<void> requestBrowseLocation() async {
+    calls.add('requestBrowseLocation');
+    locationStatus = simulatedLocationResult;
+    if (locationStatus == 'granted') {
+      deviceLocation = simulatedDeviceLocation;
+      nearbyLabel = simulatedNearbyLabel;
+    } else {
+      deviceLocation = null;
+      nearbyLabel = null;
+    }
+    notifyListeners();
+  }
+
   String? checkInError;
   Record? simulatedLocation;
   final calls = <String>[];
