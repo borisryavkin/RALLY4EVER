@@ -214,7 +214,7 @@ test("QR rotation is assigned-coach/admin only and invalidates previous secret",
   assert.equal(second.generation, first.generation + 1);
   assert.match(
     second.url,
-    /^https:\/\/rally4ever\.org\/c\/EVENT-1\?k=[A-Za-z0-9_-]+$/,
+    /^https:\/\/rally4ever-checkin-3adaf\.web\.app\/c\/EVENT-1\?k=[A-Za-z0-9_-]+$/,
   );
   const saved = (await db.doc("eventSecrets/event-1").get()).data();
   assert.equal(saved.secret, undefined);
@@ -948,9 +948,10 @@ test("new no-app email creates only a provisional pending walk-in, never a verif
   assert.equal(result.status, "pending");
   assert.equal(result.verification, "email-only");
   assert.equal(result.idToken, undefined);
-  const user = await auth.getUserByEmail(data.email);
-  assert.equal(user.emailVerified, false);
-  const scan = (await db.doc(`checkins/event-1_${user.uid}`).get()).data();
+  await assert.rejects(()=>auth.getUserByEmail(data.email),e=>e.code==='auth/user-not-found');
+  const mapping=(await db.doc(`guestEmailIdentities/${data.email}`).get()).data();
+  assert.equal((await db.doc(`users/${mapping.uid}`).get()).exists,false);
+  const scan = (await db.doc(`checkins/event-1_${mapping.uid}`).get()).data();
   assert.equal(scan.status, "pending");
   assert.equal(scan.walkIn, true);
   assert.equal(scan.identityVerification, "email-only");
@@ -964,11 +965,8 @@ test("no-app form requirements cannot be bypassed and private requests cannot us
     "unsigned-forms",
     "FAILED_PRECONDITION",
   );
-  const user = await auth.getUserByEmail(data.email);
-  assert.equal(
-    (await db.doc(`checkins/event-1_${user.uid}`).get()).exists,
-    false,
-  );
+  await assert.rejects(()=>auth.getUserByEmail(data.email),e=>e.code==='auth/user-not-found');
+  assert.equal((await db.collection('guests').where('emailLower','==',data.email).get()).empty,true);
   await db
     .doc("checkins/event-3_participant-1")
     .set({ uid: "participant-1", eventId: "event-3", status: "confirmed" });
@@ -1153,4 +1151,68 @@ test("Google and pre-created email account resolve to the same existing Auth UID
     ).size,
     1,
   );
+});
+test('deferred guest flow uses both functions, normalizes email, never creates Auth/profile, rejects duplicate',async()=>{
+ const data=await noAppData('DEFERRED-GUEST@example.test');const before=(await auth.listUsers()).users.length;
+ const start=await call('beginNoAppCheckIn',{...data,deferCompletion:true},null);assert.equal(start.status,'ready');
+ assert.equal((await db.collection('guests').get()).size,0);
+ const result=await call('completeNoAppCheckIn',{requestId:start.requestId,secret:data.secret},null);assert.equal(result.status,'pending');
+ assert.equal((await auth.listUsers()).users.length,before);
+ const key=(await db.doc('guestEmailIdentities/deferred-guest@example.test').get()).data();assert.ok(key.uid.startsWith('guest-'));assert.equal((await db.doc('users/'+key.uid).get()).exists,false);
+ await error(()=>call('beginNoAppCheckIn',{...data,email:data.email.toLowerCase()},null),'already-checked-in','ALREADY_EXISTS');
+ const roster=await call('getEventConsole',{eventId:'event-1'},'coach-1');assert.ok(roster.roster.some(r=>r.uid===key.uid&&r.firstName==='Court visitor'));
+ await call('coachDecision',{eventId:'event-1',uid:key.uid,decision:'confirm'},'coach-1');assert.equal((await db.doc(result.checkinId?`checkins/${result.checkinId}`:'bad/bad').get()).data().status,'confirmed');
+});
+test('public session info identifies a session before location, but never exposes secret hashes/private fields',async()=>{
+ const data=await noAppData('info@example.test');const info=await call('getNoAppForms',{eventCode:data.eventCode,secret:data.secret},null);assert.equal(info.name,(await db.doc('events/event-1').get()).data().name);assert.equal(info.forms.length,2);assert.equal(info.currentSecretHash,undefined);assert.equal(info.coachUids,undefined);
+ await error(()=>call('getNoAppForms',{eventCode:data.eventCode,secret:'arbitrary-barcode'},null),'invalid-secret','PERMISSION_DENIED');
+});
+test('public check-in enforces time, distance, email and request binding server-side',async()=>{
+ const data=await noAppData('validation@example.test');
+ await error(()=>call('beginNoAppCheckIn',{...data,email:'not-an-email'},null),'invalid-email','INVALID_ARGUMENT');
+ await error(()=>call('beginNoAppCheckIn',{...data,lat:0,lng:0},null),'too-far','FAILED_PRECONDITION');
+ const old=(await db.doc('events/event-1').get()).data();
+ await db.doc('events/event-1').update({startsAt:Timestamp.fromMillis(Date.now()+7200000),endsAt:Timestamp.fromMillis(Date.now()+10800000)});
+ await error(()=>call('beginNoAppCheckIn',data,null),'too-early','FAILED_PRECONDITION');
+ await db.doc('events/event-1').update({startsAt:Timestamp.fromMillis(Date.now()-7200000),endsAt:Timestamp.fromMillis(Date.now()-1000)});
+ await error(()=>call('beginNoAppCheckIn',data,null),'too-late','FAILED_PRECONDITION');
+ await db.doc('events/event-1').update({startsAt:old.startsAt,endsAt:old.endsAt});
+ const request=await call('beginNoAppCheckIn',{...data,deferCompletion:true},null);
+ await error(()=>call('completeNoAppCheckIn',{requestId:request.requestId,secret:'wrong'},null),'invalid-secret','PERMISSION_DENIED');
+});
+test('verified signup claims guest history without deleting scans or overwriting conflicts',async()=>{
+ const data=await noAppData('guest-claim@example.test');const scan=await call('beginNoAppCheckIn',data,null);const old=(await db.doc(`checkins/${scan.checkinId}`).get()).data();
+ const member=await auth.createUser({uid:'claim-member',email:data.email,emailVerified:true,password:'Emulator-Claim-Password-123!'});
+ const result=await service.registerIdentity({uid:member.uid,email:data.email},{});assert.equal(result.uid,member.uid);assert.equal(result.guestHistory.copied,1);
+ const moved=(await db.doc(`checkins/event-1_${member.uid}`).get()).data();assert.equal(moved.scannedAt.toMillis(),old.scannedAt.toMillis());assert.equal(moved.identityVerification,'email-only');assert.equal((await db.doc(`checkins/${scan.checkinId}`).get()).data().mergedInto,`checkins/event-1_${member.uid}`);
+ const roster=await call('getEventConsole',{eventId:'event-1'},'coach-1');assert.equal(roster.roster.filter(r=>[old.uid,member.uid].includes(r.uid)).length,1);
+});
+test('guest claim collisions are recorded for review and both original scans remain unchanged',async()=>{
+ const data=await noAppData('guest-conflict@example.test');const result=await call('beginNoAppCheckIn',data,null);const old=(await db.doc(`checkins/${result.checkinId}`).get()).data();
+ const member=await auth.createUser({uid:'claim-conflict-member',email:data.email,emailVerified:true});const dest=db.doc(`checkins/event-1_${member.uid}`);await dest.set({uid:member.uid,eventId:'event-1',status:'confirmed',scannedAt:Timestamp.fromMillis(1234)});
+ const registered=await service.registerIdentity({uid:member.uid,email:data.email},{});assert.equal(registered.guestHistory.conflicts.length,1);assert.equal((await dest.get()).data().scannedAt.toMillis(),1234);assert.equal((await db.doc(`checkins/${result.checkinId}`).get()).data().scannedAt.toMillis(),old.scannedAt.toMillis());
+});
+test('known emails require ownership proof even without attendance, and public endpoints rate limit',async()=>{
+ const data=await noAppData();const response=await call('beginNoAppCheckIn',data,null);assert.equal(response.status,'verification-required');
+ const info={eventCode:data.eventCode,secret:data.secret};for(let i=0;i<30;i++)await call('getNoAppForms',info,null);
+ await error(()=>call('getNoAppForms',info,null),'rate-limit','RESOURCE_EXHAUSTED');
+});
+test('merge target must match its verified Auth email and never silently changes ownership',async()=>{
+ const value={sourceUid:'participant-2',targetUid:'participant-1',reason:'Reviewed duplicate test',dryRun:true};
+ await error(()=>call('mergeProfiles',{...value,email:'wrong@example.test'},'admin-1'),'email-mismatch','PERMISSION_DENIED');
+ await auth.updateUser('participant-1',{emailVerified:false});await error(()=>call('mergeProfiles',value,'admin-1'),'unverified-target','FAILED_PRECONDITION');
+ assert.equal((await db.doc('users/participant-2').get()).data().mergedInto,null);
+});
+
+test('required legal forms block when absent, draft, future, blank; date versions accepted',async()=>{
+ const ref=db.doc('forms/waiver');const original=(await ref.get()).data();
+ await db.doc('events/event-1').update({requiredFormIds:[]});
+ await ref.delete();await error(()=>scan(),'form-unavailable','FAILED_PRECONDITION');
+ for(const change of [{published:false},{status:'draft'},{publishedAt:Timestamp.fromMillis(Date.now()+60000)},{body:' ',content:''}]){
+  await ref.set({...original,...change});await error(()=>scan(),'form-unavailable','FAILED_PRECONDITION');
+ }
+ await ref.set({...original,body:'Emulator approved fixture',version:'2026-11-20',publishedAt:Timestamp.fromMillis(0)});
+ await error(()=>scan(),'unsigned-forms','FAILED_PRECONDITION');
+ await db.doc('consents/participant-1_waiver').update({version:'2026-11-20'});
+ const result=await scan();assert.equal(result.status,'pending');
 });

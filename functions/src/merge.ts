@@ -3,7 +3,7 @@ import {
   DocumentSnapshot,
   Transaction,
 } from "firebase-admin/firestore";
-import { Identity, input, id, text, fail, hash } from "./domain";
+import { Identity, input, id, text, fail, hash, normalizeEmail } from "./domain";
 import { AttendanceService, uid } from "./service";
 
 interface Move {
@@ -127,6 +127,7 @@ export class MergeService {
       "reason",
       "dryRun",
       "dryRunId",
+      "email",
     ]);
     const source = uid(d.sourceUid),
       target = uid(d.targetUid),
@@ -139,6 +140,13 @@ export class MergeService {
       );
     if (d.dryRun !== undefined && typeof d.dryRun !== "boolean")
       fail("invalid-argument", "invalid-input", "dryRun must be boolean");
+    await this.service.db.runTransaction(async tx=>{
+      if((await this.service.actor(tx,who)).role!=='admin')fail('permission-denied','admin-required','Admin role required');
+    });
+    const targetAccount=await this.service.auth.getUser(target);
+    if(targetAccount.disabled||!targetAccount.emailVerified)fail('failed-precondition','unverified-target','The canonical account must have a verified email');
+    const verifiedEmail=normalizeEmail(targetAccount.email);
+    if(d.email!==undefined&&normalizeEmail(d.email)!==verifiedEmail)fail('permission-denied','email-mismatch','Use the canonical verified email');
     const dryRun = d.dryRun !== false;
     const auditRef = dryRun
       ? this.service.db.collection("mergeAudits").doc()
@@ -174,7 +182,11 @@ export class MergeService {
       )
         fail("failed-precondition", "dry-run-expired", "Run a fresh dry-run");
       const plan = await this.collect(tx, source, target);
+      if(normalizeEmail(plan.target.data()!.emailLower)!==verifiedEmail)fail('failed-precondition','identity-conflict','Target profile and verified Auth email differ');
       const summary = {
+        verifiedEmail,
+        sourceEmail:plan.source.data()!.emailLower,
+        manualDifferentEmails:plan.source.data()!.emailLower!==verifiedEmail,
         moves: plan.moves.map((m) => ({ from: m.from, to: m.to })),
         aliases: plan.aliases.map((a) => a.id),
         writes: plan.writes,

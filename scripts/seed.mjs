@@ -1,3 +1,4 @@
+import {readFile} from 'node:fs/promises';
 import { demoPrograms } from './catalogue-fixtures.mjs';
 import { pathToFileURL } from 'node:url';
 import { initializeApp, deleteApp } from 'firebase-admin/app';
@@ -53,7 +54,7 @@ export async function seed() {
     }
     for (const {id,...program} of demoPrograms()) await create(`programs/${id}`, {...program,createdAt:now,updatedAt:now,updatedBy:'emulator-seed'});
     for (const formType of ['conduct', 'waiver']) {
-      await create(`forms/${formType}`, {formType, version: 1, title: `Demo ${formType}`, content: 'Emulator fixture only; not approved legal text.', updatedAt: now});
+      await create(`forms/${formType}`, {formType, version: 1, title: `Demo ${formType}`, content: await readFile(new URL('../docs/forms/'+formType+'.txt',import.meta.url),'utf8'), publishedAt:Timestamp.fromMillis(0), updatedAt: now});
     }
     await create('rsvps/event-1_participant-1', {
       eventId: 'event-1', uid: 'participant-1', createdAt: now, cancelledAt: null, source: 'coach-added',

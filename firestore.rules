@@ -133,6 +133,10 @@ service cloud.firestore {
       allow read: if active() && (resource.data.status in ['active', 'archived'] || admin());
       allow write: if false; // Validated, audited admin callables only.
     }
+    match /guestClaimAudits/{id} { allow read: if admin(); allow write: if false; }
+    match /guests/{id} { allow read: if admin(); allow write: if false; }
+    match /guestEmailIdentities/{id} { allow read: if admin(); allow write: if false; }
+    match /noAppRequests/{id} { allow read, write: if false; }
     match /venues/{venueId} { allow read: if active(); allow write: if false; }
     match /demoRemovalBackups/{backupId} { allow read: if admin(); allow write: if false; }
     match /catalogueAudits/{auditId} { allow read: if admin(); allow write: if false; }
@@ -171,6 +175,13 @@ service cloud.firestore {
       // Assigned coach/admin operations use trusted callables too, preserving scans/audit history.
       allow write: if false;
     }
+    match /formPublicationAudits/{id} { allow read: if admin(); allow write: if false; }
+    function publishedForm(formId) {
+      let f = get(/databases/$(database)/documents/forms/$(formId)).data;
+      return f.publishedAt is timestamp && f.publishedAt <= request.time
+        && f.get('published', true) != false && f.get('status', 'published') != 'draft'
+        && f.get('body', f.get('content', '')).size() > 0;
+    }
     match /forms/{formId} {
       allow read: if active();
       allow write: if admin();
@@ -181,12 +192,13 @@ service cloud.firestore {
         && request.resource.data.keys().hasAll(['uid', 'formId', 'formType', 'version', 'signedAt'])
         && request.resource.data.keys().hasOnly(['uid', 'formId', 'formType', 'version', 'signedAt'])
         && id == request.auth.uid + '_' + request.resource.data.formId
-        && request.resource.data.formType in ['conduct', 'waiver']
+        && request.resource.data.formType in ['conduct', 'waiver', 'photo-release', 'data-collection']
+        && publishedForm(request.resource.data.formId)
         && request.resource.data.formType == get(/databases/$(database)/documents/forms/$(request.resource.data.formId)).data.formType
         && request.resource.data.version == get(/databases/$(database)/documents/forms/$(request.resource.data.formId)).data.version
         && request.resource.data.signedAt == request.time
         && (!exists(/databases/$(database)/documents/consents/$(id))
-          || resource.data.version < request.resource.data.version));
+          || resource.data.version != request.resource.data.version));
       allow delete: if admin();
     }
     function eligibleForFeedback(d) {

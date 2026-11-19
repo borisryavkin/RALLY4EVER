@@ -182,7 +182,7 @@ test('admin sees every console and rotating QR; coach only assigned; Workspace e
  assert.equal((await staff.listStaffSessions(admin,{})).events.length,2);
  assert.equal((await staff.listStaffSessions(who('coach-1','coach'),{})).events.length,1);
  await staff.getEventConsole(admin,{eventId:'session-two'});
- const qr=await service.rotateEventSecret(admin,{eventId:'session-two'});assert.match(qr.url,/^https:\/\/rally4ever.org\/c\/[^?]+\?k=/);
+ const qr=await service.rotateEventSecret(admin,{eventId:'session-two'});assert.match(qr.url,/^https:\/\/rally4ever-checkin-3adaf.web.app\/c\/[^?]+\?k=/);
  await rejects(staff.getEventConsole(who('coach-1','coach'),{eventId:'session-two'}),'event-role-required');
  await rejects(service.rotateEventSecret(who('coach-1','coach'),{eventId:'session-two'}),'event-role-required');
  await rejects(staff.listStaffSessions({...who('participant-1'),email:'someone@rally4ever.org'},{}),'staff-required');
@@ -383,4 +383,14 @@ test('editing a standalone legacy session preserves its older-install RSVP polic
  await db.doc('events/legacy-policy').update({catalogueManaged:false});
  await c.saveSession(admin,{eventId:'legacy-policy',revision:1,changes:{notes:'An ordinary edit'}});
  assert.equal((await db.doc('events/legacy-policy').get()).data().catalogueManaged,false);
+});
+
+test('Google-created member can set a password through the reset email on the same UID',async()=>{
+ const {initializeApp:clientApp,deleteApp:deleteClient}=await import('firebase/app'),A=await import('firebase/auth');
+ const client=clientApp({apiKey:'demo-key',projectId:'demo-rally4ever',appId:'demo-reset-auth'},'google-reset-link'),auth=A.getAuth(client);A.connectAuthEmulator(auth,'http://127.0.0.1:23999',{disableWarnings:true});
+ const email='google-reset@example.test',password='Reset-app-password-123!';
+ const token=Buffer.from(JSON.stringify({alg:'none',typ:'JWT'})).toString('base64url')+'.'+Buffer.from(JSON.stringify({sub:'google-reset',email,email_verified:true})).toString('base64url')+'.';
+ try{const first=await A.signInWithCredential(auth,A.GoogleAuthProvider.credential(token)),uid=first.user.uid;await db.doc(`users/${uid}`).set(profile({uid,email,role:'participant'},Timestamp.now()));await db.doc(`rsvps/preserved_${uid}`).set({uid,eventId:'preserved',cancelledAt:null});await A.signOut(auth);await A.sendPasswordResetEmail(auth,email);
+ const codes=await(await fetch('http://127.0.0.1:23999/emulator/v1/projects/demo-rally4ever/oobCodes')).json(),code=codes.oobCodes.filter(c=>c.email===email&&c.requestType==='PASSWORD_RESET').at(-1);assert.ok(code);await A.confirmPasswordReset(auth,code.oobCode,password);assert.equal((await A.signInWithEmailAndPassword(auth,email,password)).user.uid,uid);await A.signOut(auth);assert.equal((await A.signInWithCredential(auth,A.GoogleAuthProvider.credential(token))).user.uid,uid);assert.equal((await db.doc(`rsvps/preserved_${uid}`).get()).exists,true);
+ }finally{await deleteClient(client);}
 });

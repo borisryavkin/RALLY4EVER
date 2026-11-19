@@ -1,3 +1,5 @@
+import {requiredForms,publishedForm} from './forms';
+import {claimGuestAttendance} from './guest_claims';
 import { randomBytes } from "node:crypto";
 import { Auth } from "firebase-admin/auth";
 import {
@@ -105,17 +107,17 @@ export class AttendanceService {
     if (!Array.isArray(e.requiredFormIds) || e.requiredFormIds.length > 10)
       fail("failed-precondition", "invalid-event", "Invalid required forms");
     const missing: string[] = [];
-    for (const formId of e.requiredFormIds) {
+    for (const formId of requiredForms(e)) {
       id(formId, "formId");
       const [form, consent] = await Promise.all([
         tx.get(this.db.doc(`forms/${formId}`)),
         tx.get(this.db.doc(`consents/${participantUid}_${formId}`)),
       ]);
-      if (!form.exists)
+      if (!publishedForm(form.data(),this.now()))
         fail(
           "failed-precondition",
           "form-unavailable",
-          "A required form is unavailable",
+          "A required agreement is missing or unpublished. Ask the coach for help.",
         );
       const c = consent.data(),
         f = form.data()!;
@@ -258,7 +260,8 @@ export class AttendanceService {
       );
     }
     const result = await this.reserveIdentity(who.uid, email);
-    return { ...result, requiresSignIn: result.uid !== who.uid };
+    const guestHistory = result.uid === who.uid ? await claimGuestAttendance(this.db,who.uid,email,this.stamp()) : null;
+    return { ...result, requiresSignIn: result.uid !== who.uid, guestHistory };
   }
   async rotateEventSecret(who: Identity, value: unknown) {
     const d = input(value, ["eventId"]);
@@ -290,7 +293,7 @@ export class AttendanceService {
       return {
         eventId,
         eventCode: code,
-        url: `https://rally4ever.org/c/${encodeURIComponent(code)}?k=${secret}`,
+        url: `https://rally4ever-checkin-3adaf.web.app/c/${encodeURIComponent(code)}?k=${secret}`,
         secret,
         generation,
         expiresAt: expiresAt.toDate().toISOString(),

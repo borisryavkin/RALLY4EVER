@@ -330,3 +330,12 @@ test('managed venue photo metadata removes bearer download tokens and preserves 
  const {withoutDownloadToken}=require('../lib/venue_photos');
  assert.deepEqual(withoutDownloadToken({firebaseStorageDownloadTokens:'do-not-retain',owner:'venue'}),{firebaseStorageDownloadTokens:null,owner:'venue'});
 });
+
+test('legal form publication fails closed and mandatory forms cannot be omitted', () => {
+ const {requiredForms,publishedForm}=require('../lib/forms');
+ const {Timestamp}=require('firebase-admin/firestore');
+ assert.deepEqual(requiredForms({requiredFormIds:[]}),['conduct','waiver']);
+ const f={body:'Approved legal text',version:'2026-11-20',publishedAt:Timestamp.fromMillis(100)};
+ assert.equal(publishedForm(f,200),true);
+ for(const invalid of [undefined,{...f,published:false},{...f,status:'draft'},{...f,body:' '},{...f,publishedAt:Timestamp.fromMillis(300)},{...f,publishedAt:null}])assert.equal(publishedForm(invalid,200),false);
+});

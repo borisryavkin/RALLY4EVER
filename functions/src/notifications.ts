@@ -102,7 +102,7 @@ export class NotificationService {
     if (
       !initial.exists ||
       initial.data()!.status !== "pending" ||
-      initial.data()!.mergedFromUid
+      (initial.data()!.mergedFromUid || initial.data()!.mergedFromGuestUid || initial.data()!.mergedInto)
     )
       return 0;
     const e = await db.doc(`events/${initial.data()!.eventId}`).get();
@@ -192,6 +192,7 @@ export class NotificationService {
           s = scan.data();
         if (
           !s ||
+          s.mergedInto ||
           s.status !== "confirmed" ||
           !s.feedbackReminderPending ||
           s.eventEndsAt.toMillis() > now() - 2400000

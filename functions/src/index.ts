@@ -141,12 +141,12 @@ export const sendFeedbackReminders = onSchedule("every 5 minutes", async () => {
 });
 
 const noApp = new NoAppService(service);
-export const beginNoAppCheckIn = onCall(async (request) => {
-  assertEmulatorOnly();
+export const beginNoAppCheckIn = onCall({invoker: "public"}, async (request) => {
+  assertApprovedBackend();
   return noApp.begin(request.data, request.rawRequest.ip ?? "local");
 });
-export const completeNoAppCheckIn = onCall(async (request) => {
-  assertEmulatorOnly();
+export const completeNoAppCheckIn = onCall({invoker: "public"}, async (request) => {
+  assertApprovedBackend();
   return noApp.complete(request.data, request.rawRequest.ip ?? "local");
 });
 
@@ -182,23 +182,8 @@ export const getCountedIn = callable(async (who, value) => {
   return { count: intents.size, people };
 });
 
-export const getNoAppForms = onCall(async (request) => {
-  assertEmulatorOnly();
-  await rateLimit(
-    db,
-    "noapp-info",
-    request.rawRequest.ip ?? "local",
-    20,
-    60000,
-  );
-  const d = input(request.data, ["eventCode", "secret", "lat", "lng"]);
-  const { e, eventId } = await noApp.validate(d);
-  const forms = [];
-  for (const formId of e.requiredFormIds) {
-    const f = await db.doc(`forms/${formId}`).get();
-    if (f.exists) forms.push({ id: formId, ...f.data() });
-  }
-  return { eventId, name: e.name, forms };
+export const getNoAppForms = onCall({invoker:"public"}, async request => {
+  assertApprovedBackend();return noApp.info(request.data,request.rawRequest.ip??'local');
 });
 
 const roles = new AdminRoleService(service);

@@ -33,8 +33,8 @@ beforeEach(async () => {
       setDoc(doc(db,'events/event-2'), event('event-2','coach-2',past,future)),
       setDoc(doc(db,'events/event-3'), event('event-3','coach-1',past,past)),
       setDoc(doc(db,'events/draft'), {...event('draft','coach-1',past,future),status:'draft'}),
-      setDoc(doc(db,'forms/waiver'),{formType:'waiver',version:2}),
-      setDoc(doc(db,'forms/conduct'),{formType:'conduct',version:1}),
+      setDoc(doc(db,'forms/waiver'),{formType:'waiver',version:2,publishedAt:Timestamp.now(),body:'Rule test'}),
+      setDoc(doc(db,'forms/conduct'),{formType:'conduct',version:1,publishedAt:Timestamp.now(),body:'Rule test'}),
       setDoc(doc(db,'checkins/event-3_participant-1'),{uid:'participant-1',eventId:'event-3',status:'confirmed'}),
       setDoc(doc(db,'checkins/event-1_participant-1'),{uid:'participant-1',eventId:'event-1',status:'pending'}),
       setDoc(doc(db,'notifications/scan_event-1_participant-1'),{uid:'participant-1',eventId:'event-1',type:'scan',readAt:null,createdAt:now}),
@@ -138,7 +138,7 @@ test('consent accepts only owner/current matching form, version and server times
   await assertFails(setDoc(ref,data)); // preserve signature for the same version
   await assertFails(getDoc(doc(user('participant-2'),'consents/participant-1_waiver')));
   await assertFails(deleteDoc(ref));
-  await trusted('forms/waiver',{formType:'waiver',version:3});
+  await trusted('forms/waiver',{formType:'waiver',version:3,publishedAt:Timestamp.now(),body:'Rule test'});
   await assertFails(setDoc(ref,data));
   await assertSucceeds(setDoc(ref,{...data,version:3}));
 });
@@ -220,4 +220,15 @@ test('prefilled first-page save works after upgrading legacy profile/contact sch
   await assertSucceeds(updateDoc(doc(ownDb(),'users/participant-1/private/contact'),{mobile:'0400000099',updatedAt:serverTimestamp()}));
   await assertFails(updateDoc(doc(user('participant-2'),'users/participant-1'),changes));
   await assertFails(updateDoc(doc(ownDb(),'users/participant-1'),{role:'admin',updatedAt:serverTimestamp()}));
+});
+
+test('date-version forms and optional releases accept only the published current version',async()=>{
+ for(const formId of ['conduct','waiver','photo-release','data-collection']){
+  await trusted('forms/'+formId,{id:formId,formType:formId,version:'2026-11-20',body:'Legal fixture',publishedAt:past});
+  const receipt={uid:'participant-1',formId,formType:formId,version:'2026-11-20',signedAt:serverTimestamp()};
+  await assertSucceeds(setDoc(doc(ownDb(),'consents/participant-1_'+formId),receipt));
+  await assertFails(setDoc(doc(ownDb(),'consents/participant-2_'+formId),{...receipt,uid:'participant-2'}));
+  await trusted('forms/'+formId,{id:formId,formType:formId,version:'2026-11-21',body:'Legal fixture',publishedAt:past,published:false});
+  await assertFails(setDoc(doc(ownDb(),'consents/participant-1_'+formId),{...receipt,version:'2026-11-21'}));
+ }
 });

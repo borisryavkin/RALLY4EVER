@@ -27,10 +27,10 @@ export class StaffService {
       db.collection("checkins").where("eventId","==",eventId).limit(500).get(),
     ]);
     const intents=new Map<string, DocumentData>(rsvps.docs.map(d=>[d.data().uid,d.data()]));
-    const arrivals=new Map<string, DocumentData>(scans.docs.map(d=>[d.data().uid,{...d.data(),id:d.id}]));
+    const arrivals=new Map<string, DocumentData>(scans.docs.filter(d=>!d.data().mergedInto).map(d=>[d.data().uid,{...d.data(),id:d.id}]));
     const roster=await Promise.all([...new Set([...intents.keys(),...arrivals.keys()])].map(async uid=>{
-      const p=(await db.doc(`users/${uid}`).get()).data(),r=intents.get(uid),c=arrivals.get(uid);
-      return {uid,firstName:p?.firstName??"Member",lastName:p?.lastName??"",email:p?.emailLower??"",
+      const p=(await db.doc(`users/${uid}`).get()).data()??(await db.doc(`guests/${uid}`).get()).data(),r=intents.get(uid),c=arrivals.get(uid);
+      return {uid,firstName:p?.firstName||c?.firstName||"Member",lastName:p?.lastName??"",email:p?.emailLower??"",
         countedIn:!!r && r.cancelledAt===null,checkinStatus:c?.status??null,checkinId:c?.id??null,
         scannedAt:c?.scannedAt?.toDate().toISOString()??null,distanceM:c?.distanceM??null,walkIn:c?.walkIn??false,
         correctionsCount:c?.corrections?.length??0};
