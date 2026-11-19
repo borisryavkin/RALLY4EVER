@@ -288,6 +288,9 @@ class FakeParticipantRepository extends ParticipantRepository {
   @override
   Future<Record> call(String name, Record data) async {
     calls.add(name);
+    if (name == 'listStaffSessions') {
+      return {'events': events, 'limited': false};
+    }
     if (name == 'checkIn') {
       if (checkInError != null) throw StateError(checkInError!);
       checkins = [

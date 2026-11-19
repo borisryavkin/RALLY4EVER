@@ -15,6 +15,7 @@ import 'forms.dart';
 import 'access.dart';
 import 'catalogue.dart';
 import 'catalogue_admin.dart';
+import 'coach_console.dart';
 import 'repository.dart';
 import 'theme.dart';
 import 'user_avatar.dart';
@@ -680,6 +681,28 @@ class _ParticipantAppState extends State<ParticipantApp>
             const Text('Admin access required.'),
         ],
       ),
+      'coachTools' => frame(
+        context,
+        title: 'Coach tools',
+        back: () => go('profile'),
+        children: [
+          if (repo.canAdmin || repo.canCoach)
+            StaffSessionsPanel(repository: repo)
+          else
+            const Text('Staff access required.'),
+        ],
+      ),
+      'adminSessions' => frame(
+        context,
+        title: 'Admin · sessions',
+        back: () => go('role'),
+        children: [
+          if (repo.canAdmin)
+            SessionManagementPanel(repository: repo)
+          else
+            const Text('Admin access required.'),
+        ],
+      ),
       'session' => session(context),
       'people' => who(context),
       'checkin' => checkInState(context),
@@ -1101,6 +1124,7 @@ class _ParticipantAppState extends State<ParticipantApp>
       ],
     );
   }
+
   DateTime zoned(dynamic value, Record e) {
     try {
       return tz.TZDateTime.from(
@@ -1787,6 +1811,18 @@ class _ParticipantAppState extends State<ParticipantApp>
     title: 'Profile & preferences',
     navigation: true,
     children: [
+      if (repo.canAdmin)
+        FilledButton.icon(
+          onPressed: () => go('role'),
+          icon: const Icon(Icons.admin_panel_settings),
+          label: const Text('Admin'),
+        ),
+      if (repo.canAdmin || repo.canCoach)
+        OutlinedButton.icon(
+          onPressed: () => go('coachTools'),
+          icon: const Icon(Icons.qr_code),
+          label: const Text('Coach tools'),
+        ),
       Row(
         children: [
           GestureDetector(
@@ -1810,11 +1846,7 @@ class _ParticipantAppState extends State<ParticipantApp>
                     color: coral,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(
-                    Icons.edit,
-                    color: Colors.white,
-                    size: 12,
-                  ),
+                  child: const Icon(Icons.edit, color: Colors.white, size: 12),
                 ),
               ],
             ),
@@ -2059,68 +2091,34 @@ class _ParticipantAppState extends State<ParticipantApp>
   );
   Widget roleScreen(BuildContext context) => frame(
     context,
-    title: '${repo.role == 'admin' ? 'Admin' : 'Coach'} view',
-    back: () => go('home'),
+    title: repo.canAdmin ? 'Admin' : 'Coach tools',
+    back: () => go('profile'),
     children: [
       OutlinedButton(
         onPressed: () => go('home'),
         child: const Text('Switch to participant view'),
       ),
-      if (repo.canAdmin)
+      if (repo.canAdmin) ...[
+        FilledButton(
+          onPressed: () => go('adminCatalogue'),
+          child: const Text('Programs'),
+        ),
+        FilledButton(
+          onPressed: () => go('adminSessions'),
+          child: const Text('Sessions'),
+        ),
         FilledButton(
           onPressed: () => go('adminAccess'),
-          child: const Text('Manage users & event coaches'),
+          child: const Text('Users & coach assignment'),
         ),
-      if (repo.canAdmin)
         OutlinedButton(
-          onPressed: () => go('adminCatalogue'),
-          child: const Text('Manage programs & calendar'),
+          onPressed: () => go('coachTools'),
+          child: const Text('Coach tools'),
         ),
-      if (repo.canCoach) CoachOverviewPanel(repository: repo),
-      Text(
-        'Your role is ${repo.role}.',
-        style: Theme.of(context).textTheme.headlineMedium,
-      ),
-      const SizedBox(height: 14),
-      const Text(
-        'You’re signed in with your shared account. The full console is the next review stage; participant tools are available now.',
-      ),
-      const SizedBox(height: 20),
-      for (final e in repo.events.where(
-        (e) => (e['coachUids'] as List? ?? []).contains(repo.uid),
-      ))
-        eventCard(context, e),
-      for (final note in repo.notifications.where(
-        (n) => (n['type'] as String? ?? '').startsWith('checkin-'),
-      ))
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Panel(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Pending check-in',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
-                Text('Scan: ${dateOf(note['scannedAt']).toLocal()}'),
-                Text(
-                  note['distanceM'] == null
-                      ? 'Distance: manual'
-                      : "Distance: ${note['distanceM']} m",
-                ),
-                if (note['identityVerification'] == 'email-only')
-                  const StatusPill('Email not verified', dark: true),
-              ],
-            ),
-          ),
-        ),
-      const Panel(
-        color: pink,
-        child: Text(
-          'A scan stays pending until an assigned coach confirms. The coach receives its distance and scan time.',
-        ),
-      ),
+      ] else if (repo.canCoach)
+        StaffSessionsPanel(repository: repo)
+      else
+        const Text('Staff access required.'),
     ],
   );
   void selectProgram(Record program) {
@@ -2345,8 +2343,7 @@ class _ParticipantAppState extends State<ParticipantApp>
     if (repo.locationStatus == 'granted') {
       return 'Near ${repo.nearbyLabel ?? 'you'}';
     }
-    if (repo.locationStatus == 'requesting' ||
-        repo.locationStatus == 'idle') {
+    if (repo.locationStatus == 'requesting' || repo.locationStatus == 'idle') {
       return 'Finding your location…';
     }
     final postcode = '${repo.profile['postcode'] ?? ''}';
@@ -2407,145 +2404,142 @@ class _ParticipantAppState extends State<ParticipantApp>
   Widget map(BuildContext context) {
     _ensureBrowseLocationRequested();
     return Scaffold(
-    // The map itself stays full-bleed on a tablet (unlike text content, a
-    // map benefits from the extra width) -- only the nav chrome adapts.
-    bottomNavigationBar: isWide(context) ? null : bottomNav(),
-    appBar: AppBar(
-      title: const Text('Play near you'),
-      leading: BackButton(onPressed: () => go('home')),
-    ),
-    body: isWide(context)
-        ? Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              navRail(),
-              const VerticalDivider(width: 1),
-              Expanded(child: _mapBody(context)),
-            ],
-          )
-        : _mapBody(context),
+      // The map itself stays full-bleed on a tablet (unlike text content, a
+      // map benefits from the extra width) -- only the nav chrome adapts.
+      bottomNavigationBar: isWide(context) ? null : bottomNav(),
+      appBar: AppBar(
+        title: const Text('Play near you'),
+        leading: BackButton(onPressed: () => go('home')),
+      ),
+      body: isWide(context)
+          ? Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                navRail(),
+                const VerticalDivider(width: 1),
+                Expanded(child: _mapBody(context)),
+              ],
+            )
+          : _mapBody(context),
     );
   }
 
   Widget _mapBody(BuildContext context) => Stack(
-      children: [
-        Positioned.fill(
-          child: FlutterMap(
-            key: ValueKey(area),
-            options: MapOptions(
-              initialCenter: mapCenter,
-              initialZoom: selectedMapPoint == null ? 4 : 12,
-            ),
-            children: [
-              if (widget.mapTilesEnabled)
-                TileLayer(
-                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  userAgentPackageName: 'org.rally4ever.app',
-                ),
-              MarkerLayer(
-                markers: [
-                  for (final p in repo.programs.where(
-                    (p) =>
-                        matchesProgram(p, sport: sport) &&
-                        venuePoint(p) != null,
-                  ))
-                    Marker(
-                      point: venuePoint(p)!,
-                      width: 50,
-                      height: 50,
-                      child: IconButton(
-                        onPressed: () => selectProgram(p),
-                        tooltip: p['name'] as String,
-                        icon: const Icon(
-                          Icons.location_on,
-                          color: coral,
-                          size: 38,
+    children: [
+      Positioned.fill(
+        child: FlutterMap(
+          key: ValueKey(area),
+          options: MapOptions(
+            initialCenter: mapCenter,
+            initialZoom: selectedMapPoint == null ? 4 : 12,
+          ),
+          children: [
+            if (widget.mapTilesEnabled)
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'org.rally4ever.app',
+              ),
+            MarkerLayer(
+              markers: [
+                for (final p in repo.programs.where(
+                  (p) =>
+                      matchesProgram(p, sport: sport) && venuePoint(p) != null,
+                ))
+                  Marker(
+                    point: venuePoint(p)!,
+                    width: 50,
+                    height: 50,
+                    child: IconButton(
+                      onPressed: () => selectProgram(p),
+                      tooltip: p['name'] as String,
+                      icon: const Icon(
+                        Icons.location_on,
+                        color: coral,
+                        size: 38,
+                      ),
+                    ),
+                  ),
+                ...repo.events
+                    .where(
+                      (e) =>
+                          venuePoint(e) != null &&
+                          e['status'] != 'cancelled' &&
+                          !repo.programs.any((p) => p['id'] == e['programId']),
+                    )
+                    .map(
+                      (e) => Marker(
+                        point: LatLng(
+                          (e['venue']['lat'] as num).toDouble(),
+                          (e['venue']['lng'] as num).toDouble(),
+                        ),
+                        width: 50,
+                        height: 50,
+                        child: IconButton(
+                          onPressed: () => select(e, 'session'),
+                          tooltip: e['name'] as String,
+                          icon: const Icon(
+                            Icons.location_on,
+                            color: coral,
+                            size: 38,
+                          ),
                         ),
                       ),
                     ),
-                  ...repo.events
-                      .where(
-                        (e) =>
-                            venuePoint(e) != null &&
-                            e['status'] != 'cancelled' &&
-                            !repo.programs.any(
-                              (p) => p['id'] == e['programId'],
-                            ),
-                      )
-                      .map(
-                        (e) => Marker(
-                          point: LatLng(
-                            (e['venue']['lat'] as num).toDouble(),
-                            (e['venue']['lng'] as num).toDouble(),
-                          ),
-                          width: 50,
-                          height: 50,
-                          child: IconButton(
-                            onPressed: () => select(e, 'session'),
-                            tooltip: e['name'] as String,
-                            icon: const Icon(
-                              Icons.location_on,
-                              color: coral,
-                              size: 38,
-                            ),
-                          ),
-                        ),
-                      ),
-                ],
+              ],
+            ),
+            const RichAttributionWidget(
+              attributions: [
+                TextSourceAttribution('OpenStreetMap contributors'),
+              ],
+            ),
+          ],
+        ),
+      ),
+      Positioned(
+        left: 20,
+        right: 20,
+        top: 20,
+        child: Panel(
+          child: Row(
+            children: [
+              const Icon(Icons.search, size: 18),
+              const SizedBox(width: 8),
+              Expanded(child: Text(areaLabel)),
+              locationBarActions(),
+            ],
+          ),
+        ),
+      ),
+      Positioned(
+        left: 20,
+        right: 20,
+        bottom: 24,
+        child: Panel(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                repo.programs.isEmpty
+                    ? '${repo.events.length} sessions nearby'
+                    : '${repo.programs.where((p) => matchesProgram(p, sport: sport) && venuePoint(p) != null).length} programs on the map',
+                style: Theme.of(context).textTheme.titleLarge,
               ),
-              const RichAttributionWidget(
-                attributions: [
-                  TextSourceAttribution('OpenStreetMap contributors'),
-                ],
+              const SizedBox(height: 8),
+              Text(
+                repo.programs.isEmpty
+                    ? 'Tap a marker to see its session.'
+                    : 'Tap a marker for the program and session dates.',
+              ),
+              TextButton(
+                onPressed: () =>
+                    go(repo.programs.isEmpty ? 'home' : 'programs'),
+                child: const Text('List view'),
               ),
             ],
           ),
         ),
-        Positioned(
-          left: 20,
-          right: 20,
-          top: 20,
-          child: Panel(
-            child: Row(
-              children: [
-                const Icon(Icons.search, size: 18),
-                const SizedBox(width: 8),
-                Expanded(child: Text(areaLabel)),
-                locationBarActions(),
-              ],
-            ),
-          ),
-        ),
-        Positioned(
-          left: 20,
-          right: 20,
-          bottom: 24,
-          child: Panel(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  repo.programs.isEmpty
-                      ? '${repo.events.length} sessions nearby'
-                      : '${repo.programs.where((p) => matchesProgram(p, sport: sport) && venuePoint(p) != null).length} programs on the map',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  repo.programs.isEmpty
-                      ? 'Tap a marker to see its session.'
-                      : 'Tap a marker for the program and session dates.',
-                ),
-                TextButton(
-                  onPressed: () =>
-                      go(repo.programs.isEmpty ? 'home' : 'programs'),
-                  child: const Text('List view'),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
+      ),
+    ],
+  );
 }

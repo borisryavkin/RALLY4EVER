@@ -14,6 +14,69 @@ class CatalogueAdminPanel extends StatefulWidget {
 class _CatalogueAdminPanelState extends State<CatalogueAdminPanel> {
   List<Record> programs = [];
   Record? selected;
+  String statusFilter = 'All', search = '';
+  Future<void> publish(Record program) async {
+    final controller = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(
+          program['status'] == 'active'
+              ? 'Unpublish program'
+              : 'Publish program',
+        ),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: 'Reason / review confirmation',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Back'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (controller.text.trim().isNotEmpty) {
+                Navigator.pop(context, controller.text.trim());
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+    if (reason == null) return;
+    await run(() async {
+      final fields = {
+        for (final key in [
+          'name',
+          'sport',
+          'status',
+          'venue',
+          'timezone',
+          'scheduleText',
+          'coachUids',
+          'coachNames',
+          'notes',
+          'photoUrl',
+          'capacity',
+          'registrationStatus',
+        ])
+          key: program[key],
+      };
+      fields['status'] = program['status'] == 'active' ? 'draft' : 'active';
+      await widget.repository.call('saveProgram', {
+        'programId': program['id'],
+        'revision': program['revision'],
+        'program': fields,
+        'reason': reason,
+      });
+    });
+    await load();
+  }
+
   String? error;
   bool busy = false;
   @override
@@ -96,7 +159,26 @@ class _CatalogueAdminPanelState extends State<CatalogueAdminPanel> {
         const Text(
           'No programs yet. Create one or preview the bundled directory import.',
         ),
-      for (final p in programs)
+      TextField(
+        decoration: const InputDecoration(labelText: 'Find program by name'),
+        onChanged: (v) => setState(() => search = v.toLowerCase()),
+      ),
+      Wrap(
+        spacing: 8,
+        children: [
+          for (final value in ['All', 'draft', 'active', 'archived'])
+            ChoiceChip(
+              label: Text(value == 'active' ? 'published' : value),
+              selected: statusFilter == value,
+              onSelected: (_) => setState(() => statusFilter = value),
+            ),
+        ],
+      ),
+      for (final p in programs.where(
+        (p) =>
+            (statusFilter == 'All' || p['status'] == statusFilter) &&
+            '${p['name']}'.toLowerCase().contains(search),
+      ))
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: Panel(
@@ -122,6 +204,12 @@ class _CatalogueAdminPanelState extends State<CatalogueAdminPanel> {
                 Wrap(
                   spacing: 12,
                   children: [
+                    TextButton(
+                      onPressed: busy ? null : () => publish(p),
+                      child: Text(
+                        p['status'] == 'active' ? 'Unpublish' : 'Publish',
+                      ),
+                    ),
                     TextButton(
                       onPressed: () => edit(p),
                       child: const Text('Edit / archive'),
@@ -213,8 +301,8 @@ class _ProgramEditorState extends State<ProgramEditor> {
           () => coaches = users
               .where(
                 (u) =>
-                    u['role'] == 'coach' &&
-                    u['coachEnabled'] != false &&
+                    (u['role'] == 'admin' ||
+                        (u['role'] == 'coach' && u['coachEnabled'] != false)) &&
                     u['mergedInto'] == null,
               )
               .toList(),
@@ -449,6 +537,42 @@ class SessionEditor extends StatefulWidget {
 
 class _SessionEditorState extends State<SessionEditor> {
   DateTime? start, end;
+  final venueFields = <String, TextEditingController>{};
+  List<Record> coaches = [];
+  Set<String> coachUids = {};
+  String zone = 'Australia/Sydney', venueState = 'NSW';
+  Future<void> loadCoaches() async {
+    try {
+      String? cursor;
+      final all = <Record>[];
+      do {
+        final result = await widget.repository.call('listUsers', {
+          'cursor': ?cursor,
+        });
+        all.addAll(
+          (result['users'] as List).map(
+            (u) => Map<String, dynamic>.from(u as Map),
+          ),
+        );
+        cursor = result['cursor'] as String?;
+      } while (cursor != null && mounted);
+      if (mounted) {
+        setState(
+          () => coaches = all
+              .where(
+                (u) =>
+                    u['mergedInto'] == null &&
+                    (u['role'] == 'admin' ||
+                        (u['role'] == 'coach' && u['coachEnabled'] != false)),
+              )
+              .toList(),
+        );
+      }
+    } catch (e) {
+      if (mounted) setState(() => error = '$e');
+    }
+  }
+
   final reason = TextEditingController();
   final capacity = TextEditingController(), notes = TextEditingController();
   String registration = 'open', status = 'published';
@@ -456,10 +580,20 @@ class _SessionEditorState extends State<SessionEditor> {
   void initState() {
     super.initState();
     final session = widget.session;
+    zone = (session?['timezone'] ?? widget.program['timezone']) as String;
+    final venue = (session?['venue'] ?? widget.program['venue']) as Map;
+    venueState = venue['state'] as String;
+    for (final key in ['name', 'address', 'suburb', 'postcode', 'lat', 'lng']) {
+      venueFields[key] = TextEditingController(text: '${venue[key] ?? ''}');
+    }
+    coachUids = Set<String>.from(
+      (session?['coachUids'] ?? widget.program['coachUids']) as List? ?? [],
+    );
+    loadCoaches();
     if (session != null) {
-      final zone = tz.getLocation(widget.program['timezone'] as String);
-      start = tz.TZDateTime.from(dateOf(session['startsAt']), zone);
-      end = tz.TZDateTime.from(dateOf(session['endsAt']), zone);
+      final location = tz.getLocation(zone);
+      start = tz.TZDateTime.from(dateOf(session['startsAt']), location);
+      end = tz.TZDateTime.from(dateOf(session['endsAt']), location);
     }
     capacity.text =
         '${(session != null ? session['capacity'] : widget.program['capacity']) ?? ''}';
@@ -475,6 +609,9 @@ class _SessionEditorState extends State<SessionEditor> {
   bool busy = false;
   @override
   void dispose() {
+    for (final controller in venueFields.values) {
+      controller.dispose();
+    }
     reason.dispose();
     capacity.dispose();
     notes.dispose();
@@ -482,7 +619,7 @@ class _SessionEditorState extends State<SessionEditor> {
   }
 
   Future<void> pick(bool isStart) async {
-    final location = tz.getLocation(widget.program['timezone'] as String);
+    final location = tz.getLocation(zone);
     final now = tz.TZDateTime.from(widget.repository.now(), location);
     final date = await showDatePicker(
       context: context,
@@ -537,6 +674,15 @@ class _SessionEditorState extends State<SessionEditor> {
         'programId': widget.program['id'],
         if (widget.session != null) 'eventId': widget.session!['id'],
         if (widget.session != null) 'revision': widget.session!['revision'],
+        'venue': {
+          for (final key in ['name', 'address', 'suburb', 'postcode'])
+            key: venueFields[key]!.text.trim(),
+          'state': venueState,
+          'lat': double.parse(venueFields['lat']!.text.trim()),
+          'lng': double.parse(venueFields['lng']!.text.trim()),
+        },
+        'timezone': zone,
+        'coachUids': coachUids.toList(),
         'capacity': capacity.text.trim().isEmpty
             ? null
             : int.parse(capacity.text.trim()),
@@ -557,7 +703,11 @@ class _SessionEditorState extends State<SessionEditor> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Add calendar session')),
+    appBar: AppBar(
+      title: Text(
+        widget.session == null ? 'Create session' : 'Edit / cancel session',
+      ),
+    ),
     body: ListView(
       padding: const EdgeInsets.all(24),
       children: [
@@ -566,9 +716,71 @@ class _SessionEditorState extends State<SessionEditor> {
           style: Theme.of(context).textTheme.headlineMedium,
         ),
         Text(
-          'All times use ${widget.program['timezone']}. Capacity and venue come from the program.',
+          'Times use $zone. Venue, capacity and coaches apply to this session only.',
         ),
         const SizedBox(height: 20),
+        DropdownButtonFormField<String>(
+          initialValue: zone,
+          decoration: const InputDecoration(labelText: 'Session timezone'),
+          items: [
+            for (final value in [
+              'Australia/Sydney',
+              'Australia/Melbourne',
+              'Australia/Brisbane',
+              'Australia/Adelaide',
+              'Australia/Perth',
+              'Australia/Hobart',
+              'Australia/Darwin',
+              'Australia/Lord_Howe',
+            ])
+              DropdownMenuItem(value: value, child: Text(value)),
+          ],
+          onChanged: (v) => setState(() {
+            zone = v!;
+            start = null;
+            end = null;
+          }),
+        ),
+        for (final key in venueFields.keys)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: TextField(
+              controller: venueFields[key],
+              decoration: InputDecoration(labelText: 'Session venue $key'),
+            ),
+          ),
+        DropdownButtonFormField<String>(
+          initialValue: venueState,
+          decoration: const InputDecoration(labelText: 'Venue state'),
+          items: [
+            for (final value in [
+              'ACT',
+              'NSW',
+              'NT',
+              'QLD',
+              'SA',
+              'TAS',
+              'VIC',
+              'WA',
+            ])
+              DropdownMenuItem(value: value, child: Text(value)),
+          ],
+          onChanged: (v) => setState(() => venueState = v!),
+        ),
+        const Text('Assigned session coaches'),
+        for (final coach in coaches)
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('${coach['email']}'),
+            value: coachUids.contains(coach['uid']),
+            onChanged: (selected) => setState(() {
+              if (selected == true) {
+                coachUids.add(coach['uid'] as String);
+              } else {
+                coachUids.remove(coach['uid']);
+              }
+            }),
+          ),
         OutlinedButton(
           onPressed: () => pick(true),
           child: Text(
@@ -617,16 +829,206 @@ class _SessionEditorState extends State<SessionEditor> {
         TextField(
           controller: reason,
           decoration: const InputDecoration(
-            labelText: 'Reason for publishing this session',
+            labelText: 'Reason for session change',
           ),
         ),
         if (error != null) Panel(color: pink, child: Text(error!)),
         const SizedBox(height: 20),
         FilledButton(
           onPressed: busy ? null : save,
-          child: Text(busy ? 'Publishing…' : 'Publish session'),
+          child: Text(
+            busy
+                ? 'Saving…'
+                : status == 'cancelled'
+                ? 'Cancel session'
+                : 'Save session',
+          ),
         ),
       ],
     ),
   );
+}
+
+class SessionManagementPanel extends StatefulWidget {
+  const SessionManagementPanel({super.key, required this.repository});
+  final ParticipantRepository repository;
+  @override
+  State<SessionManagementPanel> createState() => _SessionManagementPanelState();
+}
+
+class _SessionManagementPanelState extends State<SessionManagementPanel> {
+  List<Record> programs = [], sessions = [];
+  String? selected, error;
+  bool busy = false;
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  Future<void> load() async {
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final result = await Future.wait([
+        widget.repository.call('listPrograms', {}),
+        widget.repository.call('listStaffSessions', {}),
+      ]);
+      if (mounted) {
+        setState(() {
+          programs = (result[0]['programs'] as List)
+              .map((p) => Map<String, dynamic>.from(p as Map))
+              .toList();
+          sessions = (result[1]['events'] as List)
+              .map((p) => Map<String, dynamic>.from(p as Map))
+              .toList();
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => error = '$e');
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> edit(Record program, [Record? session]) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => SessionEditor(
+          repository: widget.repository,
+          program: program,
+          session: session,
+        ),
+      ),
+    );
+    await load();
+  }
+
+  Future<void> cancel(Record session) async {
+    final controller = TextEditingController();
+    final reason = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel session'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'Cancellation reason'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Back'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (controller.text.trim().isNotEmpty) {
+                Navigator.pop(context, controller.text.trim());
+              }
+            },
+            child: const Text('Cancel session'),
+          ),
+        ],
+      ),
+    );
+    if (reason == null) return;
+    try {
+      await widget.repository.call('cancelSession', {
+        'eventId': session['id'],
+        'revision': session['revision'],
+        'reason': reason,
+      });
+      await load();
+    } catch (e) {
+      if (mounted) setState(() => error = '$e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.repository.canAdmin) {
+      return const Text('Admin access required.');
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Sessions', style: Theme.of(context).textTheme.headlineMedium),
+        const Text(
+          'Create dated sessions from published programs. Historical attendance stays intact.',
+        ),
+        DropdownButtonFormField<String>(
+          initialValue: selected,
+          isExpanded: true,
+          decoration: const InputDecoration(labelText: 'Published program'),
+          items: [
+            for (final p in programs.where((p) => p['status'] == 'active'))
+              DropdownMenuItem(
+                value: p['id'] as String,
+                child: Text('${p['name']}'),
+              ),
+          ],
+          onChanged: (v) => setState(() => selected = v),
+        ),
+        FilledButton(
+          onPressed: busy || selected == null
+              ? null
+              : () => edit(programs.firstWhere((p) => p['id'] == selected)),
+          child: const Text('Create session from program'),
+        ),
+        TextButton(
+          onPressed: busy ? null : load,
+          child: const Text('Refresh sessions'),
+        ),
+        if (busy) const LinearProgressIndicator(),
+        if (error != null) Panel(color: pink, child: Text(error!)),
+        for (final session in sessions)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Panel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${session['name']}',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  Text(
+                    '${dateOf(session['startsAt']).toLocal()} · ${session['status']}',
+                  ),
+                  Text(
+                    '${session['venue']['name']} · Capacity: ${session['capacity'] ?? 'unlimited'}',
+                  ),
+                  Text(
+                    'Coaches: ${(session['coachNames'] as List? ?? session['coachUids'] as List? ?? []).join(', ')}',
+                  ),
+                  if (session['status'] != 'cancelled' &&
+                      dateOf(session['endsAt'])
+                          .isAfter(widget.repository.now()))
+                    TextButton(
+                      onPressed: busy ? null : () => cancel(session),
+                      child: const Text('Cancel session'),
+                    ),
+                  if (programs.any((p) => p['id'] == session['programId']))
+                    TextButton(
+                      onPressed: () => edit(
+                        programs.firstWhere(
+                          (p) => p['id'] == session['programId'],
+                        ),
+                        session,
+                      ),
+                      child: const Text('Edit / cancel / assign coaches'),
+                    )
+                  else
+                    const Text(
+                      'Legacy session: assign coaches through Users & coach assignment.',
+                    ),
+                ],
+              ),
+            ),
+          ),
+        if (!busy && sessions.isEmpty) const Text('No dated sessions yet.'),
+      ],
+    );
+  }
 }

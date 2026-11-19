@@ -52,6 +52,7 @@ dependencies:
   google_sign_in: ^7.2.0
   image_picker: ^1.1.2
   image: ^4.3.0
+  qr_flutter: ^4.1.0
 
 dev_dependencies:
   firebase_core_web: ^4.2.0

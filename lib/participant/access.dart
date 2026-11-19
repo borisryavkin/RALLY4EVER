@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
-import 'forms.dart' show occupationOptions, heardAboutOptions, culturalBackgroundOptions;
+import 'forms.dart'
+    show occupationOptions, heardAboutOptions, culturalBackgroundOptions;
 import 'repository.dart';
 import 'theme.dart';
 
@@ -13,18 +14,24 @@ String _csvField(Object? value) {
 }
 
 String _optionLabels(Record about, String key, Map<String, String> options) =>
-    (about[key] as List? ?? const [])
-        .map((k) => options[k] ?? k)
-        .join('; ');
+    (about[key] as List? ?? const []).map((k) => options[k] ?? k).join('; ');
 
 /// Admin-only: email, role, and about/phone/emergency-contact details come
 /// straight from the listUsers callable -- never a direct Firestore read of
 /// another participant's profile or private/contact subcollection.
 String usersToCsv(List<Record> users) {
   final header = [
-    'email', 'firstName', 'role', 'coachEnabled', 'hasPhoto',
-    'occupation', 'heardAbout', 'culturalBackground', 'mobile',
-    'emergencyContactName', 'emergencyContactMobile',
+    'email',
+    'firstName',
+    'role',
+    'coachEnabled',
+    'hasPhoto',
+    'occupation',
+    'heardAbout',
+    'culturalBackground',
+    'mobile',
+    'emergencyContactName',
+    'emergencyContactMobile',
   ];
   final rows = users.map((u) {
     final about = Map<String, dynamic>.from(u['about'] as Map? ?? {});
@@ -32,12 +39,17 @@ String usersToCsv(List<Record> users) {
       u['emergencyContact'] as Map? ?? {},
     );
     return [
-      u['email'], u['firstName'], u['role'], u['coachEnabled'],
+      u['email'],
+      u['firstName'],
+      u['role'],
+      u['coachEnabled'],
       u['hasPhoto'],
       _optionLabels(about, 'occupation', occupationOptions),
       _optionLabels(about, 'heardAbout', heardAboutOptions),
       _optionLabels(about, 'culturalBackground', culturalBackgroundOptions),
-      u['mobile'], emergency['name'], emergency['mobile'],
+      u['mobile'],
+      emergency['name'],
+      emergency['mobile'],
     ].map(_csvField).join(',');
   });
   return [header.join(','), ...rows].join('\n');
@@ -230,6 +242,44 @@ class _AdminAccessPanelState extends State<AdminAccessPanel> {
                     '(${(user['emergencyContact'] as Map?)?['mobile'] ?? '—'})',
                     style: const TextStyle(fontSize: 11, color: slate),
                   ),
+                if (user['mergedInto'] == null)
+                  DropdownButtonFormField<String>(
+                    key: ValueKey('role-${user['uid']}-${user['role']}'),
+                    initialValue: user['role'] as String? ?? 'participant',
+                    decoration: const InputDecoration(
+                      labelText: 'Account role',
+                    ),
+                    items: [
+                      for (final role in ['participant', 'coach', 'admin'])
+                        DropdownMenuItem(value: role, child: Text(role)),
+                    ],
+                    onChanged:
+                        busy ||
+                            reason.text.trim().isEmpty ||
+                            user['uid'] == widget.repository.uid
+                        ? null
+                        : (role) => run(() async {
+                            await widget.repository.call('setUserRole', {
+                              'uid': user['uid'],
+                              'role': role,
+                              'reason': reason.text.trim(),
+                            });
+                            final result = await widget.repository.call(
+                              'listUsers',
+                              {'query': search.text.trim()},
+                            );
+                            if (mounted) {
+                              setState(
+                                () => users = (result['users'] as List)
+                                    .map(
+                                      (u) =>
+                                          Map<String, dynamic>.from(u as Map),
+                                    )
+                                    .toList(),
+                              );
+                            }
+                          }),
+                  ),
                 if (user['mergedInto'] != null)
                   const StatusPill('Merged profile')
                 else
@@ -246,7 +296,10 @@ class _AdminAccessPanelState extends State<AdminAccessPanel> {
                       style: const TextStyle(fontSize: 11),
                     ),
                     value: user['coachEnabled'] == true,
-                    onChanged: busy || reason.text.trim().isEmpty
+                    onChanged:
+                        busy ||
+                            reason.text.trim().isEmpty ||
+                            user['uid'] == widget.repository.uid
                         ? null
                         : (value) => run(() async {
                             await widget.repository.call('setUserRole', {
@@ -288,6 +341,7 @@ class _AdminAccessPanelState extends State<AdminAccessPanel> {
       const SizedBox(height: 12),
       DropdownButtonFormField<String>(
         initialValue: selectedEventId,
+        isExpanded: true,
         decoration: const InputDecoration(labelText: 'Event'),
         items: events
             .map(
@@ -310,7 +364,9 @@ class _AdminAccessPanelState extends State<AdminAccessPanel> {
         for (final user in users.where(
           (u) =>
               u['mergedInto'] == null &&
-              (u['coachEnabled'] == true || selectedCoaches.contains(u['uid'])),
+              (u['role'] == 'admin' ||
+                  u['coachEnabled'] == true ||
+                  selectedCoaches.contains(u['uid'])),
         ))
           CheckboxListTile(
             title: Text(
