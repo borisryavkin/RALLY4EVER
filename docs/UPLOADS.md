@@ -1,3 +1,24 @@
+# Version 1.0.2 (10) uploaded — 19 November 2026
+
+Owner requested the new build under a new version on both stores, preserving the existing internal-testing restriction. Selected `1.0.2 (10)` and built from clean committed source **47f33434f8371105bacc12ddc8cc93f89e41fa97** in a detached release checkout, excluding concurrent uncommitted avatar/font/branding work. The checkout remained clean after both builds. Existing iOS bundle `org.rally4ever`, Android package `org.raly4ever`, and signing keys were reused; no IDs or keys changed.
+
+| Platform | Result observed |
+|---|---|
+| Apple app `6816826035` | Transporter confirmed delivered at **13:54 Sydney time**. Processing finished; App Store Connect subsequently showed **Version 1.0.2, Build 10 Internal, Testing**, assigned to internal group **boris**. The group assignment was observed, not performed by this session. Export has `testFlightInternalTestingOnly=true`, team `7HGT5BT6KT`; no external group or public-release change was performed. |
+| Play app `4975028595777084434` | Release **1.0.2 (10) staging internal**, release ID `3`, Internal testing track `4701651234356647750`; **Active**, **Available to internal testers**, released **13:59 Sydney time**. No promotion to any other track. |
+
+Artifacts are preserved under `build/releases/1.0.2+10/` with `manifest.json`:
+
+- `ios/rally4ever.ipa` — 38,574,006 bytes; SHA-256 `0c71e1faf09de95d673171603a7035bf171765be25437975a530efccabe3515b`.
+- `android/app-staging-release.aab` — 77,563,617 bytes; SHA-256 `bb4f40f127ed097172ea64d712dc45689e74d5c600ff9782a031ebd0cb196dac`.
+- Confirmed embedded IDs/version/build, iOS archive deep signature verification and internal-only export. Android signature verified and matched the existing bundle's upload certificate; confirmed all six core native ABI libraries contain no debug sections and symbols metadata is attached. Gradle produced the AAB; Flutter again returned its previously documented post-build strip-check failure. No check was disabled, and Google accepted the bundle with code 10.
+- Guarded build commands used explicit compatible Flutter 3.47.5 with platform-specific ignored staging config and `--build-name 1.0.2 --build-number 10`. The initial login-shell PATH selected obsolete Flutter 3.16.9; retried with the absolute compatible SDK, without modifying either SDK. Preflight analyzer clean, 96 Flutter tests passed (one browser-only skip), eight release-guard tests passed.
+- Apple processing notices: warning `90725` (iOS 27 SDK/Xcode 27 required from April 2027), plus `90683` (missing `NSLocationAlwaysAndWhenInUseUsageDescription`, referenced by the linked location SDK). Neither prevented the observed internal Testing status. The location metadata correction is prepared in source for build 11 or later; **it is not in uploaded build 10**.
+- Transporter initially timed out; the owner reopened it and the upload was then completed through its signed-in UI. Play was completed through its signed-in browser UI. No API keys/service accounts for store upload were created. Build 9 remains queued in Transporter and was not delivered by this session; build 10 supersedes it.
+- No backend deployment, migration, member/Auth deletion, billing change, purchase, or invitations in this upload task. The next upload must use build **11 or higher**, after rechecking both consoles. Later work committed in the main workspace is not implicitly included in these artifacts.
+
+---
+
 ## Profile photos: Storage configured end to end — 19 November 2026
 
 Firebase Storage is enabled on `rally4ever-3adaf` (`australia-southeast1`, default bucket `rally4ever-3adaf.firebasestorage.app`). Added `FIREBASE_STORAGE_BUCKET` to `config/staging.ios.json`/`config/staging.android.json` (both git-ignored) -- the client code to use it lazily/optionally already existed from an earlier fix. Deployed `storage.rules`: a signed-in user may read/write only their own `profilePhotos/{uid}/avatar.jpg` (image only, 5MB max); an admin, or a coach the person has actually been made visible to (the same `visibleToCoachUids` relationship phone/emergency-contact already uses), may also read it. No public read. Verified with 7 rules-emulator tests (`npm run test:storage`) and, separately, real REST calls against `rally4ever-3adaf` with two disposable throwaway accounts (deleted after): own upload/read 200, another user's read/write 403, a non-image upload 403.

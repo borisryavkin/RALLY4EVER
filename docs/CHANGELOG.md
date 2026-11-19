@@ -1,3 +1,9 @@
+## Upload version 1.0.2 (10) to internal stores — 19 November 2026
+
+- Owner requested a new version uploaded to both stores. Built `1.0.2 (10)` from tested clean revision `47f3343` in an isolated checkout while other app/font/branding edits continued in the main workspace. Reused existing IDs/signing and guarded staging config; no backend changes or purchases.
+- Apple delivered at 13:54; App Store Connect subsequently showed build 10 Internal, Testing in internal group `boris`. Android Internal testing showed Active / Available to internal testers, release `1.0.2 (10) staging internal`, at 13:59. External TestFlight and production tracks untouched by this session.
+- Recorded artifact paths, checksums, signing/native-library checks, source revision and Apple warnings in UPLOADS.md. Preflight analyzer clean, 96 Flutter tests passed (one browser-only skip), eight release-guard tests passed. Android's known Flutter post-build strip-check warning remained; independently verified the signed/stripped AAB and Google accepted it.
+
 ## One shared UserAvatar everywhere the user's own photo/initial appears — 19 November 2026
 
 - Found every avatar in the app (`grep CircleAvatar`): Play header (top right -- the broken one), Me tab, "Who's counted in" (other participants' initials), check-in result (a status checkmark/cross circle, not identity), the no-app check-in "waiting" circle (a schedule icon, not identity), and the onboarding photo step's own local pre-upload preview.
