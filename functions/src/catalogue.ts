@@ -78,7 +78,8 @@ export class CatalogueService {
       if ((await this.service.actor(tx, who)).role !== "admin") fail("permission-denied", "admin-required", "Admin role required");
       const ref = db.doc(`programs/${programId}`), old = await tx.get(ref);
       if (old.exists && d.revision !== old.data()!.revision) fail("aborted", "stale-program", "Program changed. Reload before saving");
-      for (const coachId of program.coachUids) {
+      const validateCoaches = !old.exists || JSON.stringify(old.data()?.coachUids ?? []) !== JSON.stringify(program.coachUids) || (program.status === "active" && old.data()?.status !== "active");
+      for (const coachId of validateCoaches ? program.coachUids : []) {
         const coach = (await tx.get(db.doc(`users/${coachId}`))).data();
         if (!coach || coach.mergedInto !== null || !["coach", "admin"].includes(coach.role) || (coach.role === "coach" && coach.coachEnabled === false))
           fail("failed-precondition", "invalid-coach", "Assign an active coach account");

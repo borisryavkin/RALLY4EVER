@@ -352,3 +352,35 @@ test('rules deny stale or missing admin claim on private admin records and draft
  const valid=env.authenticatedContext('admin-1',{email_verified:true,role:'admin'}).firestore();await assertSucceeds(getDoc(doc(valid,'programs/private-draft')));
  await db.doc('users/admin-1').update({role:'participant'});await assertFails(getDoc(doc(valid,'programs/private-draft')));
 });
+
+test('notes-only edits preserve legacy coach references; assigning new staff still validates roles',async()=>{
+ const c=consoleService();await c.saveSession(admin,{eventId:'legacy-staff',changes:adminSession()});
+ await db.doc('events/legacy-staff').update({coachUids:['retired-seed-coach'],coachNames:['Historic coach'],requiredFormIds:['legacy-missing-form']});
+ await c.saveSession(admin,{eventId:'legacy-staff',revision:1,changes:{notes:'Administrative note'}});
+ assert.deepEqual((await db.doc('events/legacy-staff').get()).data().coachNames,['Historic coach']);
+ await rejects(()=>c.saveSession(admin,{eventId:'legacy-staff',revision:2,changes:{coachUids:['retired-seed-coach']}}),'invalid-coach');
+});
+test('demo cleanup includes marked programs/venues and refuses to orphan non-demo records',async()=>{
+ const c=consoleService();await createProgram({},'demo-parent');await db.doc('programs/demo-parent').update({isDemo:true});
+ await c.saveSession(admin,{eventId:'real-child',changes:{...adminSession(),programId:'demo-parent',isDemo:false}});
+ const preview=await c.demo(admin,{});assert.equal(preview.counts.programs,1);
+ await rejects(()=>c.demo(admin,{apply:true,expectedPaths:preview.paths}),'demo-in-use');
+ await db.doc('events/real-child').update({isDemo:true});
+ await db.doc('venues/demo-venue').set({isDemo:true,name:'Test only'});
+ const next=await c.demo(admin,{});assert.equal(next.count,3);await c.demo(admin,{apply:true,expectedPaths:next.paths});assert.equal((await db.collection('demoRemovalBackups').get()).size,3);
+});
+
+test('program quick edits preserve historic staff references while new assignments are validated',async()=>{
+ await createProgram();await db.doc('programs/program-one').update({coachUids:['historic-coach'],coachNames:['Former coach']});
+ const old=(await db.doc('programs/program-one').get()).data();
+ const value=Object.fromEntries(Object.entries(old).filter(([k])=>['name','sport','status','venue','timezone','scheduleText','coachUids','coachNames','notes','photoUrl','capacity','registrationStatus'].includes(k)));
+ await catalogue.saveProgram(admin,{programId:'program-one',revision:1,program:{...value,notes:'New program note'}});
+ await rejects(()=>catalogue.saveProgram(admin,{programId:'program-one',revision:2,program:{...value,coachUids:['unknown-staff']}}),'invalid-coach');
+});
+
+test('editing a standalone legacy session preserves its older-install RSVP policy',async()=>{
+ const c=consoleService();await c.saveSession(admin,{eventId:'legacy-policy',changes:adminSession()});
+ await db.doc('events/legacy-policy').update({catalogueManaged:false});
+ await c.saveSession(admin,{eventId:'legacy-policy',revision:1,changes:{notes:'An ordinary edit'}});
+ assert.equal((await db.doc('events/legacy-policy').get()).data().catalogueManaged,false);
+});

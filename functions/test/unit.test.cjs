@@ -325,3 +325,8 @@ test("production entry point and its guards never hardcode the demo project id",
   }
   assert.deepEqual(offenders, []);
 });
+
+test('managed venue photo metadata removes bearer download tokens and preserves other metadata',()=>{
+ const {withoutDownloadToken}=require('../lib/venue_photos');
+ assert.deepEqual(withoutDownloadToken({firebaseStorageDownloadTokens:'do-not-retain',owner:'venue'}),{firebaseStorageDownloadTokens:null,owner:'venue'});
+});

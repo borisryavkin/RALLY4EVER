@@ -1,3 +1,4 @@
+import {sealVenuePhoto} from './venue_photos';
 import {AdminConsoleService} from './admin_console';
 import { StaffService } from './staff';
 import { CatalogueService } from "./catalogue";
@@ -77,7 +78,9 @@ const callable = (
     data: unknown,
   ) => Promise<unknown>,
 ) =>
-  onCall(async (request) => {
+  // Browser callables need a public transport endpoint; verified Firebase Auth
+  // and protected role checks below still authorize every request.
+  onCall({invoker: "public"}, async (request) => {
     assertApprovedBackend();
     const who = authIdentity(request.auth);
     try {
@@ -237,7 +240,7 @@ export const getEventConsole = callable((who, data) => staff.getEventConsole(who
 
 export const cancelSession = callable((who, data) => catalogue.cancelSession(who, data));
 
-const adminConsole = new AdminConsoleService(service);
+const adminConsole = new AdminConsoleService(service, url=>sealVenuePhoto(app,url));
 export const adminCatalogue = callable((who,data)=>adminConsole.catalogue(who,data));
 export const adminSaveSession = callable((who,data)=>adminConsole.saveSession(who,data));
 export const adminSaveVenue = callable((who,data)=>adminConsole.saveVenue(who,data));
