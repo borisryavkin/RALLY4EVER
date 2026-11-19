@@ -1,3 +1,9 @@
+## Prepare post-upload guards and Apple location metadata — 19 November 2026
+
+- Build 10 is consumed: staging scripts now require build 11 or higher and default to version 1.0.2; updated future commands and release-guard test fixtures.
+- Apple warning 90683 identified the linked SDK's missing NSLocationAlwaysAndWhenInUseUsageDescription. Added a foreground-only purpose explanation in source without adding background tracking or changing permission requests. Uploaded build 10 remains unchanged; this correction requires a subsequent binary.
+- Nine release-guard tests passed, including a new check for both location purpose strings and no location background mode. No further build or upload was performed; concurrent UI/branding changes remain separate.
+
 ## Upload version 1.0.2 (10) to internal stores — 19 November 2026
 
 - Owner requested a new version uploaded to both stores. Built `1.0.2 (10)` from tested clean revision `47f3343` in an isolated checkout while other app/font/branding edits continued in the main workspace. Reused existing IDs/signing and guarded staging config; no backend changes or purchases.

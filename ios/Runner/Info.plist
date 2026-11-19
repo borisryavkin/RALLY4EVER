@@ -10,6 +10,8 @@
 	<string>Rally4Ever uses your camera to scan the current session QR code from your coach, or to take an optional profile photo.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Rally4Ever uses your photo library so you can choose an optional profile photo.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Rally4Ever uses your location while you use the app to show nearby sessions and confirm you are at the venue for check-in. It does not track your location in the background.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Rally4Ever uses your location to show sessions near where you are, and to check that you are at the venue when you check in.</string>
 	<key>io.flutter.embedded_views_preview</key>

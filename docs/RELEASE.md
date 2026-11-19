@@ -1,6 +1,6 @@
 # Tester release preparation
 
-Builds through 6 have been uploaded to internal testing; see [UPLOADS.md](UPLOADS.md). Builds 7 and 8 were built locally (sign-in-startup-failure fix) but never uploaded, superseded by build 9 (location/photos/banner-removal batch). Use the guarded scripts below for the next build (10 or higher, after checking both consoles). Earlier sections retain historical preparation details.
+Version **1.0.2 (10)** is uploaded: TestFlight shows Testing in internal group `boris`, and Play Internal testing shows Active. See [UPLOADS.md](UPLOADS.md). The next build must be **11 or higher**, after checking both consoles; scripts now default to version `1.0.2`. Earlier sections retain historical preparation details.
 
 ## Upload update — 17 November 2026
 
@@ -83,18 +83,18 @@ Release and profile builds now fail at build time without explicit staging Fireb
 Use the scripts so flavor/config flags cannot be forgotten. They validate the ignored platform JSON before invoking Flutter, require an unused build number, and never upload or deploy. Build 6 has been uploaded; 7 and 8 were built but not uploaded; recheck both stores before choosing **10 or higher** for the next one:
 
 ```sh
-./scripts/build-ios-staging.sh --build-number 10
-./scripts/build-android-staging.sh --build-number 10
+./scripts/build-ios-staging.sh --build-number 11
+./scripts/build-android-staging.sh --build-number 11
 
 # Validate configuration only; no compilation, signing or upload:
-./scripts/build-ios-staging.sh --build-number 10 --check-only
+./scripts/build-ios-staging.sh --build-number 11 --check-only
 
 # Local profile build (not a TestFlight artifact):
-./scripts/build-ios-staging.sh --build-number 10 --mode profile
-./scripts/build-android-staging.sh --build-number 10 --mode profile
+./scripts/build-ios-staging.sh --build-number 11 --mode profile
+./scripts/build-android-staging.sh --build-number 11 --mode profile
 ```
 
-Defaults: release mode, version `1.0.1`, and `config/staging.ios.json` or `config/staging.android.json`. Use `--config /private/path/config.json` for another local config, `--build-name` for an approved version, and `FLUTTER_BIN=/path/to/flutter` for a specific SDK. Keep config and signing keys out of git. Profile photos are optional: `FIREBASE_STORAGE_BUCKET` may name an existing configured bucket, but must not be guessed. Without it, Auth/Firestore/Functions still start; photo actions report that photos are unavailable. Do not enable paid Storage just to unblock sign-in. Startup failures now stay on a retryable connection screen with a support code, rather than displaying emulator instructions in TestFlight.
+Defaults: release mode, version `1.0.2`, and `config/staging.ios.json` or `config/staging.android.json`. Use `--config /private/path/config.json` for another local config, `--build-name` for an approved version, and `FLUTTER_BIN=/path/to/flutter` for a specific SDK. Keep config and signing keys out of git. Profile photos are optional: `FIREBASE_STORAGE_BUCKET` may name an existing configured bucket, but must not be guessed. Without it, Auth/Firestore/Functions still start; photo actions report that photos are unavailable. Do not enable paid Storage just to unblock sign-in. Startup failures now stay on a retryable connection screen with a support code, rather than displaying emulator instructions in TestFlight.
 
 Required defines: `APP_ENV=staging`, `STAGING_PROJECT_ID=rally4ever-3adaf`, `FIREBASE_PROJECT_ID=rally4ever-3adaf`, `FIREBASE_API_KEY`, `FIREBASE_APP_ID`, and `FIREBASE_MESSAGING_SENDER_ID`. Supply the registered client for each platform. Emulator/LAN settings must be absent or disabled.
 
@@ -103,12 +103,12 @@ Equivalent explicit release commands (the native guard still runs):
 ```sh
 flutter build ipa --release --flavor staging \
   --dart-define-from-file=config/staging.ios.json \
-  --build-name=1.0.1 --build-number=7 \
+  --build-name=1.0.2 --build-number=11 \
   --export-options-plist=ios/ExportOptions.internal.plist
 
 flutter build appbundle --release --flavor staging \
   --dart-define-from-file=config/staging.android.json \
-  --build-name=1.0.1 --build-number=7
+  --build-name=1.0.2 --build-number=11
 ```
 
 Run guard regressions with `python3 -m unittest discover -s tests/release_guard -v`. They exercise the Dart compiler in release/profile modes, native build hooks, missing/mixed config, and script flag forwarding without building/uploading store artifacts.
@@ -118,6 +118,10 @@ Run guard regressions with `python3 -m unittest discover -s tests/release_guard 
 The IPA command is blocked until the original owning Apple team is confirmed and the existing signing team is verified against app 6816826035. Do not use `-allowProvisioningUpdates` as a shortcut. Do not generate new signing material. Android must retain the existing local keystore; inspect the release bundle certificate against the expected upload certificate in Play Console without printing passwords. A previously published/removed Android package can have a historical versionCode higher than 5; recheck before building.
 
 Expected artifacts: `build/ios/ipa/*.ipa` and `build/app/outputs/bundle/stagingRelease/app-staging-release.aab`. Inspect actual IPA bundle ID, version, build, entitlements, signing team and endpoint config; inspect AAB manifest/package/version/signature. Confirm no demo users, emulator endpoints, accidental real-data access or secrets. Exercise real sign-in, QR camera, GPS, forms, RSVP vs attendance, coach confirmation and revoked roles on physical iOS/Android devices. Unsigned local compilation alone is not a tester-ready artifact.
+
+## Apple notices on build 10
+
+Build `1.0.2 (10)` was accepted, processed, and observed Testing in internal group `boris`. Apple reported warnings `90725` (iOS 27 SDK/Xcode 27 required from April 2027) and `90683` (missing `NSLocationAlwaysAndWhenInUseUsageDescription`, referenced by a linked location SDK). The missing description is now added to source with an explicit foreground-only explanation; no background-location capability or request was added. **Build 10 does not contain that metadata correction**; include it in build 11 or later. The SDK warning needs an appropriate future Xcode upgrade.
 
 ## QR links and permissions
 
@@ -151,7 +155,7 @@ This is an optional faster feedback path, not an enabled replacement for the req
 ```sh
 flutter build apk --release --flavor staging \
   --dart-define-from-file=config/staging.android.json \
-  --build-name=1.0.1 --build-number=7
+  --build-name=1.0.2 --build-number=11
 # UPLOAD ONLY AFTER APPROVAL; use the actual registered Android Firebase app ID.
 firebase appdistribution:distribute build/app/outputs/flutter-apk/app-staging-release.apk \
   --project rally4ever-3adaf --app "$STAGING_ANDROID_FIREBASE_APP_ID" \
@@ -163,7 +167,7 @@ For iOS, an App Store signed IPA cannot simply be installed through App Distribu
 ```sh
 flutter build ipa --release --flavor staging \
   --dart-define-from-file=config/staging.ios.json \
-  --build-name=1.0.1 --build-number=7 --export-method=ad-hoc
+  --build-name=1.0.2 --build-number=11 --export-method=ad-hoc
 # UPLOAD ONLY AFTER APPROVAL; actual registered iOS Firebase app ID required.
 firebase appdistribution:distribute build/ios/ipa/rally4ever.ipa \
   --project rally4ever-3adaf --app "$STAGING_IOS_FIREBASE_APP_ID" \

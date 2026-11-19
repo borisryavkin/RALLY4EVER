@@ -103,7 +103,7 @@ class BuildGuardTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[2]
         for platform in ('ios', 'android'):
             result = subprocess.run([str(root / f'scripts/build-{platform}-staging.sh'),
-                '--build-number', '10', '--config', str(self.root / 'missing.json'), '--check-only'],
+                '--build-number', '11', '--config', str(self.root / 'missing.json'), '--check-only'],
                 capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('Build refused', result.stdout + result.stderr)
@@ -119,7 +119,7 @@ class BuildGuardTests(unittest.TestCase):
         for platform, mode, target in (('ios', 'release', 'ipa'), ('ios', 'profile', 'ios'),
                                        ('android', 'release', 'appbundle'), ('android', 'profile', 'appbundle')):
             result = subprocess.run([str(root / f'scripts/build-{platform}-staging.sh'),
-                '--build-number', '10', '--mode', mode, '--config', str(config)],
+                '--build-number', '11', '--mode', mode, '--config', str(config)],
                 env={**os.environ, 'FLUTTER_BIN': str(stub), 'BUILD_ARGS_CAPTURE': str(capture)},
                 capture_output=True, text=True)
             with self.subTest(platform=platform, mode=mode):
@@ -128,6 +128,14 @@ class BuildGuardTests(unittest.TestCase):
                 self.assertEqual(args[:3], ['build', target, f'--{mode}'])
                 self.assertEqual(args[3:5], ['--flavor', 'staging'])
                 self.assertIn(f'--dart-define-from-file={config.resolve()}', args)
-                self.assertIn('--build-number=10', args)
+                self.assertIn('--build-number=11', args)
                 if target == 'ipa':
                     self.assertIn('--export-options-plist=ios/ExportOptions.internal.plist', args)
+
+    def test_ios_location_usage_descriptions_do_not_enable_background_tracking(self):
+        import plistlib
+        root = Path(__file__).resolve().parents[2]
+        values = plistlib.loads((root / 'ios/Runner/Info.plist').read_bytes())
+        for key in ('NSLocationWhenInUseUsageDescription', 'NSLocationAlwaysAndWhenInUseUsageDescription'):
+            self.assertTrue(values.get(key, '').strip(), key)
+        self.assertNotIn('location', values.get('UIBackgroundModes', []))
