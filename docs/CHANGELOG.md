@@ -392,3 +392,8 @@ Re-verification pass under a new staged task spec. The underlying fix (and the r
 
 - Created independent app Git boundary, baseline commit `baseline: prototype as audited`, then `feature/qr-attendance`. Parent Flutter SDK Git repository was not modified.
 - Kept prototype source and audit; excluded build output, local credentials and signing keys. No existing feature deleted.
+
+## 2026-11-20 — Approved agreements and Humanitix venue programs
+- Stored Boris's pasted legal wording verbatim in four versioned form files; published version 2026-11-20 with compatibility fields for existing installs and byte comparisons after backup.
+- Reused the Ultimo draft and imported the UNSW program, with 34 + 2 actual Humanitix occurrences, approved venue coordinates, mandatory conduct/waiver, and no statewide listings. Coaches/capacity remain unspecified.
+- Added fail-closed publication guards, date-version consent support, optional photo/data receipts, and line-preserving form rendering. Native display changes require a subsequent app build.

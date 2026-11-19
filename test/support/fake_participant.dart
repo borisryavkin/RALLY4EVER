@@ -101,6 +101,7 @@ class FakeParticipantRepository extends ParticipantRepository {
     forms = [
       {
         'id': 'conduct',
+        'publishedAt': DateTime(2020),
         'formType': 'conduct',
         'version': 1,
         'title': 'Code of conduct',
@@ -108,6 +109,7 @@ class FakeParticipantRepository extends ParticipantRepository {
       },
       {
         'id': 'waiver',
+        'publishedAt': DateTime(2020),
         'formType': 'waiver',
         'version': 1,
         'title': 'Liability waiver',

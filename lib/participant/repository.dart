@@ -192,10 +192,26 @@ abstract class ParticipantRepository extends ChangeNotifier {
   bool signed(Record form) => consents.any(
     (c) => c['formId'] == form['id'] && c['version'] == form['version'],
   );
+  List<String> requiredFormIds(Record event) => {
+    'conduct',
+    'waiver',
+    ...((event['requiredFormIds'] as List?) ?? []).cast<String>(),
+  }.toList();
+  bool formPublished(Record form) =>
+      form['publishedAt'] != null &&
+      !dateOf(form['publishedAt']).isAfter(DateTime.now()) &&
+      form['published'] != false &&
+      form['status'] != 'draft' &&
+      ((form['body'] ?? form['content'] ?? '') as String).trim().isNotEmpty;
+  List<String> unavailableForms(Record event) =>
+      requiredFormIds(event)
+          .where((id) => !forms.any((f) => f['id'] == id && formPublished(f)))
+          .toList();
   List<Record> missingForms(Record event) => forms
       .where(
         (f) =>
-            (event['requiredFormIds'] as List? ?? []).contains(f['id']) &&
+            requiredFormIds(event).contains(f['id']) &&
+            formPublished(f) &&
             !signed(f),
       )
       .toList();
@@ -583,7 +599,7 @@ class FirebaseParticipantRepository extends ParticipantRepository {
         'user-not-found',
       ].contains(error.code)) {
         throw StateError(
-          'Email and app password did not match. If you first used Google, sign in with Google and add an app password in Me → Sign-in methods.',
+          'Email or app password did not match. Use Google, or choose Set or reset app password below.',
         );
       }
       rethrow;

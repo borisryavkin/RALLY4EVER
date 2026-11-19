@@ -12,6 +12,7 @@ import 'package:timezone/timezone.dart' as tz;
 import '../shared/logo.dart';
 import '../shared_widgets.dart' as shared;
 import 'forms.dart';
+import 'legal_text.dart';
 import 'access.dart';
 import 'catalogue.dart';
 import 'catalogue_admin.dart';
@@ -55,6 +56,7 @@ class _ParticipantAppState extends State<ParticipantApp>
   bool _locationRequestedThisSession = false;
   DateTime? _lastLocationFetch;
   bool busy = false, agreed = false, pendingSubmission = false;
+  final Set<String> optionalAgreements = {};
   int get tab => switch (page) {
     'map' => 1,
     'profile' ||
@@ -238,6 +240,7 @@ class _ParticipantAppState extends State<ParticipantApp>
       }
       error = null;
       agreed = false;
+      optionalAgreements.clear();
     });
   }
 
@@ -302,7 +305,9 @@ class _ParticipantAppState extends State<ParticipantApp>
       go('details');
       return;
     }
-    if (event != null && repo.missingForms(event!).isNotEmpty) {
+    if (event != null &&
+        (repo.missingForms(event!).isNotEmpty ||
+            repo.unavailableForms(event!).isNotEmpty)) {
       go('agreements');
       return;
     }
@@ -448,6 +453,7 @@ class _ParticipantAppState extends State<ParticipantApp>
         children: [
           if (busy) const LinearProgressIndicator(minHeight: 3),
           Expanded(
+            key: const Key('frame-content'),
             // The error banner lives inside this scrollable, rather than as
             // a fixed sibling, so a long message (or a short keyboard-
             // shrunk viewport) scrolls into view instead of overflowing.
@@ -584,6 +590,7 @@ class _ParticipantAppState extends State<ParticipantApp>
         back: () => go('welcome1'),
         children: [
           AccountForm(
+            key: const Key('account-form'),
             repository: repo,
             onAction: action,
             busy: busy,
@@ -1554,9 +1561,41 @@ class _ParticipantAppState extends State<ParticipantApp>
   }
 
   Widget agreements(BuildContext context) {
-    final missing = event == null
-        ? repo.forms.where((f) => !repo.signed(f)).toList()
+    if (event != null && repo.unavailableForms(event!).isNotEmpty) {
+      return frame(
+        context,
+        title: 'Quick agreements',
+        back: () => go(detailsReturn == 'profile' ? 'profile' : 'details'),
+        children: [
+          const Panel(
+            color: pink,
+            child: Text(
+              'A required agreement is missing or unpublished. Check-in is blocked. Please ask your coach for help.',
+            ),
+          ),
+        ],
+      );
+    }
+    final requiredMissing = event == null
+        ? repo.forms
+              .where(
+                (f) =>
+                    ['conduct', 'waiver'].contains(f['id']) &&
+                    repo.formPublished(f) &&
+                    !repo.signed(f),
+              )
+              .toList()
         : repo.missingForms(event!);
+    final optionalMissing = repo.forms
+        .where(
+          (f) =>
+              ['photo-release', 'data-collection'].contains(f['id']) &&
+              repo.formPublished(f) &&
+              !repo.signed(f) &&
+              !requiredMissing.any((r) => r['id'] == f['id']),
+        )
+        .toList();
+    final missing = [...requiredMissing, ...optionalMissing];
     if (missing.isEmpty) {
       return frame(
         context,
@@ -1605,31 +1644,45 @@ class _ParticipantAppState extends State<ParticipantApp>
                   ],
                 ),
                 const SizedBox(height: 12),
-                Text(
-                  form['content'] as String,
-                  style: const TextStyle(fontSize: 13),
-                ),
+                LegalFormText(formText(form)),
+                if (optionalMissing.contains(form))
+                  CheckboxListTile(
+                    title: const Text('Optional: I agree to this form'),
+                    value: optionalAgreements.contains(form['id']),
+                    onChanged: (value) => setState(() {
+                      if (value == true) {
+                        optionalAgreements.add(form['id'] as String);
+                      } else {
+                        optionalAgreements.remove(form['id']);
+                      }
+                    }),
+                  ),
               ],
             ),
           ),
           const SizedBox(height: 16),
         ],
-        CheckboxListTile(
-          key: const Key('accept-forms'),
-          contentPadding: EdgeInsets.zero,
-          value: agreed,
-          onChanged: (v) => setState(() => agreed = v ?? false),
-          title: const Text(
-            'I have read and agree to these forms.',
-            style: TextStyle(fontSize: 13),
+        if (requiredMissing.isNotEmpty)
+          CheckboxListTile(
+            key: const Key('accept-forms'),
+            contentPadding: EdgeInsets.zero,
+            value: agreed,
+            onChanged: (v) => setState(() => agreed = v ?? false),
+            title: const Text(
+              'I have read and agree to these forms.',
+              style: TextStyle(fontSize: 13),
+            ),
           ),
-        ),
       ],
       bottom: FilledButton(
         key: const Key('sign-and-checkin'),
-        onPressed: agreed
+        onPressed: (agreed || requiredMissing.isEmpty)
             ? () => action(() async {
-                for (final f in missing) {
+                for (final f in missing.where(
+                  (f) =>
+                      requiredMissing.contains(f) ||
+                      optionalAgreements.contains(f['id']),
+                )) {
                   await repo.signForm(f);
                 }
                 if (scanned != null) {

@@ -7,6 +7,7 @@ import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 
 import 'repository.dart';
+import 'legal_text.dart';
 import 'theme.dart';
 
 class AccountForm extends StatefulWidget {
@@ -27,7 +28,7 @@ class AccountForm extends StatefulWidget {
 
 class _AccountFormState extends State<AccountForm> {
   final email = TextEditingController(), password = TextEditingController();
-  bool signup = false;
+  bool signup = false, passwordVisible = false;
   @override
   void dispose() {
     email.dispose();
@@ -84,10 +85,21 @@ class _AccountFormState extends State<AccountForm> {
       TextField(
         key: const Key('password'),
         controller: password,
-        obscureText: true,
-        decoration: const InputDecoration(
-          labelText: 'Password',
-          hintText: 'At least 6 characters',
+        obscureText: !passwordVisible,
+        autofillHints: const [AutofillHints.password],
+        decoration: InputDecoration(
+          labelText: 'App password',
+          hintText: signup
+              ? 'At least 6 characters'
+              : 'Your Rally4Ever app password',
+          suffixIcon: IconButton(
+            key: const Key('show-login-password'),
+            tooltip: passwordVisible ? 'Hide password' : 'Show password',
+            onPressed: () => setState(() => passwordVisible = !passwordVisible),
+            icon: Icon(
+              passwordVisible ? Icons.visibility_off : Icons.visibility,
+            ),
+          ),
         ),
       ),
       if (!signup) ...[
@@ -97,7 +109,7 @@ class _AccountFormState extends State<AccountForm> {
           child: TextButton(
             key: const Key('forgot-password'),
             onPressed: widget.onForgotPassword,
-            child: const Text('Forgot password?'),
+            child: const Text('Set or reset app password'),
           ),
         ),
       ],
@@ -1229,7 +1241,7 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   const SizedBox(height: 8),
-                  Text(f['content'] as String),
+                  LegalFormText(formText(f)),
                 ],
               ),
             ),
