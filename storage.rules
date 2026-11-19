@@ -1,9 +1,5 @@
 rules_version = '2';
 
-// Not deployed yet -- Storage is not enabled on rally4ever-3adaf. Written
-// now so the capability and its rules are reviewed together; deploy with
-// `firebase deploy --only storage` once Storage is turned on.
-//
 // profilePhotos/{uid}/avatar.jpg is the only path in use. Removal by a
 // coach/admin (functions/src/admin_roles.ts's removeParticipantPhoto) goes
 // through the Admin SDK, which bypasses these rules entirely -- that path

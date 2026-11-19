@@ -95,3 +95,6 @@ node_modules/
 
 /tests/rules/.catalogue-regression.test.mjs
 /test/failures/
+
+# Real-project rollback snapshots and personal-data backups: never committed.
+/backups/
