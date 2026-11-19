@@ -1,0 +1,40 @@
+{
+  "dryRun": false,
+  "projectId": "rally4ever-3adaf",
+  "backup": "backups/forms-before-1795130926965.json",
+  "forms": [
+    {
+      "id": "conduct",
+      "version": "2026-11-20",
+      "bytes": 2137,
+      "sha256": "29c5b4ef4030b6bc7c94ea32257267c942009424425660b7aa75c2ce9cd818d8",
+      "exists": false,
+      "unchanged": false
+    },
+    {
+      "id": "waiver",
+      "version": "2026-11-20",
+      "bytes": 2487,
+      "sha256": "0cd01d24d92c0b77b699e58e6b29cfae78652117ebb8ff925222ee76ca5cd1c6",
+      "exists": false,
+      "unchanged": false
+    },
+    {
+      "id": "photo-release",
+      "version": "2026-11-20",
+      "bytes": 838,
+      "sha256": "dd7cae598eacd7be3b5d0f306b064fc4c4399d5e4147da11ed173cc28f6f67c2",
+      "exists": false,
+      "unchanged": false
+    },
+    {
+      "id": "data-collection",
+      "version": "2026-11-20",
+      "bytes": 536,
+      "sha256": "7200aba9154483f0262ad993462f7f32d78d927e2b4e60de2fd0809510a87044",
+      "exists": false,
+      "unchanged": false
+    }
+  ],
+  "byteForByteVerified": true
+}

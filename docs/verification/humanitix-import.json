@@ -1,0 +1,41 @@
+{
+  "projectId": "rally4ever-3adaf",
+  "dryRun": false,
+  "programs": 2,
+  "venues": 2,
+  "sessions": 36,
+  "create": 39,
+  "update": 1,
+  "coordinates": [
+    {
+      "venue": "Ultimo Community Centre",
+      "lat": -33.878,
+      "lng": 151.19776
+    },
+    {
+      "venue": "UNSW Fitness & Aquatic Centre (B5), Court 1",
+      "lat": -33.9151103,
+      "lng": 151.2261372
+    }
+  ],
+  "dates": [
+    {
+      "program": "Pickleball at Ultimo Community Centre",
+      "count": 34,
+      "first": "2026-11-26T11:30:00+1100",
+      "last": "2027-07-15T11:30:00+1000"
+    },
+    {
+      "program": "Pickleball at UNSW",
+      "count": 2,
+      "first": "2026-11-24T13:00:00+1100",
+      "last": "2026-12-01T13:00:00+1100"
+    }
+  ],
+  "notes": [
+    "No statewide listings imported.",
+    "Capacity unknown; coaches unassigned.",
+    "UNSW postcode uses official facility 2052; Humanitix lists 2033."
+  ],
+  "backup": "backups/humanitix-before-1795131033961.json"
+}

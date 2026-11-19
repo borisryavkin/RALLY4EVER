@@ -1,0 +1,92 @@
+[
+  {
+    "@context": "https://schema.org",
+    "@type": "Event",
+    "name": "RALLY4EVER Pickleball at UNSW",
+    "url": "https://events.humanitix.com/copy-of-rally4ever-pickleball-at-unsw",
+    "startDate": "2026-11-24T13:00:00+1100",
+    "endDate": "2026-11-24T14:00:00+1100",
+    "location": {
+      "@type": "Place",
+      "name": "UNSW Fitness &amp; Aquatic Centre (B5) Court 1",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "Fitness and Aquatic Centre (B5), Gate 2, High St, UNSW Sydney, Kensington NSW 2033, Australia",
+        "addressLocality": "Kensington",
+        "postalCode": "2033",
+        "addressRegion": "NSW",
+        "addressCountry": "AU"
+      }
+    },
+    "eventStatus": "https://schema.org/EventScheduled",
+    "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
+    "description": " Free beginner Pickleball program, for currently enrolled UNSW students only",
+    "image": "https://images.humanitix.com/i/3XyqhWtRtVuWuelDpggG@seo-500.jpg",
+    "offers": [
+      {
+        "@type": "AggregateOffer",
+        "offerCount": 1,
+        "priceCurrency": "AUD",
+        "availabilityStarts": "2026-02-17T01:15:38.480Z",
+        "availability": "InStock",
+        "availabilityEnds": "2026-12-01T03:00:00.000Z"
+      },
+      {
+        "@type": "Offer",
+        "url": "https://events.humanitix.com/copy-of-rally4ever-pickleball-at-unsw/tickets",
+        "name": "Complimentary",
+        "price": 0,
+        "availability": "InStock",
+        "availabilityStarts": null,
+        "availabilityEnds": null,
+        "priceCurrency": "AUD",
+        "validFrom": null
+      }
+    ]
+  },
+  {
+    "@context": "https://schema.org",
+    "@type": "Event",
+    "name": "RALLY4EVER Pickleball at UNSW",
+    "url": "https://events.humanitix.com/copy-of-rally4ever-pickleball-at-unsw",
+    "startDate": "2026-12-01T13:00:00+1100",
+    "endDate": "2026-12-01T14:00:00+1100",
+    "location": {
+      "@type": "Place",
+      "name": "UNSW Fitness &amp; Aquatic Centre (B5) Court 1",
+      "address": {
+        "@type": "PostalAddress",
+        "streetAddress": "Fitness and Aquatic Centre (B5), Gate 2, High St, UNSW Sydney, Kensington NSW 2033, Australia",
+        "addressLocality": "Kensington",
+        "postalCode": "2033",
+        "addressRegion": "NSW",
+        "addressCountry": "AU"
+      }
+    },
+    "eventStatus": "https://schema.org/EventScheduled",
+    "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
+    "description": " Free beginner Pickleball program, for currently enrolled UNSW students only",
+    "image": "https://images.humanitix.com/i/3XyqhWtRtVuWuelDpggG@seo-500.jpg",
+    "offers": [
+      {
+        "@type": "AggregateOffer",
+        "offerCount": 1,
+        "priceCurrency": "AUD",
+        "availabilityStarts": "2026-02-17T01:15:38.480Z",
+        "availability": "InStock",
+        "availabilityEnds": "2026-12-01T03:00:00.000Z"
+      },
+      {
+        "@type": "Offer",
+        "url": "https://events.humanitix.com/copy-of-rally4ever-pickleball-at-unsw/tickets",
+        "name": "Complimentary",
+        "price": 0,
+        "availability": "InStock",
+        "availabilityStarts": null,
+        "availabilityEnds": null,
+        "priceCurrency": "AUD",
+        "validFrom": null
+      }
+    ]
+  }
+]

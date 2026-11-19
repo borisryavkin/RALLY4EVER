@@ -1,0 +1,31 @@
+{
+  "source": "Boris supplied verbatim in conversation, 2026-11-20",
+  "approval": "Authoritative pasted text; intro excluded; wording and text-line spaces preserved",
+  "version": "2026-11-20",
+  "forms": [
+    {
+      "id": "conduct",
+      "title": "RALLY4EVER Code of Conduct",
+      "sha256": "29c5b4ef4030b6bc7c94ea32257267c942009424425660b7aa75c2ce9cd818d8",
+      "bytes": 2137
+    },
+    {
+      "id": "waiver",
+      "title": "RALLY4EVER Waive and Release",
+      "sha256": "0cd01d24d92c0b77b699e58e6b29cfae78652117ebb8ff925222ee76ca5cd1c6",
+      "bytes": 2487
+    },
+    {
+      "id": "photo-release",
+      "title": "Photo Release",
+      "sha256": "dd7cae598eacd7be3b5d0f306b064fc4c4399d5e4147da11ed173cc28f6f67c2",
+      "bytes": 838
+    },
+    {
+      "id": "data-collection",
+      "title": "Data Collection",
+      "sha256": "7200aba9154483f0262ad993462f7f32d78d927e2b4e60de2fd0809510a87044",
+      "bytes": 536
+    }
+  ]
+}
