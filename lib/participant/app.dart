@@ -153,6 +153,7 @@ class _ParticipantAppState extends State<ParticipantApp>
     setState(() {
       if (repo.uid == null) areaChosen = false;
       if (repo.uid != null &&
+          repo.ready &&
           ['account', 'welcome1', 'welcome2', 'welcome3'].contains(page)) {
         page =
             (repo.profile['firstName'] as String? ?? '').isEmpty ||

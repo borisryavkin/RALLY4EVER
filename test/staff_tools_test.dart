@@ -86,6 +86,33 @@ void main() {
     });
   }
   testWidgets(
+    'sign-in waits for the profile stream before choosing onboarding',
+    (tester) async {
+      final repo = StaffRepo('admin');
+      repo.ready = false;
+      final savedProfile = repo.profile;
+      repo.profile = {};
+      await tester.pumpWidget(
+        ParticipantApp(
+          repository: repo,
+          initialPage: 'account',
+          cameraEnabled: false,
+          mapTilesEnabled: false,
+        ),
+      );
+      repo.notifyListeners();
+      await tester.pump();
+      repo.profile = savedProfile;
+      repo.ready = true;
+      repo.notifyListeners();
+      await tester.pumpAndSettle();
+      expect(find.text('Tell us a little about you'), findsNothing);
+      expect(find.text('Admin view'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      repo.dispose();
+    },
+  );
+  testWidgets(
     'admin QR console separates intent and attendance and hides on revocation',
     (tester) async {
       final repo = StaffRepo('admin');
