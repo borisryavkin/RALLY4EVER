@@ -48,6 +48,7 @@ dependencies:
   cloud_functions: ^7.1.0
   firebase_storage: ^14.1.0
   cached_network_image: ^3.4.1
+  flutter_svg: ^2.2.1
   google_sign_in: ^7.2.0
   image_picker: ^1.1.2
   image: ^4.3.0
@@ -91,15 +92,24 @@ flutter:
   # the material Icons class.
   uses-material-design: true
   fonts:
+    # Bold only -- that's the only weight the brand book calls for and the
+    # only one provided. Internal name confirmed via the font's own `name`
+    # table (preferredFamily "Jellee", weight class 700), not the filename.
+    - family: Jellee
+      fonts:
+        - asset: assets/fonts/Jellee_1223/TTF/Jellee-Bold.ttf
+          weight: 700
+    # Stand-in for Proxima Nova (not yet supplied/licensed) on body, labels,
+    # buttons and form text -- see lib/theme/typography.dart for the single
+    # place that mapping will change once real Proxima Nova files arrive.
     - family: Inter
       fonts:
         - asset: assets/fonts/Inter.ttf
-    - family: Figtree
-      fonts:
-        - asset: assets/fonts/Figtree.ttf
+          weight: 400
 
   assets:
     - assets/icon/icon.png
+    - assets/brand/rally4ever_logo.svg
     - assets/candid_photo.jpg.webp
     - assets/group.jpg.webp
     - assets/lmfo.jpg.webp

@@ -7,11 +7,15 @@ import 'support/fake_participant.dart';
 
 void main() {
   setUpAll(() async {
-    for (final name in ['Inter', 'Figtree']) {
+    for (final name in ['Inter']) {
       await (FontLoader(
         name,
       )..addFont(rootBundle.load('assets/fonts/$name.ttf'))).load();
     }
+    await (FontLoader('Jellee')..addFont(
+          rootBundle.load('assets/fonts/Jellee_1223/TTF/Jellee-Bold.ttf'),
+        ))
+        .load();
   });
   testWidgets(
     'LAN warning persists through intro and sign-in on a small phone',

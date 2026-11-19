@@ -98,3 +98,12 @@ node_modules/
 
 # Real-project rollback snapshots and personal-data backups: never committed.
 /backups/
+
+# Font source archives/specimens (and macOS cruft) are reference material,
+# not build inputs -- only the specific .ttf/.otf files pubspec.yaml
+# registers are committed. Proxima Nova Extra Condensed is Fontspring DEMO
+# files with no commercial license found alongside them -- never shipped,
+# never committed, until real licensed Proxima Nova files replace it.
+assets/fonts/*.zip
+assets/fonts/Proxima-Nova-Extra-Condensed/
+.DS_Store

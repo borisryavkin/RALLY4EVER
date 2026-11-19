@@ -9,6 +9,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:timezone/timezone.dart' as tz;
 
+import '../shared/logo.dart';
 import '../shared_widgets.dart' as shared;
 import 'forms.dart';
 import 'access.dart';
@@ -388,25 +389,16 @@ class _ParticipantAppState extends State<ParticipantApp>
       ),
     ),
   );
-  Widget brand({bool light = false}) => Row(
-    children: [
-      Icon(
-        Icons.grid_view_rounded,
-        color: light ? Colors.white : pink,
-        size: 22,
-      ),
-      const SizedBox(width: 8),
-      Text(
-        'RALLY4EVER',
-        style: TextStyle(
-          fontFamily: 'Figtree',
-          fontSize: 12,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 1,
-          color: light ? Colors.white : navy,
-        ),
-      ),
-    ],
+  Widget brand({bool light = false}) => Wordmark(
+    height: 28,
+    color: light ? Colors.white : navy,
+    textStyle: TextStyle(
+      fontFamily: 'Jellee',
+      fontSize: 12,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 1,
+      color: light ? Colors.white : navy,
+    ),
   );
   // Below this width: phone layout (full-width bottom bar, content fills the
   // screen). At or above it: a side NavigationRail replaces the bottom bar,
