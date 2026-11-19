@@ -117,6 +117,24 @@ abstract class ParticipantRepository extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    _browsePositions ??=
+        Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 20,
+          ),
+        ).listen(
+          (p) {
+            deviceLocation = {'lat': p.latitude, 'lng': p.longitude};
+            locationStatus = 'granted';
+            notifyListeners();
+          },
+          onError: (_) {
+            locationStatus = 'timeout';
+            notifyListeners();
+          },
+          cancelOnError: true,
+        );
     try {
       final p = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
@@ -127,28 +145,10 @@ abstract class ParticipantRepository extends ChangeNotifier {
       locationStatus = 'granted';
       notifyListeners();
       unawaited(_reverseGeocode(p.latitude, p.longitude));
-      _browsePositions ??=
-          Geolocator.getPositionStream(
-            locationSettings: const LocationSettings(
-              accuracy: LocationAccuracy.high,
-              distanceFilter: 20,
-            ),
-          ).listen(
-            (p) {
-              deviceLocation = {'lat': p.latitude, 'lng': p.longitude};
-              locationStatus = 'granted';
-              notifyListeners();
-            },
-            onError: (_) {
-              locationStatus = 'timeout';
-              notifyListeners();
-            },
-            cancelOnError: true,
-          );
     } catch (_) {
       // Timeout or a platform failure after permission was granted: fall
       // back the same way as a denial, never crash or hang the screen.
-      locationStatus = 'timeout';
+      if (locationStatus != 'granted') locationStatus = 'timeout';
       notifyListeners();
     }
   }
@@ -217,6 +217,7 @@ abstract class ParticipantRepository extends ChangeNotifier {
 
   /// Null if there's no photo (or it can't be reached); never throws.
   Future<String?> photoDownloadUrl() async => null;
+  Future<Uint8List?> venuePhotoBytes(String url) async => null;
   Future<void> signForm(Record form) => throw UnimplementedError();
   Future<Record> call(String name, Record data) => throw UnimplementedError();
   Future<Record> location() async {
@@ -779,6 +780,10 @@ class FirebaseParticipantRepository extends ParticipantRepository {
   }
 
   @override
+  Future<Uint8List?> venuePhotoBytes(String url) =>
+      backend.storage.refFromURL(url).getData(5 * 1024 * 1024);
+
+  @override
   Future<void> feedback(
     String eventId,
     int rating,
@@ -814,7 +819,10 @@ class CheckInLink {
     final uri = Uri.tryParse(raw.trim());
     if (uri == null ||
         uri.scheme != 'https' ||
-        uri.host != 'rally4ever.org' ||
+        !{
+          'rally4ever.org',
+          'rally4ever-checkin-3adaf.web.app',
+        }.contains(uri.host) ||
         uri.hasPort ||
         uri.userInfo.isNotEmpty ||
         uri.fragment.isNotEmpty ||

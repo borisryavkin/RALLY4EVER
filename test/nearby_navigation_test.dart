@@ -28,6 +28,20 @@ List<Record> demoSessions(DateTime now) => [
     },
 ];
 void main() {
+  test('scanner accepts only the existing and owned Hosting QR origins', () {
+    expect(
+      CheckInLink.parse(
+        'https://rally4ever-checkin-3adaf.web.app/c/DEMO?k=0123456789012345678901234567890123456789012',
+      ).eventCode,
+      'DEMO',
+    );
+    expect(
+      () => CheckInLink.parse(
+        'https://evil.web.app/c/DEMO?k=0123456789012345678901234567890123456789012',
+      ),
+      throwsFormatException,
+    );
+  });
   test('Rose Bay GPS sorts Bondi before Epping and Parramatta and applies the same radius', () {
     final now = DateTime(2026, 11, 20), events = demoSessions(now);
     const rose = LatLng(-33.871, 151.271);

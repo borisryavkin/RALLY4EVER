@@ -1216,7 +1216,7 @@ class _ParticipantAppState extends State<ParticipantApp>
       back: () => go('home'),
       children: [
         if (e['catalogueManaged'] == true)
-          CataloguePhoto(record: e)
+          CataloguePhoto(record: e, repository: repo)
         else
           ClipRRect(
             borderRadius: BorderRadius.circular(22),
@@ -2282,7 +2282,7 @@ class _ParticipantAppState extends State<ParticipantApp>
       title: 'Your regular rally',
       back: () => go('programs'),
       children: [
-        CataloguePhoto(record: p),
+        CataloguePhoto(record: p, repository: repo),
         const SizedBox(height: 18),
         StatusPill(availability(p)),
         const SizedBox(height: 12),

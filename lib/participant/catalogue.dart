@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
@@ -256,7 +258,8 @@ class _ProgramBrowserState extends State<ProgramBrowser> {
 }
 
 class CataloguePhoto extends StatelessWidget {
-  const CataloguePhoto({super.key, required this.record});
+  const CataloguePhoto({super.key, required this.record, this.repository});
+  final ParticipantRepository? repository;
   final Record record;
   @override
   Widget build(BuildContext context) {
@@ -274,6 +277,17 @@ class CataloguePhoto extends StatelessWidget {
         width: double.infinity,
         child: url.isEmpty
             ? placeholder
+            : url.startsWith('gs://')
+            ? FutureBuilder<Uint8List?>(
+                future: repository?.venuePhotoBytes(url),
+                builder: (context, snapshot) => snapshot.hasData
+                    ? Image.memory(
+                        snapshot.data!,
+                        fit: BoxFit.cover,
+                        semanticLabel: '${record['name']} venue',
+                      )
+                    : placeholder,
+              )
             : Image.network(
                 url,
                 fit: BoxFit.cover,
