@@ -115,6 +115,29 @@ test('session-specific capacity, cancellation and revision checks are audited wi
  await rejects(()=>session({revision:2,capacity:2}),'session-started');
 });
 
+test('check-in only surfaces the viewer\'s own counted-in session, never another participant\'s',async()=>{
+ await createProgram();await createProgram({status:'draft'},'draft-one');
+ await session();await catalogue.setRsvp(who('participant-1'),{eventId:'session-one'});
+ const participant1=env.authenticatedContext('participant-1',{email_verified:true,role:'participant'}).firestore();
+ const participant2=env.authenticatedContext('participant-2',{email_verified:true,role:'participant'}).firestore();
+ // The two reads the Check-in screen actually depends on: the viewer's own
+ // rsvp doc, and the published session it points at.
+ const mine=await assertSucceeds(getDocs(query(collection(participant1,'rsvps'),where('uid','==','participant-1'))));
+ assert.equal(mine.docs.length,1);assert.equal(mine.docs[0].id,'session-one_participant-1');
+ await assertSucceeds(getDoc(doc(participant1,'events/session-one')));
+ // Someone else, not counted in, can discover the published session (general
+ // program/session discovery is public to any verified member) but cannot
+ // read the first participant's rsvp -- their own counted-in list stays empty.
+ await assertSucceeds(getDoc(doc(participant2,'events/session-one')));
+ await assertFails(getDoc(doc(participant2,'rsvps/session-one_participant-1')));
+ await assertFails(getDocs(query(collection(participant2,'rsvps'),where('uid','==','participant-1'))));
+ const theirs=await assertSucceeds(getDocs(query(collection(participant2,'rsvps'),where('uid','==','participant-2'))));
+ assert.equal(theirs.docs.length,0);
+ // A session can only be created for an active program (asserted elsewhere),
+ // so there is no "draft session" state to probe here; confirm instead that
+ // a session under one draft program doesn't leak visibility into another.
+ await assertFails(getDoc(doc(participant1,'programs/draft-one')));
+});
 test('profile migration dry-run writes nothing; apply backs up and rollback preserves timestamps and identity',async()=>{
  const original={...(await db.doc('users/participant-1').get()).data(),mobile:'0400000000',emergencyContact:{name:'Contact',mobile:'0400000001'},
    about:{ageRange:'25–34',currentActivity:'Working',referral:'Friend',culturalBackground:'Neither'}};

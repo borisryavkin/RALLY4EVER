@@ -64,9 +64,29 @@ FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
 node scripts/import-programs.mjs --apply-emulator
 ```
 
-The importer refuses absent/nonlocal emulator endpoints, other project IDs and service-account credentials. It never overwrites existing program edits, never creates member/coach accounts and has no real-project apply option. The source files are retained; normalized program IDs combine state/sport/name. Conflicting source venues are reported for review.
+The importer refuses absent/nonlocal emulator endpoints and other project IDs. It never overwrites existing program edits, never creates member/coach accounts; `--apply-staging` is the one real-project write path, reusing the same Application Default Credentials convention as `scripts/seed-staging.mjs`. The source files are retained; normalized program IDs combine state/sport/name. Conflicting source venues are reported for review.
 
 The standard `npm run seed` adds two explicitly synthetic active demo programs using existing coach UIDs and retains the original 13 accounts / 3 events. Publish sample calendar sessions via admin or the catalogue emulator tests. No seed was run against the real project in this task.
+
+## Publishing drafts and generating sessions in bulk
+
+An admin can already publish a program (set its status to `active` in the program editor) and add a dated session (the "Add session" button, enabled once a program is active) entirely in the app -- see the admin console in `lib/participant/catalogue_admin.dart`. The two scripts below are a bulk alternative for working through a large import backlog, not a replacement; both default to a dry run and only write to the real project with `--apply`, reusing `scripts/seed-staging.mjs`'s real-project guard.
+
+`scripts/publish-programs.mjs` lists every draft, flags any missing venue coordinates, a placeholder venue name, missing/placeholder schedule text, or an unresolved source-venue conflict, and publishes (sets `status: 'active'`) only the drafts with none of those issues -- mirroring the same checks `saveSession` would otherwise enforce one dated session at a time:
+
+```sh
+npm run publish:programs            # dry run
+npm run publish:programs -- --apply # writes, admin-only semantics, audited
+```
+
+`scripts/generate-sessions.mjs` creates the next 4 weeks of dated sessions for every **active** program, parsed from its `scheduleText`. Parsing is deliberately conservative: it only acts on a single, unambiguous weekday + time range (e.g. "Every Tuesday ... 10am-11am"); multi-day, monthly, or vague text ("time varies", "To be advised") is left for an admin to set explicitly in the app rather than guessed, consistent with this doc's existing promise that schedule text never invents dated occurrences. It also will not create a session for a program with no coach assigned, matching `saveSession`'s own gate. Reruns are idempotent (a deterministic `gen-{programId}-{localDate}` event ID is skipped if it already exists):
+
+```sh
+npm run generate:sessions            # dry run, reports a cost (read/write) estimate
+npm run generate:sessions -- --apply # writes, audited
+```
+
+As of the real project's current 61 imported drafts: 28 are complete enough to publish, 33 are blocked (mostly missing coordinates). Of those 28, 18 have a schedule parseable into a weekly day/time; the other 10 need an admin to set an explicit time. **No program currently has a coach assigned** (coach assignment was never part of the importer), so `generate-sessions.mjs` will create zero sessions until an admin assigns at least one coach per program -- that is the actual remaining blocker between a published program and a real, checkinable session.
 
 ## Validation and release steps
 

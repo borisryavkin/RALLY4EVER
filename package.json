@@ -14,6 +14,8 @@
     "emulators:lan": "node scripts/emulators-lan.mjs",
     "test:lan": "node --test tests/lan-config.test.mjs",
     "programs:preview": "node scripts/import-programs.mjs",
+    "publish:programs": "node scripts/publish-programs.mjs",
+    "generate:sessions": "node scripts/generate-sessions.mjs",
     "test:catalogue": "npm --prefix functions run build && node --test tests/catalogue/import.test.mjs tests/catalogue/profile-schema.test.mjs && node scripts/test-catalogue.mjs"
   },
   "devDependencies": {
