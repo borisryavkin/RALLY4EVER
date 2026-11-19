@@ -1,12 +1,12 @@
-Current iOS tester build: **1.0.2 (12)**, delivered to App Store Connect on 19 November 2026 at 15:13 Sydney time and verified Testing in internal group `boris`; full status is recorded in [UPLOADS.md](UPLOADS.md). Build 12 includes discoverable admin/coach tools and real staging configuration. The script now requires **13 or higher** for another build; check the consoles first. Native IDs/signing remain unchanged. Exact staff tap paths are in [ADMIN_TOOLS.md](ADMIN_TOOLS.md).
+Current iOS tester build: **1.0.2 (13)**, delivered 19 November 2026 at 21:18 Sydney time and verified **Testing** in internal group **boris** (1 tester). Exported using normal `ios/ExportOptions.plist`; external-capable artifact, with no external group assignment. Source `7904cf2`, real Firebase project `rally4ever-3adaf`. The next build must be **14 or higher**, after checking both consoles.
 
 For the next iOS staging build (after rechecking the unused number):
 
 ```sh
-FLUTTER_BIN=/Users/borisryavkin/technical/flutter/flutter/bin/flutter ./scripts/build-ios-staging.sh --build-name 1.0.2 --build-number 13
+FLUTTER_BIN=/Users/borisryavkin/technical/flutter/flutter/bin/flutter ./scripts/build-ios-staging.sh --build-name 1.0.2 --build-number 14
 ```
 
-This validates `config/staging.ios.json` and uses `ios/ExportOptions.internal.plist`; do not omit staging config or enable emulator flags. Android's equivalent remains `./scripts/build-android-staging.sh --build-name 1.0.2 --build-number 13` using `config/staging.android.json`, but no Android upload was requested/performed for this staff-tools increment.
+This validates `config/staging.ios.json` and uses normal `ios/ExportOptions.plist` by default; do not omit staging config or enable emulator flags. Android's equivalent remains `./scripts/build-android-staging.sh --build-name 1.0.2 --build-number 14` using `config/staging.android.json`, but no Android upload was requested/performed for this staff-tools increment.
 
 # Tester release preparation
 

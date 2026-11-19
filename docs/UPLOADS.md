@@ -1,3 +1,10 @@
+## 2026-11-19 — participant build 13
+
+- iOS **1.0.2 (13)**, bundle `org.rally4ever`, source `7904cf29b5e6c41279cdb14648507160a8d67f53`. Delivered via Transporter at 21:18 Sydney; processing finished. App Store Connect verified **Testing**, internal group **boris**, 1 tester, 8 total builds. No assignment to external rally4ever group or production.
+- Normal `ios/ExportOptions.plist`, without internal-only restriction. Existing signing reused. IPA inspected: `rally4ever-3adaf` and registered Firebase iOS app ID embedded; ITSAppUsesNonExemptEncryption=false; codesign deep strict passed.
+- Artifact `build/releases/1.0.2+13/rally4ever-1.0.2-13.ipa`, 39,154,618 bytes. SHA-256 `e6af21f22542dda4513597164a0df3d0a2cb90093f793454acd60e1f45fda431`.
+- Apple accepted upload with SDK warning 90725: SDK 27 required starting April 2027; current SDK 26.2. No payment or Android upload for this increment.
+
 # Build 12 — admin and coach tools — 19 November 2026
 
 Prepared **1.0.2 (12)** for existing iOS app `6816826035`, bundle `org.rally4ever`, using existing Apple team `7HGT5BT6KT`. Source pinned to `b63bc0945675c940ac88a859fe87c290ae37de3a` in an isolated checkout; unrelated local import/export-option changes were excluded. Includes the new Me staff entries, admin programs/sessions/users, legacy session editing, rotating QR/rosters and sign-in profile-stream race fix.

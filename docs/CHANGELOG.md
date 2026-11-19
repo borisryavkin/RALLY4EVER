@@ -1,3 +1,8 @@
+## 2026-11-19 — participant build 13 delivered
+
+- Uploaded GPS/navigation/filter/program/session-audit corrections as **1.0.2 (13)** using normal export. Verified Testing in internal group boris; external group untouched. Real staging project verified inside signed IPA.
+- Analyzer clean; 118 Flutter tests passed (1 intentional skip), 38 isolated catalogue/Auth/rules tests and 10 release guards passed. See PARTICIPANT_FIXES.md and UPLOADS.md. Next local build guard requires 14+.
+
 ## 2026-11-19 — participant GPS, navigation and session editing fixes
 
 - Unified nearby session filtering/ordering/counts with GPS blue dot and recenter; Rose Bay/Bondi/Epping/Parramatta regression tests. Route-derived tab highlight, per-session All filter, Me-origin safety/form/settings navigation, and published-only participant programs.
