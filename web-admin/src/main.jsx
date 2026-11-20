@@ -22,7 +22,8 @@ import {
   UploadSimple,
   ShieldCheck,
 } from "@phosphor-icons/react";
-import { auth, call, photoBytes, uploadVenuePhoto } from "./firebase";
+import { resolvePhoto, photoDimensions, displaySessionTime } from './helpers.mjs';
+import { auth, call, photoBytes, uploadVenuePhoto, uploadPhoto } from "./firebase";
 import {
   fields,
   at,
@@ -118,8 +119,8 @@ function Photo({ url, alt = "" }) {
     <img src={src} alt={alt} className="venue-photo" />
   ) : (
     <div className="photo-empty">
-      <MapPin size={28} />
-      <span>No venue photo</span>
+      <img src="/logo.svg" alt="RALLY4EVER" className="photo-brand" />
+      <span>No photo</span>
     </div>
   );
 }
@@ -655,11 +656,11 @@ function Sessions({ data, users, action, busy }) {
                       {k === "status" ? (
                         <Status value={r.status} />
                       ) : k === "photoUrl" ? (
-                        <Photo url={r.photoUrl} alt={r.venue?.name} />
+                        <Photo url={resolvePhoto(r,data.venues)} alt={r.venue?.name} />
                       ) : k === "startsAt" || k === "endsAt" ? (
                         <>
                           <time>
-                            {localTime(r[k], r.timezone).replace("T", " ")}
+                            {displaySessionTime(r[k], r.timezone)}
                           </time>
                           <small>{r.timezone}</small>
                         </>
@@ -871,7 +872,7 @@ function StaffSelect({ users, value, onChange }) {
 }
 function SessionEditor({ row, data, users, busy, onSave, onClose }) {
   const [v, setV] = useState({ ...blankSession(), ...row }),
-    [err, setErr] = useState("");
+    [err, setErr] = useState(""), [photoBusy,setPhotoBusy]=useState(false);
   const set = (k, val) => setV({ ...v, [k]: val });
   async function submit(e) {
     e.preventDefault();
@@ -1037,7 +1038,7 @@ function SessionEditor({ row, data, users, busy, onSave, onClose }) {
         <VenueFields
           value={v.venue}
           onChange={(venue) =>
-            setV({ ...v, venue, photoUrl: venue.photoUrl ?? v.photoUrl })
+            setV({ ...v, venue })
           }
           venues={data.venues}
         />
@@ -1208,7 +1209,7 @@ function Programs({ data, users, action, busy }) {
             {rows.map((p) => (
               <tr key={p.id}>
                 <td>
-                  <Photo url={p.photoUrl} alt={p.venue?.name} />
+                  <Photo url={resolvePhoto(p,data.venues)} alt={p.venue?.name} />
                   <strong>{p.name}</strong>
                   <small>
                     {p.venue?.name} · {p.venue?.suburb}
@@ -1339,7 +1340,7 @@ function ProgramEditor({ row, data, users, busy, onSave, onClose }) {
         <VenueFields
           value={v.venue}
           onChange={(venue) =>
-            setV({ ...v, venue, photoUrl: venue.photoUrl ?? v.photoUrl })
+            setV({ ...v, venue })
           }
           venues={data.venues}
         />
@@ -1525,12 +1526,13 @@ async function compressCrop(file, settings = {}) {
         settings.y ?? 0.5,
       ),
       canvas = document.createElement("canvas");
-    canvas.width = 1600;
-    canvas.height = 900;
+    const dimensions = photoDimensions(c.w,c.h);
+    canvas.width = dimensions.width;
+    canvas.height = dimensions.height;
     const ctx = canvas.getContext("2d");
-    ctx.drawImage(image, c.x, c.y, c.w, c.h, 0, 0, 1600, 900);
+    ctx.drawImage(image, c.x, c.y, c.w, c.h, 0, 0, canvas.width, canvas.height);
     const blob = await new Promise((resolve) =>
-      canvas.toBlob(resolve, "image/jpeg", 0.82),
+      canvas.toBlob(resolve, "image/jpeg", 0.8),
     );
     if (!blob || blob.size > 5 * 1024 * 1024)
       throw Error("Compressed image exceeds the upload limit");
@@ -1538,6 +1540,11 @@ async function compressCrop(file, settings = {}) {
   } finally {
     image.close();
   }
+}
+function RecordPhotoEditor({kind,record,venues=[],busy,onSaved,onBusy=()=>{}}) {
+ const [file,setFile]=useState(null),[blob,setBlob]=useState(null),[working,setWorking]=useState(false),[progress,setProgress]=useState(0),[error,setError]=useState('');const picker=useRef(null);
+ async function save(mode){setWorking(true);onBusy(true);setError('');setProgress(0);try{const photoUrl=mode==='override'?await uploadPhoto(kind,record.id,blob,setProgress):'';const result=await call('adminSetPhoto',{kind,id:record.id,revision:record.revision??0,photoUrl,mode});onSaved({photoUrl,photoMode:mode,revision:result.revision??(record.revision??0)+1});setFile(null);setBlob(null);}catch(e){setError(errorText(e));}finally{setWorking(false);onBusy(false);}}
+ return <section className="editor"><h3>Photo</h3><div className="dropzone" onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();if(!working)setFile(e.dataTransfer.files[0]);}}><Photo url={resolvePhoto(record,venues)} alt={record.name}/><Button type="button" secondary disabled={working||busy} onClick={()=>picker.current.click()}>Change photo</Button><input type="file" ref={picker} hidden accept="image/jpeg,image/png,image/webp" onChange={e=>setFile(e.target.files[0])}/><p>Drop a photo here or choose a file.</p></div>{file&&<CropPhoto file={file} onReady={setBlob}/>}<div className="actions">{file&&<Button type="button" disabled={!blob||working||busy} onClick={()=>save('override')}>Replace / Upload photo</Button>}{kind==='session'&&<Button type="button" secondary disabled={working||busy} onClick={()=>save('venue')}>Use venue photo</Button>}<Button type="button" secondary disabled={working||busy} onClick={()=>save('none')}>Remove photo</Button></div>{working&&<><progress max="1" value={progress}/><p>{progress<1?'Uploading '+Math.round(progress*100)+'%':'Saving photo…'}</p></>}{error&&<p role="alert">{error}</p>}</section>;
 }
 function CropPhoto({ file, onReady }) {
   const [zoom, setZoom] = useState(1),
@@ -1801,7 +1808,7 @@ const venueInput = (v) =>
 function VenueEditor({ row, action, busy, onClose }) {
   const [v, setV] = useState(row),
     [file, setFile] = useState(null),
-    [blob, setBlob] = useState(null);
+    [blob, setBlob] = useState(null), [progress,setProgress] = useState(null);
   const picker = useRef(null);
   return (
     <form
@@ -1811,7 +1818,7 @@ function VenueEditor({ row, action, busy, onClose }) {
         action(async () => {
           const id = v.id ?? crypto.randomUUID();
           let photoUrl = v.photoUrl ?? "";
-          if (blob) photoUrl = await uploadVenuePhoto(id, blob);
+          if (blob) photoUrl = await uploadVenuePhoto(id, blob,setProgress);
           await call("adminSaveVenue", {
             venueId: id,
             revision: v.revision ?? 0,
@@ -1855,7 +1862,7 @@ function VenueEditor({ row, action, busy, onClose }) {
       >
         <Photo url={v.photoUrl} alt={v.name} />
         <Button type="button" secondary onClick={() => picker.current.click()}>
-          <UploadSimple size={17} /> Choose venue photo
+          <UploadSimple size={17} /> Change photo / Replace
         </Button>
         <p>
           Or drop a photo here. JPEG, PNG or WebP; up to 20 MB before
@@ -1870,6 +1877,8 @@ function VenueEditor({ row, action, busy, onClose }) {
         />
       </div>
       {file && <CropPhoto file={file} onReady={setBlob} />}
+      {progress!==null && <progress value={progress} max="1" aria-label="Photo upload progress" />}
+      <Button type="button" secondary disabled={busy} onClick={()=>{setFile(null);setBlob(null);setV({...v,photoUrl:''});}}>Remove photo</Button>
       <p className="muted">
         Revision {v.revision ?? 0}. Photos update linked programs and sessions.
         Started sessions keep their original coordinates.

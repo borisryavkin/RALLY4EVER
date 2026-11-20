@@ -79,3 +79,19 @@ test("all requested fields visible and derived fields cannot be submitted", () =
     { name: "Tennis" },
   );
 });
+test('photo order never borrows another venue and resize does not upscale',async()=>{
+ const {resolvePhoto,photoDimensions}=await import('../src/helpers.mjs');
+ const venues=[{id:'manly',photoUrl:'manly'},{id:'chatswood',photoUrl:'chatswood'}];
+ assert.equal(resolvePhoto({photoUrl:'session',venueId:'manly'},venues),'session');
+ assert.equal(resolvePhoto({venueId:'manly'},venues),'manly');
+ assert.equal(resolvePhoto({venueId:'unknown'},venues),'');
+ assert.equal(resolvePhoto({venueId:'manly',photoMode:'none'},venues),'');
+ assert.equal(resolvePhoto({venueId:'manly',photoMode:'venue',photoUrl:'old'},venues),'manly');
+ assert.deepEqual(photoDimensions(4000,2000),{width:1600,height:800});
+ assert.deepEqual(photoDimensions(2000,4000),{width:800,height:1600});
+ assert.deepEqual(photoDimensions(320,200),{width:320,height:200});
+});
+test('admin session dates use readable local timezone formatting',async()=>{
+ const {displaySessionTime}=await import('../src/helpers.mjs');
+ assert.equal(displaySessionTime('2026-11-19T02:12:33.702Z','Australia/Sydney'),'Thu 19 Nov, 1:12 pm');
+});

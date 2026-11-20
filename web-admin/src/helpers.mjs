@@ -152,3 +152,19 @@ export function sessionChanges(row) {
     ),
   );
 }
+
+export function resolvePhoto(record, venues = []) {
+ if(record.photoMode==='none')return '';
+ if(record.photoUrl && record.photoMode!=='venue')return record.photoUrl;
+ const v=record.venue??{}, id=record.venueId??v.id;
+ const venue=venues.find(x=>id ? x.id===id : x.name===v.name && x.lat===v.lat && x.lng===v.lng);
+ return venue?.photoUrl??v.photoUrl??'';
+}
+export function photoDimensions(width,height) {
+ const scale=Math.min(1,1600/Math.max(width,height));
+ return {width:Math.max(1,Math.round(width*scale)),height:Math.max(1,Math.round(height*scale))};
+}
+export function displaySessionTime(value,zone='Australia/Sydney') {
+ const parts=Object.fromEntries(new Intl.DateTimeFormat('en-AU',{timeZone:zone,weekday:'short',day:'numeric',month:'short',hour:'numeric',minute:'2-digit',hour12:true}).formatToParts(new Date(value)).map(p=>[p.type,p.value]));
+ return `${parts.weekday} ${parts.day} ${parts.month}, ${parts.hour}:${parts.minute} ${parts.dayPeriod.toLowerCase()}`;
+}
