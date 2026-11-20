@@ -67,6 +67,7 @@ abstract class ParticipantRepository extends ChangeNotifier {
   Record contact = {};
   bool contactReady = false;
   List<Record> programs = [];
+  List<Record> venues = [];
   bool catalogueReady = false;
   String? catalogueError;
   List<Record> events = [],
@@ -233,6 +234,12 @@ abstract class ParticipantRepository extends ChangeNotifier {
 
   /// Null if there's no photo (or it can't be reached); never throws.
   Future<String?> photoDownloadUrl() async => null;
+  Future<String> uploadCataloguePhoto(
+    String kind,
+    String id,
+    Uint8List bytes,
+    ValueChanged<double> progress,
+  ) => throw UnimplementedError();
   Future<Uint8List?> venuePhotoBytes(String url) async => null;
   Future<void> signForm(Record form) => throw UnimplementedError();
   Future<Record> call(String name, Record data) => throw UnimplementedError();
@@ -406,6 +413,7 @@ class FirebaseParticipantRepository extends ParticipantRepository {
       (v) => checkins = v,
     );
     watch('forms', db.collection('forms'), (v) => forms = v);
+    watch('venues', db.collection('venues'), (v) => venues = v);
     watch(
       'consents',
       db.collection('consents').where('uid', isEqualTo: uid),
@@ -793,6 +801,39 @@ class FirebaseParticipantRepository extends ParticipantRepository {
     await backend.firestore.doc('consents/${uid}_${form['id']}').set(receipt);
     consents = [...consents.where((c) => c['formId'] != form['id']), receipt];
     notifyListeners();
+  }
+
+  @override
+  Future<String> uploadCataloguePhoto(
+    String kind,
+    String id,
+    Uint8List bytes,
+    ValueChanged<double> progress,
+  ) async {
+    if (!canAdmin || !['session', 'venue'].contains(kind)) {
+      throw StateError('Admin access required');
+    }
+    final folder = kind == 'venue' ? 'venues' : 'sessions';
+    final ref = backend.storage.ref(
+      '$folder/$id/${DateTime.now().microsecondsSinceEpoch}.jpg',
+    );
+    final task = ref.putData(
+      bytes,
+      SettableMetadata(
+        contentType: 'image/jpeg',
+        cacheControl: 'public,max-age=3600',
+      ),
+    );
+    final subscription = task.snapshotEvents.listen(
+      (s) =>
+          progress(s.totalBytes == 0 ? 0 : s.bytesTransferred / s.totalBytes),
+    );
+    try {
+      await task;
+    } finally {
+      await subscription.cancel();
+    }
+    return 'https://firebasestorage.googleapis.com/v0/b/${ref.bucket}/o/${Uri.encodeComponent(ref.fullPath)}?alt=media';
   }
 
   @override

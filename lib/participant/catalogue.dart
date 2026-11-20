@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'repository.dart';
+import '../shared/logo.dart';
 import 'theme.dart';
 
 LatLng? venuePoint(Record record) {
@@ -257,18 +258,37 @@ class _ProgramBrowserState extends State<ProgramBrowser> {
   }
 }
 
+String? cataloguePhotoUrl(Record record, [Iterable<Record> venues = const []]) {
+  if (record['photoMode'] == 'none') return null;
+  final own = record['photoUrl'] as String? ?? '';
+  if (own.isNotEmpty && record['photoMode'] != 'venue') return own;
+  final venue = record['venue'] is Map
+      ? Map<String, dynamic>.from(record['venue'] as Map)
+      : <String, dynamic>{};
+  final id = record['venueId'] ?? venue['id'];
+  final canonical = venues
+      .where(
+        (v) => id != null
+            ? v['id'] == id
+            : v['name'] == venue['name'] &&
+                  v['lat'] == venue['lat'] &&
+                  v['lng'] == venue['lng'],
+      )
+      .firstOrNull;
+  final url = (canonical?['photoUrl'] ?? venue['photoUrl']) as String?;
+  return url == null || url.isEmpty ? null : url;
+}
+
 class CataloguePhoto extends StatelessWidget {
   const CataloguePhoto({super.key, required this.record, this.repository});
   final ParticipantRepository? repository;
   final Record record;
   @override
   Widget build(BuildContext context) {
-    final url = record['photoUrl'] as String? ?? '';
+    final url = cataloguePhotoUrl(record, repository?.venues ?? []) ?? '';
     final placeholder = ColoredBox(
-      color: pink.withValues(alpha: .35),
-      child: const Center(
-        child: Icon(Icons.sports_tennis, size: 48, color: navy),
-      ),
+      color: cream,
+      child: const Center(child: Logo(height: 55)),
     );
     return ClipRRect(
       borderRadius: BorderRadius.circular(22),

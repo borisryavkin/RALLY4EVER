@@ -2,7 +2,31 @@ import 'package:flutter/material.dart';
 import 'package:timezone/timezone.dart' as tz;
 
 import 'repository.dart';
+import 'catalogue_photos.dart';
 import 'theme.dart';
+
+String adminSessionTime(Record session) {
+  final d = tz.TZDateTime.from(
+    dateOf(session['startsAt']),
+    tz.getLocation(session['timezone'] as String? ?? 'Australia/Sydney'),
+  );
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return '${days[d.weekday - 1]} ${d.day} ${months[d.month - 1]}, ${d.hour % 12 == 0 ? 12 : d.hour % 12}:${d.minute.toString().padLeft(2, '0')} ${d.hour < 12 ? 'am' : 'pm'}';
+}
 
 class CatalogueAdminPanel extends StatefulWidget {
   const CatalogueAdminPanel({super.key, required this.repository});
@@ -670,6 +694,10 @@ class _SessionEditorState extends State<SessionEditor> {
         if (widget.session != null) 'eventId': widget.session!['id'],
         if (widget.session != null) 'revision': widget.session!['revision'],
         'venue': {
+          for (final key in ['id', 'code', 'photoUrl'])
+            if ((widget.session?['venue'] ?? widget.program['venue'])?[key] !=
+                null)
+              key: (widget.session?['venue'] ?? widget.program['venue'])[key],
           for (final key in ['name', 'address', 'suburb', 'postcode'])
             key: venueFields[key]!.text.trim(),
           'state': venueState,
@@ -705,6 +733,18 @@ class _SessionEditorState extends State<SessionEditor> {
     body: ListView(
       padding: const EdgeInsets.all(24),
       children: [
+        if (widget.session != null)
+          CataloguePhotoControl(
+            repository: widget.repository,
+            record: widget.session!,
+            kind: 'session',
+            onSaved: () => setState(() {}),
+            onBusy: (value) {
+              if (mounted) setState(() => busy = value);
+            },
+          )
+        else
+          const Text('Save the session before adding its own photo.'),
         Text(
           '${widget.program['name']}',
           style: Theme.of(context).textTheme.headlineMedium,
@@ -713,34 +753,22 @@ class _SessionEditorState extends State<SessionEditor> {
           'Times use $zone. Venue, capacity and coaches apply to this session only.',
         ),
         const SizedBox(height: 20),
-        DropdownButtonFormField<String>(
-          initialValue: zone,
-          decoration: const InputDecoration(labelText: 'Session timezone'),
-          items: [
-            for (final value in [
-              'Australia/Sydney',
-              'Australia/Melbourne',
-              'Australia/Brisbane',
-              'Australia/Adelaide',
-              'Australia/Perth',
-              'Australia/Hobart',
-              'Australia/Darwin',
-              'Australia/Lord_Howe',
-            ])
-              DropdownMenuItem(value: value, child: Text(value)),
-          ],
-          onChanged: (v) => setState(() {
-            zone = v!;
-            start = null;
-            end = null;
-          }),
-        ),
+        Text('Venue', style: Theme.of(context).textTheme.titleLarge),
         for (final key in venueFields.keys)
           Padding(
             padding: const EdgeInsets.only(top: 12),
             child: TextField(
               controller: venueFields[key],
-              decoration: InputDecoration(labelText: 'Session venue $key'),
+              decoration: InputDecoration(
+                labelText: const {
+                  'name': 'Venue name',
+                  'address': 'Street address',
+                  'suburb': 'Suburb',
+                  'postcode': 'Postcode',
+                  'lat': 'Latitude',
+                  'lng': 'Longitude',
+                }[key],
+              ),
             ),
           ),
         DropdownButtonFormField<String>(
@@ -775,17 +803,47 @@ class _SessionEditorState extends State<SessionEditor> {
               }
             }),
           ),
+        Text('Time', style: Theme.of(context).textTheme.titleLarge),
+        DropdownButtonFormField<String>(
+          initialValue: zone,
+          decoration: const InputDecoration(labelText: 'Session timezone'),
+          items: [
+            for (final value in [
+              'Australia/Sydney',
+              'Australia/Melbourne',
+              'Australia/Brisbane',
+              'Australia/Adelaide',
+              'Australia/Perth',
+              'Australia/Hobart',
+              'Australia/Darwin',
+              'Australia/Lord_Howe',
+            ])
+              DropdownMenuItem(value: value, child: Text(value)),
+          ],
+          onChanged: (v) => setState(() {
+            zone = v!;
+            start = null;
+            end = null;
+          }),
+        ),
         OutlinedButton(
           onPressed: () => pick(true),
           child: Text(
-            start == null ? 'Choose start date & time' : 'Starts: $start',
+            start == null
+                ? 'Choose start date & time'
+                : 'Starts: ${adminSessionTime({'startsAt': start, 'timezone': zone})}',
           ),
         ),
         OutlinedButton(
           onPressed: () => pick(false),
-          child: Text(end == null ? 'Choose end date & time' : 'Ends: $end'),
+          child: Text(
+            end == null
+                ? 'Choose end date & time'
+                : 'Ends: ${adminSessionTime({'startsAt': end, 'timezone': zone})}',
+          ),
         ),
         const SizedBox(height: 16),
+        Text('Capacity', style: Theme.of(context).textTheme.titleLarge),
         TextField(
           controller: capacity,
           keyboardType: TextInputType.number,
@@ -814,6 +872,7 @@ class _SessionEditorState extends State<SessionEditor> {
           onChanged: (v) => setState(() => status = v!),
         ),
         const SizedBox(height: 12),
+        Text('Notes', style: Theme.of(context).textTheme.titleLarge),
         TextField(
           controller: notes,
           maxLines: 3,
@@ -974,9 +1033,7 @@ class _SessionManagementPanelState extends State<SessionManagementPanel> {
                     '${session['name']}',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
-                  Text(
-                    '${dateOf(session['startsAt']).toLocal()} · ${session['status']}',
-                  ),
+                  Text('${adminSessionTime(session)} · ${session['status']}'),
                   Text(
                     '${session['venue']['name']} · Capacity: ${session['capacity'] ?? 'unlimited'}',
                   ),
@@ -1000,12 +1057,10 @@ class _SessionManagementPanelState extends State<SessionManagementPanel> {
                       ),
                       child: const Text('Edit / cancel / assign coaches'),
                     )
-                  else
+                  else if (session['programId'] == null)
                     TextButton(
                       onPressed: () => edit({...session, 'id': null}, session),
-                      child: const Text(
-                        'Edit / assign coaches (legacy session)',
-                      ),
+                      child: const Text('Edit session / assign coaches'),
                     ),
                 ],
               ),

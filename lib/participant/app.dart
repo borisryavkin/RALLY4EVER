@@ -15,6 +15,7 @@ import 'legal_text.dart';
 import 'access.dart';
 import 'catalogue.dart';
 import 'catalogue_admin.dart';
+import 'catalogue_photos.dart';
 import 'coach_console.dart';
 import 'repository.dart';
 import 'theme.dart';
@@ -62,6 +63,7 @@ class _ParticipantAppState extends State<ParticipantApp>
     'signInMethods' ||
     'role' ||
     'adminAccess' ||
+    'adminVenues' ||
     'adminSessions' ||
     'adminCatalogue' ||
     'coachTools' => 3,
@@ -727,6 +729,17 @@ class _ParticipantAppState extends State<ParticipantApp>
             const Text('Staff access required.'),
         ],
       ),
+      'adminVenues' => frame(
+        context,
+        title: 'Admin · venues',
+        back: () => go('role'),
+        children: [
+          if (repo.canAdmin)
+            VenueManagementPanel(repository: repo)
+          else
+            const Text('Admin access required.'),
+        ],
+      ),
       'adminSessions' => frame(
         context,
         title: 'Admin · sessions',
@@ -1226,17 +1239,7 @@ class _ParticipantAppState extends State<ParticipantApp>
       title: 'Come as you are',
       back: () => go('home'),
       children: [
-        if (e['catalogueManaged'] == true)
-          CataloguePhoto(record: e, repository: repo)
-        else
-          ClipRRect(
-            borderRadius: BorderRadius.circular(22),
-            child: Image.asset(
-              'assets/wavley.jpg',
-              height: 200,
-              fit: BoxFit.cover,
-            ),
-          ),
+        CataloguePhoto(record: e, repository: repo),
         const SizedBox(height: 18),
         StatusPill(stateFor(e)),
         const SizedBox(height: 12),
@@ -2230,6 +2233,10 @@ class _ParticipantAppState extends State<ParticipantApp>
         FilledButton(
           onPressed: () => go('adminSessions'),
           child: const Text('Sessions'),
+        ),
+        FilledButton(
+          onPressed: () => go('adminVenues'),
+          child: const Text('Venues & photos'),
         ),
         FilledButton(
           onPressed: () => go('adminAccess'),
