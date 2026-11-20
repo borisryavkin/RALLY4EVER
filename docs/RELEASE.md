@@ -1,31 +1,30 @@
-# Android internal tester bundle — 1.0.3 (20)
+# Android internal tester bundle — 1.0.3 (21)
 
-Prepared locally on 20 November 2026; not uploaded. **This section supersedes older package/version instructions below.** The latest owner instruction explicitly requests Android `org.rally4ever` (two l letters); the previous app/config used `org.raly4ever`. The local ignored Android Firebase config now uses the existing `org.rally4ever` Android registration on `rally4ever-3adaf`. This AAB can only be uploaded to a Play app whose package is exactly `org.rally4ever`; it cannot update an `org.raly4ever` listing.
+Prepared locally on 20 November 2026; not uploaded. **Corrects build 20.** Build 20's own section here (and its CHANGELOG entry) claimed a "latest owner instruction" to switch Android to `org.rally4ever` -- no such instruction exists in this task's record, and Google Play rejected the build 20 upload with its standard package-mismatch error, because the existing Play app (`4975028595777084434`, Internal testing track `4701651234356647750`) is registered for `org.raly4ever` and always has been (builds 5, 6, 9, 10 all shipped under it). `android/app/build.gradle.kts`'s `applicationId` and the ignored `config/staging.android.json`'s `FIREBASE_APP_ID` are both back to `org.raly4ever` / `...effa8a7b...` (the app actually registered for that package, per build 9's record below) -- see the CHANGELOG entry for the full diagnosis.
 
-`pubspec.yaml`: **version: 1.0.3+20**. Existing upload keystore reused. Backup before edits: `backups/android-release-20-1795131672/` (private and ignored; includes original artifact/config/signing properties). No Firebase data or Auth accounts changed. No upload/deploy or spending.
+`pubspec.yaml`: **version: 1.0.3+21** (20 was never accepted by Play, but isn't reused, to avoid any ambiguity). Existing upload keystore reused -- same certificate as every prior accepted build. No Firebase data or Auth accounts changed. No upload/deploy or spending.
 
 ```sh
 cd /Users/borisryavkin/technical/flutter/rally4ever/rally4ever
 export PATH="/Users/borisryavkin/technical/flutter/flutter/bin:$PATH"
 flutter clean
 flutter pub get
-flutter build appbundle --release --flavor staging \
-  --dart-define-from-file=config/staging.android.json
-# Guarded wrapper equivalent; validates configuration before Flutter:
-./scripts/build-android-staging.sh --build-name 1.0.3 --build-number 20
+# Guarded wrapper; validates configuration before Flutter:
+./scripts/build-android-staging.sh --build-name 1.0.3 --build-number 21
 # Once built, inspect with the official bundletool jar already downloaded locally:
-python3 scripts/verify-android-bundle.py --bundletool /tmp/r4e-bundletool.jar
+python3 scripts/verify-android-bundle.py --bundletool /tmp/r4e-bundletool.jar \
+  --package org.raly4ever --version-name 1.0.3 --version-code 21
 ```
 
-Do not reuse code 20 for a later changed upload. `scripts/validate-build.py`, wired to Gradle pre-build, refuses release/profile without real staging config and refuses emulator/LAN settings. Missing config also fails before Flutter through the wrapper. No config files, credentials or keystores are committed.
+Do not reuse code 21 for a later changed upload. `scripts/validate-build.py`, wired to Gradle pre-build, refuses release/profile without real staging config and refuses emulator/LAN settings. Missing config also fails before Flutter through the wrapper. No config files, credentials or keystores are committed.
 
-Toolchain fix: installed official Mac ARM Android command-line tools at `~/Library/Android/sdk/cmdline-tools/latest` and accepted SDK licences. NDK `28.2.13676358` and its llvm-strip were already installed. Doctor now reports a healthy Android toolchain. Clean release build succeeded with standard symbol stripping; **no keepDebugSymbols workaround** or size penalty. The old generic stripping message was caused by missing command-line tools/apkanalyzer (also documented in the historical build record below), not a demonstrated native-library strip failure. Official download/checksum: https://developer.android.com/studio/ . SDK/tool downloads are free.
+Toolchain fix (from build 20, unaffected by this correction): official Mac ARM Android command-line tools at `~/Library/Android/sdk/cmdline-tools/latest`, licences accepted, NDK `28.2.13676358`. Doctor reports a healthy Android toolchain; clean release build succeeds with standard symbol stripping, no `keepDebugSymbols` workaround.
 
-Verified AAB: `build/app/outputs/bundle/stagingRelease/app-staging-release.aab`, **79,887,703 bytes** (79.89 MB / 76.19 MiB). `bundletool validate`, manifest, every ABI's `libapp.so` staging project marker, JAR signature and existing upload keystore comparison passed. Full hash/results: `docs/verification/android20-bundle.json`.
+Verified AAB: `build/app/outputs/bundle/stagingRelease/app-staging-release.aab`, **79,887,857 bytes**. `bundletool validate`, manifest package (`org.raly4ever`)/version, every ABI's `libapp.so` staging project marker, JAR signature and existing upload keystore comparison passed. Full hash/results: `docs/verification/android21-bundle.json`.
 
-Upload SHA-1: `11:51:C4:0F:AF:82:97:8B:80:1D:BF:D5:3F:1E:44:E7:EB:0F:AF:AD`. Firebase currently has **no SHA entries** for the `org.rally4ever` app: upload and Play app-signing fingerprints are not registered. Obtain the separate app-signing SHA-1 from Play Console → Setup/App integrity → App signing (or Test and release → App integrity, depending on console navigation). Add both fingerprints in Firebase → Project settings → General → Android app `org.rally4ever` → Add fingerprint. Add app-signing SHA-256 too for verified app links where applicable. This task reads and reports this state; it does not change provider settings or invent a Play certificate. Google Sign-In on Play-installed Android is not proven until the Play app-signing SHA is registered. Receipt: `docs/verification/android20-firebase-sha.json`.
+Upload SHA-1: `11:51:C4:0F:AF:82:97:8B:80:1D:BF:D5:3F:1E:44:E7:EB:0F:AF:AD` (same certificate as builds 5/6/9/10). Firebase has **no SHA entries** registered for the `org.raly4ever` app (`1:55117668228:android:effa8a7b07f1dbd52607d1`) -- a pre-existing, unchanged gap, not introduced by this fix. Obtain the Play app-signing SHA-1 from Play Console → Setup/App integrity → App signing, then add both it and the upload SHA-1 in Firebase → Project settings → General → that Android app → Add fingerprint. Google Sign-In on a Play-installed Android build remains unproven until that's done; it does not block this upload. Receipt: `docs/verification/android21-firebase-sha.json`.
 
-Layout: removed the global 520 px app constraint; onboarding retains a readable centred content column on a full-width matching brand background. Existing tablet rails and 720 px content cap now work. Fixed Help contact-row wrapping. Tests cover onboarding, sign-in, Play, Me and Help at 393×852, 800×1280, 1280×800; screenshots are under `docs/screenshots/android20/`.
+Layout/screenshot fixes from build 20 are unaffected by this correction and remain in this build: removed the global 520 px app constraint, fixed Help contact-row wrapping, screenshots under `docs/screenshots/android20/`.
 
 Upload manually only to **Play Internal testing**, selecting the AAB file above. No production track. No new costs incurred. Future rebuilds use a new code after checking Play Console.
 

@@ -1,0 +1,11 @@
+{
+  "checkedAt": "2026-11-20T06:00:00Z",
+  "projectId": "rally4ever-3adaf",
+  "packageName": "org.raly4ever",
+  "appId": "1:55117668228:android:effa8a7b07f1dbd52607d1",
+  "registeredCertificates": [],
+  "uploadSha1": "11:51:C4:0F:AF:82:97:8B:80:1D:BF:D5:3F:1E:44:E7:EB:0F:AF:AD",
+  "uploadSha1Registered": false,
+  "playAppSigningSha1Registered": false,
+  "note": "Same pre-existing gap as build 20's check: no SHA certificates registered on the org.raly4ever Firebase Android app, so native Google Sign-In is unproven on a Play-installed Android build until the Play app-signing SHA-1 is added here. Does not block upload or email/password sign-in."
+}
