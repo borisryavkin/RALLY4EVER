@@ -229,4 +229,5 @@ const adminConsole = new AdminConsoleService(service, url=>sealVenuePhoto(app,ur
 export const adminCatalogue = callable((who,data)=>adminConsole.catalogue(who,data));
 export const adminSaveSession = callable((who,data)=>adminConsole.saveSession(who,data));
 export const adminSaveVenue = callable((who,data)=>adminConsole.saveVenue(who,data));
+export const adminSetPhoto = callable((who,data)=>adminConsole.setPhoto(who,data));
 export const adminRemoveDemo = callable((who,data)=>adminConsole.demo(who,data));

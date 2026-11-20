@@ -21,7 +21,7 @@ function photos(value: unknown): string {
   if (
     url &&
     !/^https:\/\/[^\s]+$/.test(url) &&
-    !/^gs:\/\/rally4ever-3adaf\.firebasestorage\.app\/venues\/[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(
+    !/^gs:\/\/rally4ever-3adaf\.firebasestorage\.app\/(?:venues|sessions)\/[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(
       url,
     )
   )
@@ -389,7 +389,7 @@ export class AdminConsoleService {
         "Too many records for a single venue update",
       );
     const linked = [...events.docs, ...programs.docs].filter(
-      (r) => r.data().venue && venueId(r.data().venue) === key,
+      (r) => r.data().venue && (r.data().venueId ?? venueId(r.data().venue)) === key,
     );
     if (linked.length > 150)
       fail(
@@ -437,13 +437,13 @@ export class AdminConsoleService {
       });
       for (const r of snapshots) {
         const p = r.data()!;
-        if (!p.venue || venueId(p.venue) !== key) continue;
+        if (!p.venue || (p.venueId ?? venueId(p.venue)) !== key) continue;
         const started =
           r.ref.parent.id === "events" &&
           (p.startsAt.toMillis() <= this.service.now() || scanned.has(r.id));
         tx.update(r.ref, {
-          venue: started ? { ...p.venue, photoUrl } : venue,
-          photoUrl,
+          venue: started ? { ...p.venue, id: key, photoUrl } : venue,
+          ...((p.photoMode === 'venue' || (!p.photoMode && p.photoUrl && p.photoUrl === p.venue.photoUrl)) ? {photoUrl:'',photoMode:'venue'} : {}),
           revision: (p.revision ?? 0) + 1,
           updatedAt: at,
         });
@@ -464,6 +464,36 @@ export class AdminConsoleService {
       });
     });
     return { venueId: key, updatedRecords: linked.length };
+  }
+  async setPhoto(who: Identity, value: unknown) {
+    const d = input(value, ['kind','id','revision','photoUrl','mode']);
+    await this.requireAdmin(who);
+    if (!['session','venue'].includes(d.kind as string)) fail('invalid-argument','invalid-kind','Choose session or venue');
+    const key=id(d.id), mode=d.mode ?? 'override';
+    if (!['override','venue','none'].includes(mode as string)) fail('invalid-argument','invalid-photo-mode','Choose a photo mode');
+    const photoUrl=mode==='override'?photos(d.photoUrl):'';
+    if (photoUrl) {
+      let path='';
+      if(photoUrl.startsWith('gs://rally4ever-3adaf.firebasestorage.app/')) path=photoUrl.slice('gs://rally4ever-3adaf.firebasestorage.app/'.length);
+      else {try {const u=new URL(photoUrl);if(u.origin==='https://firebasestorage.googleapis.com'&&u.pathname.startsWith('/v0/b/rally4ever-3adaf.firebasestorage.app/o/'))path=decodeURIComponent(u.pathname.split('/o/')[1]);}catch {}}
+      const expected=d.kind==='venue'?'venues':'sessions';
+      if(!new RegExp('^'+expected+'/'+key+'/[A-Za-z0-9._-]+$').test(path))fail('invalid-argument','photo-path','Upload under this record ID');
+      await this.sealPhoto?.('gs://rally4ever-3adaf.firebasestorage.app/'+path);
+    }
+    const {db}=this.service;
+    if(d.kind==='venue') {
+      const v=(await db.doc('venues/'+key).get()).data();if(!v)fail('not-found','venue-not-found','Venue unavailable');
+      const fields=['name','code','address','suburb','postcode','state','lat','lng','isDemo'];
+      return this.saveVenue(who,{venueId:key,revision:d.revision,venue:{...Object.fromEntries(fields.map(k=>[k,v![k]??({isDemo:false}[k as 'isDemo']??'')])),photoUrl}});
+    }
+    return db.runTransaction(async tx=>{
+      if((await this.service.actor(tx,who)).role!=='admin')fail('permission-denied','admin-required','Admin access required');
+      const ref=db.doc('events/'+key),old=await tx.get(ref);if(!old.exists)fail('not-found','session-not-found','Session unavailable');
+      if((old.data()!.revision??0)!==d.revision)fail('aborted','stale-session','Session changed. Reload before saving');
+      const next={photoUrl,photoMode:mode,revision:(old.data()!.revision??0)+1,updatedAt:this.service.stamp(),updatedBy:who.uid};
+      tx.update(ref,next);tx.create(db.collection('catalogueAudits').doc(),{kind:'session-photo',eventId:key,actorUid:who.uid,before:{photoUrl:old.data()!.photoUrl??'',photoMode:old.data()!.photoMode??null},after:next,createdAt:this.service.stamp()});
+      return {eventId:key,...next};
+    });
   }
   async demo(who: Identity, value: unknown) {
     const d = input(value, ["apply", "expectedIds", "expectedPaths"]);

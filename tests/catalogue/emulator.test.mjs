@@ -333,10 +333,12 @@ test('venue catalogue includes legacy courts and uploaded photos propagate witho
  await db.doc('events/started').set({...adminSession(),venue:program().venue,startsAt:Timestamp.fromMillis(now-60000),endsAt:Timestamp.fromMillis(now+60000)});
  const photoUrl=`gs://rally4ever-3adaf.firebasestorage.app/venues/${key}/test.jpg`;
  await c.saveVenue(admin,{venueId:key,revision:0,venue:{...program().venue,code:'COURT-ONE',lat:-33.89,photoUrl}});
- assert.equal((await db.doc('programs/program-one').get()).data().photoUrl,photoUrl);
+ assert.equal((await db.doc('programs/program-one').get()).data().photoUrl,program().photoUrl);
+ assert.equal((await db.doc('programs/program-one').get()).data().venue.photoUrl,photoUrl);
  assert.equal((await db.doc('events/session-one').get()).data().venue.lat,-33.89);
  assert.equal((await db.doc('events/started').get()).data().venue.lat,program().venue.lat);
- assert.equal((await db.doc('events/started').get()).data().photoUrl,photoUrl);
+ assert.equal((await db.doc('events/started').get()).data().photoUrl,program().photoUrl);
+ assert.equal((await db.doc('events/started').get()).data().venue.photoUrl,photoUrl);
  await rejects(()=>c.saveVenue(admin,{venueId:key,revision:0,venue:{...program().venue,code:'COURT-ONE'}}),'stale-venue');
 });
 test('demo removal previews exact IDs, detects changes and backs up before deleting only demo sessions',async()=>{
@@ -393,4 +395,23 @@ test('Google-created member can set a password through the reset email on the sa
  try{const first=await A.signInWithCredential(auth,A.GoogleAuthProvider.credential(token)),uid=first.user.uid;await db.doc(`users/${uid}`).set(profile({uid,email,role:'participant'},Timestamp.now()));await db.doc(`rsvps/preserved_${uid}`).set({uid,eventId:'preserved',cancelledAt:null});await A.signOut(auth);await A.sendPasswordResetEmail(auth,email);
  const codes=await(await fetch('http://127.0.0.1:23999/emulator/v1/projects/demo-rally4ever/oobCodes')).json(),code=codes.oobCodes.filter(c=>c.email===email&&c.requestType==='PASSWORD_RESET').at(-1);assert.ok(code);await A.confirmPasswordReset(auth,code.oobCode,password);assert.equal((await A.signInWithEmailAndPassword(auth,email,password)).user.uid,uid);await A.signOut(auth);assert.equal((await A.signInWithCredential(auth,A.GoogleAuthProvider.credential(token))).user.uid,uid);assert.equal((await db.doc(`rsvps/preserved_${uid}`).get()).exists,true);
  }finally{await deleteClient(client);}
+});
+
+test('photo edits use revision, allow started sessions, retain venue inheritance and require admin',async()=>{
+ const c=consoleService();await c.saveSession(admin,{eventId:'photo-session',changes:adminSession()});
+ const ref=db.doc('events/photo-session');await ref.update({startsAt:Timestamp.fromMillis(now-3600000),venueId:'photo-venue'});
+ await rejects(()=>c.setPhoto(who('participant-1'),{kind:'session',id:ref.id,revision:1,mode:'none'}),'admin-claim-required');
+ const result=await c.setPhoto(admin,{kind:'session',id:ref.id,revision:1,mode:'none'});assert.equal(result.revision,2);assert.equal((await ref.get()).data().photoMode,'none');
+ await rejects(()=>c.setPhoto(admin,{kind:'session',id:ref.id,revision:1,mode:'venue'}),'stale-session');
+ await c.setPhoto(admin,{kind:'session',id:ref.id,revision:2,mode:'venue'});assert.equal((await ref.get()).data().photoMode,'venue');
+ const url='https://firebasestorage.googleapis.com/v0/b/rally4ever-3adaf.firebasestorage.app/o/sessions%2Fphoto-session%2F123.jpg?alt=media';
+ await c.setPhoto(admin,{kind:'session',id:ref.id,revision:3,mode:'override',photoUrl:url});assert.equal((await ref.get()).data().photoUrl,url);
+ await rejects(()=>c.setPhoto(admin,{kind:'session',id:ref.id,revision:4,mode:'override',photoUrl:url.replace('photo-session','someone-else')}),'photo-path');
+ await db.doc('events/inherited-photo').set({...adminSession(),venueId:'photo-venue',photoUrl:'old-venue',venue:{...adminSession().venue,photoUrl:'old-venue'},startsAt:Timestamp.fromMillis(now-1000)});
+ const venue={...adminSession().venue,code:'photo-venue',photoUrl:'https://example.test/venue.jpg',isDemo:false};
+ await c.saveVenue(admin,{venueId:'photo-venue',revision:0,venue});
+ assert.equal((await ref.get()).data().photoUrl,url,'Venue edits preserve explicit session photos');
+ assert.equal((await ref.get()).data().venue.photoUrl,venue.photoUrl);
+ const inherited=(await db.doc('events/inherited-photo').get()).data();assert.equal(inherited.photoUrl,'');assert.equal(inherited.photoMode,'venue');assert.equal(inherited.venue.photoUrl,venue.photoUrl);
+ const audits=await db.collection('catalogueAudits').where('kind','==','session-photo').get();assert.equal(audits.size,3);
 });

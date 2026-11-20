@@ -3,7 +3,7 @@ import { getStorage } from "firebase-admin/storage";
 import { fail } from "./domain";
 export function withoutDownloadToken(metadata: Record<string, string> = {}) {
   // Firebase uploads may auto-generate bearer download tokens. Never retain one
-  // on managed venue images: reads must continue through authenticated rules.
+  // on managed images: public reads now use explicit Storage rules, without bearer tokens.
   return { ...metadata, firebaseStorageDownloadTokens: null };
 }
 export async function sealVenuePhoto(app: App, url: string) {
