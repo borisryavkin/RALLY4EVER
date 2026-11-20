@@ -1,4 +1,23 @@
-# Android internal tester bundle — 1.0.3 (21)
+# Tester feedback batch — 1.0.3 (23)
+
+Prepared locally on 20 November 2026 in an isolated git worktree (`fix/tester-feedback-batch`), merged back into `feature/qr-attendance`; not uploaded. Full detail in the CHANGELOG entry of the same name. Build 21 is already consumed on Play (per the section below); build 22 was separately prepared by a concurrent process for its own photo work. This build uses **23** to stay clear of both.
+
+```sh
+export PATH="/Users/borisryavkin/technical/flutter/flutter/bin:$PATH"
+./scripts/build-android-staging.sh --build-name 1.0.3 --build-number 23
+./scripts/build-ios-staging.sh --build-name 1.0.3 --build-number 23 --export-options normal
+python3 scripts/verify-android-bundle.py --bundletool /tmp/r4e-bundletool.jar \
+  --package org.raly4ever --version-name 1.0.3 --version-code 23
+```
+
+- Android AAB: `build/app/outputs/bundle/stagingRelease/app-staging-release.aab`, 80,108,115 bytes, SHA-256 `b6141d7579f9d9e576112ecb251358885b8f77aba163bf2ba438a703554fb97a`. Package `org.raly4ever`, version `1.0.3 (23)`, `rally4ever-3adaf` present in all three ABIs' `libapp.so`, existing upload certificate (`11:51:C4:0F:AF:82:97:8B:80:1D:BF:D5:3F:1E:44:E7:EB:0F:AF:AD`) and JAR signature verified.
+- iOS IPA: `build/ios/ipa/rally4ever.ipa`, 39.8MB. Bundle `org.rally4ever`, version `1.0.3 (23)` confirmed from the archived `Info.plist`; `rally4ever-3adaf` present 3× in `App.framework/App`; `codesign --verify --deep --strict` passed; normal (external-testing-capable) `ios/ExportOptions.plist`, team `7HGT5BT6KT`.
+- Next build must use **24 or higher** -- `scripts/build-staging.py`'s floor is updated accordingly.
+- Not uploaded: no App Store Connect API key or Play service account is configured in this environment.
+
+---
+
+## Historical: Android internal tester bundle — 1.0.3 (21)
 
 Prepared locally on 20 November 2026; not uploaded. **Corrects build 20.** Build 20's own section here (and its CHANGELOG entry) claimed a "latest owner instruction" to switch Android to `org.rally4ever` -- no such instruction exists in this task's record, and Google Play rejected the build 20 upload with its standard package-mismatch error, because the existing Play app (`4975028595777084434`, Internal testing track `4701651234356647750`) is registered for `org.raly4ever` and always has been (builds 5, 6, 9, 10 all shipped under it). `android/app/build.gradle.kts`'s `applicationId` and the ignored `config/staging.android.json`'s `FIREBASE_APP_ID` are both back to `org.raly4ever` / `...effa8a7b...` (the app actually registered for that package, per build 9's record below) -- see the CHANGELOG entry for the full diagnosis.
 

@@ -86,6 +86,8 @@ node_modules/
 # Xcode local SwiftPM resolution generated during scheme validation
 /ios/Runner.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
 /ios/Runner.xcworkspace/xcshareddata/swiftpm/
+/macos/Runner.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/
+/macos/Runner.xcworkspace/xcshareddata/swiftpm/
 *.pem
 *.pfx
 *.key

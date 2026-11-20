@@ -124,7 +124,7 @@ class BuildGuardTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[2]
         for platform in ('ios', 'android'):
             result = subprocess.run([str(root / f'scripts/build-{platform}-staging.sh'),
-                '--build-number', '21', '--config', str(self.root / 'missing.json'), '--check-only'],
+                '--build-number', '24', '--config', str(self.root / 'missing.json'), '--check-only'],
                 capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn('Build refused', result.stdout + result.stderr)
@@ -140,7 +140,7 @@ class BuildGuardTests(unittest.TestCase):
         for platform, mode, target in (('ios', 'release', 'ipa'), ('ios', 'profile', 'ios'),
                                        ('android', 'release', 'appbundle'), ('android', 'profile', 'appbundle')):
             result = subprocess.run([str(root / f'scripts/build-{platform}-staging.sh'),
-                '--build-number', '21', '--mode', mode, '--config', str(config)],
+                '--build-number', '24', '--mode', mode, '--config', str(config)],
                 env={**os.environ, 'FLUTTER_BIN': str(stub), 'BUILD_ARGS_CAPTURE': str(capture)},
                 capture_output=True, text=True)
             with self.subTest(platform=platform, mode=mode):
@@ -149,7 +149,7 @@ class BuildGuardTests(unittest.TestCase):
                 self.assertEqual(args[:3], ['build', target, f'--{mode}'])
                 self.assertEqual(args[3:5], ['--flavor', 'staging'])
                 self.assertIn(f'--dart-define-from-file={config.resolve()}', args)
-                self.assertIn('--build-number=21', args)
+                self.assertIn('--build-number=24', args)
                 if target == 'ipa':
                     self.assertIn('--export-options-plist=ios/ExportOptions.plist', args)
 
