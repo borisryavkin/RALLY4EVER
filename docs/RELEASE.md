@@ -1,3 +1,28 @@
+# Session and venue photos — prepared 20 November 2026
+
+Current photo-fix artifacts are **Android 1.0.3 (22)** (`org.raly4ever`) and **iOS 1.0.3 (21)** (`org.rally4ever`). No store upload was performed. The Play Console was observed already containing code 21, so the requested rebuilt code 21 is retained locally for review but **cannot replace the uploaded code 21**. Use the new code 22 AAB for upload. This section supersedes the older records below.
+
+- Uploadable AAB: `build/app/outputs/bundle/stagingRelease/app-staging-release.aab` — 79,959,633 bytes. Existing upload signature, package, code 22 and real Firebase marker in all ABI libraries verified.
+- Requested code 21 photo build, local review only: `build/releases/rally4ever-1.0.3-21-photo-changes.aab` — 79,959,635 bytes.
+- IPA: `build/ios/ipa/rally4ever.ipa` — 39,180,057 bytes. Apple Distribution signature and deep/strict exported IPA verification passed, team `7HGT5BT6KT`, build 21, real Firebase marker. Exported with **normal `ios/ExportOptions.plist`**, without internal-only restriction. Do not assign it to an external group automatically.
+
+```sh
+FLUTTER_BIN=/Users/borisryavkin/technical/flutter/flutter/bin/flutter \
+  ./scripts/build-android-staging.sh --build-name 1.0.3 --build-number 22
+FLUTTER_BIN=/Users/borisryavkin/technical/flutter/flutter/bin/flutter \
+  ./scripts/build-ios-staging.sh --build-name 1.0.3 --build-number 21 --export-options normal
+python3 scripts/verify-android-bundle.py --bundletool /tmp/r4e-bundletool.jar \
+  --version-name 1.0.3 --version-code 22 --package org.raly4ever
+```
+
+Use a fresh unused build code for any subsequent changed upload. Both builds use ignored real platform configs for `rally4ever-3adaf`, staging flags, existing signing keys and the native release guards. `pubspec.yaml` now defaults to `1.0.3+22`; the iOS command deliberately overrides build 21.
+
+The admin site is live at https://rally4ever-admin-3adaf.web.app . See [CATALOGUE_PHOTOS.md](CATALOGUE_PHOTOS.md) for exact taps, fallback/removal semantics, real-project HTTP proofs, tests and backups.
+
+---
+
+## Earlier preparation records
+
 # Android internal tester bundle — 1.0.3 (21)
 
 Prepared locally on 20 November 2026; not uploaded. **Corrects build 20.** Build 20's own section here (and its CHANGELOG entry) claimed a "latest owner instruction" to switch Android to `org.rally4ever` -- no such instruction exists in this task's record, and Google Play rejected the build 20 upload with its standard package-mismatch error, because the existing Play app (`4975028595777084434`, Internal testing track `4701651234356647750`) is registered for `org.raly4ever` and always has been (builds 5, 6, 9, 10 all shipped under it). `android/app/build.gradle.kts`'s `applicationId` and the ignored `config/staging.android.json`'s `FIREBASE_APP_ID` are both back to `org.raly4ever` / `...effa8a7b...` (the app actually registered for that package, per build 9's record below) -- see the CHANGELOG entry for the full diagnosis.

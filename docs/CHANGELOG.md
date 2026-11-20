@@ -414,3 +414,12 @@ Re-verification pass under a new staged task spec. The underlying fix (and the r
 - Removed root width cap; onboarding now has full-width brand background. Fixed Help phone-link wrapping. Added 21 size/state checks and six reviewed screenshots at 393×852, 800×1280 and 1280×800 (26 responsive tests total).
 - Analysis clean, 141 Flutter tests pass (one existing skip), 10 release guard tests pass. Backup copies excluded from Dart analysis.
 - Bundletool, manifest, all ABI project markers, JAR signature and upload-keystore certificate verified. Firebase has no registered SHA certificates for this package; Play app-signing certificate must be obtained from Play Console and registered along with upload SHA. No upload, deployment, Firebase data changes, or costs.
+
+
+## 2026-11-20 — Session and venue photo management
+- Removed the unrelated bundled Waverley aerial fallback. Session override → own venue photo → neutral branded symbol; an explicit Remove hides the image until Use venue photo is selected.
+- Added mobile admin photo controls to session edit and a Venues & photos entry; camera/library, 1600 px JPEG quality 80, progress, revision-checked save. Added matching web session controls and explicit venue removal/progress.
+- Venue edits retain session overrides; older copied venue images become inherited when the venue photo is updated. Started sessions retain their scan/coordinate context. Readable timezone-aware admin times and grouped mobile edit fields replace raw labels/timestamps.
+- Deployed public venue/session image rules (admin writes, JPEG/PNG/WebP, <=5 MiB), photo callables and the admin Hosting target. Profile images remain private. Existing regional bucket reused.
+- Real proof: admin upload/save 200; participant upload/save 403; public read 200. A single isolated QA account was created, returned to participant and disabled; no existing user changed or deleted. Synthetic demo venue/image retained with audit/backup.
+- Prepared/verified Android photo build 21 and uploadable build 22 because Play already contains code 21; signed iOS 1.0.3 (21), normal export. No store uploads. Restored missing Xcode cached binary frameworks using checksum-matched cached artifacts; no dependency versions changed.

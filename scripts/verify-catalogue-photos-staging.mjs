@@ -1,4 +1,5 @@
-// Authorized synthetic Storage/photo-control probe. No profile/Auth creation/deletion/role changes.
+// Isolated real-project QA account/photo probe. Never changes existing users.
+// The new QA account has its temporary admin role revoked and is disabled in finally; nothing is deleted.
 import{initializeApp,applicationDefault,deleteApp}from'firebase-admin/app';
 import{getAuth}from'firebase-admin/auth';import{getFirestore}from'firebase-admin/firestore';
 import{readFile,writeFile,mkdir}from'node:fs/promises';import{createHash,randomBytes}from'node:crypto';
