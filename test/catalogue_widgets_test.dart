@@ -68,6 +68,42 @@ class AdminRepo extends FakeParticipantRepository {
   }
 }
 
+/// Simulates the exact server-side revision-conflict shape from
+/// functions/src/catalogue.ts's saveProgram: an `aborted`/`stale-program`
+/// failure on save attempts up to [failures], then success. `listPrograms`
+/// always reports the program at the current (incremented) revision.
+class StaleRevisionAdminRepo extends FakeParticipantRepository {
+  StaleRevisionAdminRepo({required this.failures});
+  final int failures;
+  int saveAttempts = 0, revision = 1;
+  List<Record> savedPayloads = [];
+  @override
+  Future<Record> call(String name, Record data) async {
+    if (name == 'listUsers') return {'users': <Record>[], 'cursor': null};
+    if (name == 'listPrograms') {
+      return {
+        'programs': [
+          program(id: 'bondi', status: 'draft')..['revision'] = revision,
+        ],
+      };
+    }
+    if (name == 'saveProgram') {
+      saveAttempts++;
+      savedPayloads.add(data);
+      if (saveAttempts <= failures) {
+        revision++;
+        throw const FunctionsCallError(
+          'aborted',
+          'stale-program',
+          'Program changed. Reload before saving',
+        );
+      }
+      return {'programId': 'bondi'};
+    }
+    return super.call(name, data);
+  }
+}
+
 void main() {
   setUpAll(() async {
     tz.initializeTimeZones();
@@ -237,7 +273,7 @@ void main() {
     },
   );
   testWidgets(
-    'admin program editor sends validated fields and a required audit reason',
+    'admin program editor sends validated fields with no reason field and an automatic audit',
     (tester) async {
       final repo = AdminRepo();
       await tester.pumpWidget(
@@ -247,12 +283,12 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      expect(find.text('Reason for this change'), findsNothing);
       for (final entry in {
         'name': 'Community rally',
         'venue': 'Park courts',
         'suburb': 'Newtown',
         'schedule': 'Wednesdays, 10–11am',
-        'reason': 'Reviewed schedule with coach',
       }.entries) {
         final f = find.byKey(Key('program-${entry.key}'));
         await tester.scrollUntilVisible(
@@ -277,8 +313,110 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.widgetWithText(FilledButton, 'Save program'));
       await tester.pumpAndSettle();
-      expect(repo.saved?['reason'], 'Reviewed schedule with coach');
+      expect(repo.saved?.containsKey('reason'), false);
       expect((repo.saved?['program'] as Map)['status'], 'draft');
+    },
+  );
+  testWidgets(
+    'a stale revision retries once with the same typed edits and succeeds (saves twice in a row)',
+    (tester) async {
+      final repo = StaleRevisionAdminRepo(failures: 1);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: rallyTheme(),
+          home: ProgramEditor(
+            repository: repo,
+            program: program(id: 'bondi', status: 'draft'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final nameField = find.byKey(const Key('program-name'));
+      await tester.scrollUntilVisible(
+        nameField,
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.enterText(nameField, 'Renamed community rally');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Save program'),
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.widgetWithText(FilledButton, 'Save program'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Save program'));
+      await tester.pumpAndSettle();
+      // Two actual saveProgram calls (the stale one, then the retry) --
+      // "saves twice in a row" -- and the editor closed, meaning the
+      // second one succeeded.
+      expect(repo.saveAttempts, 2);
+      expect(find.byType(ProgramEditor), findsNothing);
+      for (final payload in repo.savedPayloads) {
+        expect((payload['program'] as Map)['name'], 'Renamed community rally');
+      }
+      expect(repo.savedPayloads[0]['revision'], 1);
+      expect(repo.savedPayloads[1]['revision'], 2);
+    },
+  );
+  testWidgets(
+    'a concurrent change that persists past the retry shows a friendly message and keeps the edits',
+    (tester) async {
+      final repo = StaleRevisionAdminRepo(failures: 99);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: rallyTheme(),
+          home: ProgramEditor(
+            repository: repo,
+            program: program(id: 'bondi', status: 'draft'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final nameField = find.byKey(const Key('program-name'));
+      await tester.scrollUntilVisible(
+        nameField,
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.enterText(nameField, 'My concurrent edit');
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.text('Save program'),
+        250,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.scrollUntilVisible(
+        find.widgetWithText(FilledButton, 'Save program'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(FilledButton, 'Save program'));
+      await tester.pumpAndSettle();
+      expect(repo.saveAttempts, 2);
+      expect(find.byType(ProgramEditor), findsOneWidget);
+      expect(
+        find.text('Someone else changed this. Review and save again.'),
+        findsOneWidget,
+      );
+      expect(find.text('Program changed. Reload before saving'), findsNothing);
+      expect(find.text('Bad state: Program changed. Reload before saving'), findsNothing);
+      // Both the original attempt and the automatic retry carried the
+      // admin's typed edit -- it was never cleared or reloaded away.
+      expect(repo.savedPayloads, hasLength(2));
+      for (final payload in repo.savedPayloads) {
+        expect((payload['program'] as Map)['name'], 'My concurrent edit');
+      }
     },
   );
   testWidgets('capture live catalogue and program calendar', (tester) async {

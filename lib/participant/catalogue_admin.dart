@@ -1,8 +1,149 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:timezone/timezone.dart' as tz;
 
+import 'catalogue.dart' show CataloguePhoto;
+import 'forms.dart' show PhotoTooLarge, PhotoUnreadable, processCataloguePhotoBytes;
 import 'repository.dart';
 import 'theme.dart';
+
+/// A plain section label grouping an editor's fields (Venue, Time,
+/// Capacity, Photo, Notes) -- used by both the program and session editors.
+Widget sectionHeader(String label) => Padding(
+  padding: const EdgeInsets.only(top: 8, bottom: 10),
+  child: Text(
+    label,
+    style: const TextStyle(
+      fontWeight: FontWeight.w800,
+      color: navy,
+      fontSize: 15,
+    ),
+  ),
+);
+
+/// Shared by the program and session editors: pick/take a photo, resize and
+/// upload it, or clear it back to the parent's fallback (session) / the
+/// neutral placeholder (program). [photoUrl] empty means "no override here".
+class CataloguePhotoField extends StatefulWidget {
+  const CataloguePhotoField({
+    super.key,
+    required this.repository,
+    required this.slot,
+    required this.photoUrl,
+    required this.onChanged,
+    this.fallbackUrl,
+  });
+  final ParticipantRepository repository;
+  final String slot;
+  final String photoUrl;
+  final String? fallbackUrl;
+  final ValueChanged<String> onChanged;
+  @override
+  State<CataloguePhotoField> createState() => _CataloguePhotoFieldState();
+}
+
+class _CataloguePhotoFieldState extends State<CataloguePhotoField> {
+  bool busy = false;
+  String? error;
+
+  Future<void> _pick(ImageSource source) async {
+    setState(() {
+      busy = true;
+      error = null;
+    });
+    try {
+      final picked = await ImagePicker().pickImage(source: source);
+      if (picked == null) return;
+      final processed = processCataloguePhotoBytes(await picked.readAsBytes());
+      final url = await widget.repository.uploadCataloguePhoto(
+        slot: widget.slot,
+        jpegBytes: processed,
+      );
+      widget.onChanged(url);
+    } on PhotoTooLarge {
+      if (mounted) setState(() => error = 'Choose a photo under 5 MB.');
+    } on PhotoUnreadable {
+      if (mounted) {
+        setState(() => error = 'That file could not be read as an image.');
+      }
+    } catch (e) {
+      if (mounted) setState(() => error = friendlyError(e));
+    } finally {
+      if (mounted) setState(() => busy = false);
+    }
+  }
+
+  Future<void> _choose() async {
+    final source = await showModalBottomSheet<ImageSource>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.photo_camera_outlined),
+              title: const Text('Take a photo'),
+              onTap: () => Navigator.pop(context, ImageSource.camera),
+            ),
+            ListTile(
+              leading: const Icon(Icons.photo_library_outlined),
+              title: const Text('Choose from library'),
+              onTap: () => Navigator.pop(context, ImageSource.gallery),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (source != null) await _pick(source);
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Photo', style: TextStyle(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 8),
+        CataloguePhoto(
+          record: {
+            'name': 'Preview',
+            'photoUrl': widget.photoUrl.isNotEmpty
+                ? widget.photoUrl
+                : (widget.fallbackUrl ?? ''),
+          },
+          repository: widget.repository,
+        ),
+        const SizedBox(height: 8),
+        if (busy) const LinearProgressIndicator(),
+        if (error != null) Panel(color: pink, child: Text(error!)),
+        Wrap(
+          spacing: 8,
+          children: [
+            OutlinedButton(
+              key: Key('${widget.slot}-change-photo'),
+              onPressed: busy ? null : _choose,
+              child: const Text('Change photo'),
+            ),
+            if (widget.fallbackUrl != null &&
+                widget.fallbackUrl!.isNotEmpty &&
+                widget.photoUrl.isNotEmpty)
+              OutlinedButton(
+                onPressed: busy ? null : () => widget.onChanged(''),
+                child: const Text('Use venue photo'),
+              ),
+            if (widget.photoUrl.isNotEmpty &&
+                (widget.fallbackUrl == null || widget.fallbackUrl!.isEmpty))
+              OutlinedButton(
+                onPressed: busy ? null : () => widget.onChanged(''),
+                child: const Text('Remove photo'),
+              ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
 
 class CatalogueAdminPanel extends StatefulWidget {
   const CatalogueAdminPanel({super.key, required this.repository});
@@ -16,38 +157,29 @@ class _CatalogueAdminPanelState extends State<CatalogueAdminPanel> {
   Record? selected;
   String statusFilter = 'All', search = '';
   Future<void> publish(Record program) async {
-    final controller = TextEditingController();
-    final reason = await showDialog<String>(
+    final unpublishing = program['status'] == 'active';
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(
-          program['status'] == 'active'
-              ? 'Unpublish program'
-              : 'Publish program',
-        ),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'Reason / review confirmation',
-          ),
+        title: Text(unpublishing ? 'Unpublish program?' : 'Publish program?'),
+        content: Text(
+          unpublishing
+              ? '${program['name']} will no longer be visible to participants. Existing dated sessions are unaffected.'
+              : '${program['name']} will become visible to participants.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(context, false),
             child: const Text('Back'),
           ),
           FilledButton(
-            onPressed: () {
-              if (controller.text.trim().isNotEmpty) {
-                Navigator.pop(context, controller.text.trim());
-              }
-            },
-            child: const Text('Save'),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(unpublishing ? 'Unpublish' : 'Publish'),
           ),
         ],
       ),
     );
-    if (reason == null) return;
+    if (confirmed != true) return;
     await run(() async {
       final fields = {
         for (final key in [
@@ -66,12 +198,11 @@ class _CatalogueAdminPanelState extends State<CatalogueAdminPanel> {
         ])
           key: program[key],
       };
-      fields['status'] = program['status'] == 'active' ? 'draft' : 'active';
+      fields['status'] = unpublishing ? 'draft' : 'active';
       await widget.repository.call('saveProgram', {
         'programId': program['id'],
         'revision': program['revision'],
         'program': fields,
-        'reason': reason,
       });
     });
     await load();
@@ -94,7 +225,7 @@ class _CatalogueAdminPanelState extends State<CatalogueAdminPanel> {
     try {
       await task();
     } catch (e) {
-      if (mounted) setState(() => error = e.toString());
+      if (mounted) setState(() => error = friendlyError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -197,7 +328,7 @@ class _CatalogueAdminPanelState extends State<CatalogueAdminPanel> {
                   TextButton(
                     onPressed: () => schedule(p, e),
                     child: Text(
-                      'Edit ${dateOf(e['startsAt'])} · ${e['status']}',
+                      'Edit ${friendlyDateTime(dateOf(e['startsAt']))} · ${e['status']}',
                     ),
                   ),
 
@@ -245,11 +376,13 @@ class _ProgramEditorState extends State<ProgramEditor> {
       sport = 'tennis',
       state = 'NSW',
       zone = 'Australia/Sydney',
-      registration = 'open';
+      registration = 'open',
+      photoUrl = '';
   List<Record> coaches = [];
   Set<String> coachUids = {};
   bool busy = false;
   String? error;
+  int? revision;
   @override
   void initState() {
     super.initState();
@@ -259,7 +392,9 @@ class _ProgramEditorState extends State<ProgramEditor> {
     state = v['state'] as String? ?? state;
     zone = p['timezone'] as String? ?? zone;
     registration = p['registrationStatus'] as String? ?? registration;
+    photoUrl = p['photoUrl'] as String? ?? '';
     coachUids = Set<String>.from(p['coachUids'] as List? ?? []);
+    revision = p['revision'] as int?;
     final initial = {
       'name': p['name'],
       'venue': v['name'],
@@ -271,9 +406,7 @@ class _ProgramEditorState extends State<ProgramEditor> {
       'schedule': p['scheduleText'],
       'coachNames': (p['coachNames'] as List? ?? []).join(', '),
       'notes': p['notes'],
-      'photoUrl': p['photoUrl'],
       'capacity': p['capacity'],
-      'reason': '',
     };
     for (final entry in initial.entries) {
       fields[entry.key] = TextEditingController(text: '${entry.value ?? ''}');
@@ -309,7 +442,7 @@ class _ProgramEditorState extends State<ProgramEditor> {
         );
       }
     } catch (e) {
-      if (mounted) setState(() => error = e.toString());
+      if (mounted) setState(() => error = friendlyError(e));
     }
   }
 
@@ -355,6 +488,75 @@ class _ProgramEditorState extends State<ProgramEditor> {
       onChanged: (v) => setState(() => onChange(v!)),
     ),
   );
+  Record _payload() {
+    double? number(String key) {
+      if (value(key).isEmpty) return null;
+      return double.tryParse(value(key));
+    }
+
+    final capacity = value('capacity').isEmpty
+        ? null
+        : int.tryParse(value('capacity'));
+    if (value('capacity').isNotEmpty && capacity == null) {
+      throw const FormatException('Capacity must be a whole number.');
+    }
+    for (final key in ['lat', 'lng']) {
+      if (value(key).isNotEmpty && double.tryParse(value(key)) == null) {
+        throw const FormatException('Enter valid venue coordinates.');
+      }
+    }
+    return {
+      'name': value('name'),
+      'sport': sport,
+      'status': status,
+      'venue': {
+        'name': value('venue'),
+        'address': value('address'),
+        'suburb': value('suburb'),
+        'postcode': value('postcode'),
+        'state': state,
+        'lat': number('lat'),
+        'lng': number('lng'),
+      },
+      'timezone': zone,
+      'scheduleText': value('schedule'),
+      'coachUids': coachUids.toList(),
+      'coachNames': value('coachNames')
+          .split(',')
+          .map((v) => v.trim())
+          .where((v) => v.isNotEmpty)
+          .toList(),
+      'notes': value('notes'),
+      'photoUrl': photoUrl,
+      'capacity': capacity,
+      'registrationStatus': registration,
+    };
+  }
+
+  /// One attempt at the call, using [revision] as it stands right now.
+  /// Throws [FunctionsCallError] with `reason == 'stale-program'` on a
+  /// revision conflict -- callers decide whether/how to retry.
+  Future<void> _attemptSave() async {
+    final result = await widget.repository.call('saveProgram', {
+      if (widget.program != null) 'programId': widget.program!['id'],
+      if (widget.program != null) 'revision': revision,
+      'program': _payload(),
+    });
+    if (result['programId'] != null && mounted) Navigator.of(context).pop(true);
+  }
+
+  /// The program's current server-side revision, so a stale-revision retry
+  /// resubmits the admin's own typed-in edits (still sitting in [fields])
+  /// against the fresh number -- never refetched/overwritten values.
+  Future<int?> _latestRevision() async {
+    final result = await widget.repository.call('listPrograms', {});
+    final match = (result['programs'] as List)
+        .map((p) => Map<String, dynamic>.from(p as Map))
+        .where((p) => p['id'] == widget.program!['id'])
+        .firstOrNull;
+    return match?['revision'] as int?;
+  }
+
   Future<void> save() async {
     if (!(form.currentState?.validate() ?? false) || busy) return;
     setState(() {
@@ -362,59 +564,25 @@ class _ProgramEditorState extends State<ProgramEditor> {
       error = null;
     });
     try {
-      double? number(String key) {
-        if (value(key).isEmpty) return null;
-        final parsed = double.tryParse(value(key));
-        return parsed;
-      }
-
-      final capacity = value('capacity').isEmpty
-          ? null
-          : int.tryParse(value('capacity'));
-      if (value('capacity').isNotEmpty && capacity == null) {
-        throw const FormatException('Capacity must be a whole number.');
-      }
-      for (final key in ['lat', 'lng']) {
-        if (value(key).isNotEmpty && double.tryParse(value(key)) == null) {
-          throw const FormatException('Enter valid venue coordinates.');
+      try {
+        await _attemptSave();
+      } on FunctionsCallError catch (e) {
+        if (e.reason != 'stale-program' || widget.program == null) rethrow;
+        final latest = await _latestRevision();
+        if (latest == null) rethrow;
+        revision = latest;
+        try {
+          await _attemptSave();
+        } on FunctionsCallError catch (_) {
+          if (mounted) {
+            setState(
+              () => error = 'Someone else changed this. Review and save again.',
+            );
+          }
         }
       }
-      final result = await widget.repository.call('saveProgram', {
-        if (widget.program != null) 'programId': widget.program!['id'],
-        if (widget.program != null) 'revision': widget.program!['revision'],
-        'reason': value('reason'),
-        'program': {
-          'name': value('name'),
-          'sport': sport,
-          'status': status,
-          'venue': {
-            'name': value('venue'),
-            'address': value('address'),
-            'suburb': value('suburb'),
-            'postcode': value('postcode'),
-            'state': state,
-            'lat': number('lat'),
-            'lng': number('lng'),
-          },
-          'timezone': zone,
-          'scheduleText': value('schedule'),
-          'coachUids': coachUids.toList(),
-          'coachNames': value('coachNames')
-              .split(',')
-              .map((v) => v.trim())
-              .where((v) => v.isNotEmpty)
-              .toList(),
-          'notes': value('notes'),
-          'photoUrl': value('photoUrl'),
-          'capacity': capacity,
-          'registrationStatus': registration,
-        },
-      });
-      if (result['programId'] != null && mounted) {
-        Navigator.of(context).pop(true);
-      }
     } catch (e) {
-      if (mounted) setState(() => error = e.toString());
+      if (mounted) setState(() => error = friendlyError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -437,6 +605,7 @@ class _ProgramEditorState extends State<ProgramEditor> {
             'active',
             'archived',
           ], (v) => status = v),
+          sectionHeader('Venue'),
           field('venue', 'Venue name', required: true),
           field('address', 'Street address'),
           field('suburb', 'Suburb', required: true),
@@ -474,6 +643,7 @@ class _ProgramEditorState extends State<ProgramEditor> {
             'Australia/Darwin',
             'Australia/Hobart',
           ], (v) => zone = v),
+          sectionHeader('Time'),
           field(
             'schedule',
             'Regular schedule / term dates',
@@ -500,15 +670,22 @@ class _ProgramEditorState extends State<ProgramEditor> {
                     : coachUids.remove(coach['uid']),
               ),
             ),
-          field('notes', 'What participants should know', lines: 4),
-          field('photoUrl', 'Photo URL (HTTPS)'),
+          sectionHeader('Capacity'),
           field('capacity', 'Default session capacity (blank = unlimited)'),
           dropdown('Reservations', registration, [
             'open',
             'full',
             'closed',
           ], (v) => registration = v),
-          field('reason', 'Reason for this change', required: true, lines: 2),
+          sectionHeader('Photo'),
+          CataloguePhotoField(
+            repository: widget.repository,
+            slot: 'program-${widget.program?['id'] ?? 'new'}',
+            photoUrl: photoUrl,
+            onChanged: (url) => setState(() => photoUrl = url),
+          ),
+          sectionHeader('Notes'),
+          field('notes', 'What participants should know', lines: 4),
           if (error != null) Panel(color: pink, child: Text(error!)),
           const SizedBox(height: 16),
           FilledButton(
@@ -569,12 +746,13 @@ class _SessionEditorState extends State<SessionEditor> {
         );
       }
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = friendlyError(e));
     }
   }
 
   final capacity = TextEditingController(), notes = TextEditingController();
-  String registration = 'open', status = 'published';
+  String registration = 'open', status = 'published', photoUrl = '';
+  int? revision;
   @override
   void initState() {
     super.initState();
@@ -597,11 +775,13 @@ class _SessionEditorState extends State<SessionEditor> {
     capacity.text =
         '${(session != null ? session['capacity'] : widget.program['capacity']) ?? ''}';
     notes.text = '${session?['notes'] ?? widget.program['notes'] ?? ''}';
+    photoUrl = session?['photoUrl'] as String? ?? '';
     registration =
         session?['registrationStatus'] as String? ??
         widget.program['registrationStatus'] as String? ??
         'open';
     status = session?['status'] as String? ?? 'published';
+    revision = session?['revision'] as int?;
   }
 
   String? error;
@@ -658,38 +838,76 @@ class _SessionEditorState extends State<SessionEditor> {
     }
   }
 
+  Record _payload() => {
+    if (widget.program['id'] != null) 'programId': widget.program['id'],
+    if (widget.session != null) 'eventId': widget.session!['id'],
+    if (widget.session != null) 'revision': revision,
+    'venue': {
+      for (final key in ['name', 'address', 'suburb', 'postcode'])
+        key: venueFields[key]!.text.trim(),
+      'state': venueState,
+      'lat': double.parse(venueFields['lat']!.text.trim()),
+      'lng': double.parse(venueFields['lng']!.text.trim()),
+    },
+    'timezone': zone,
+    'coachUids': coachUids.toList(),
+    'capacity': capacity.text.trim().isEmpty
+        ? null
+        : int.parse(capacity.text.trim()),
+    'registrationStatus': registration,
+    'notes': notes.text.trim(),
+    'photoUrl': photoUrl,
+    'status': status,
+    'startsAt': start!.toUtc().toIso8601String(),
+    'endsAt': end!.toUtc().toIso8601String(),
+  };
+
+  Future<void> _attemptSave() async {
+    await widget.repository.call('saveSession', _payload());
+    if (mounted) Navigator.of(context).pop();
+  }
+
+  /// Mirrors [_ProgramEditorState._latestRevision] -- refetches only the
+  /// server's current revision so a retry resubmits the admin's own
+  /// typed-in edits, never refetched values.
+  Future<int?> _latestRevision() async {
+    final result = await widget.repository.call('listStaffSessions', {});
+    final match = (result['events'] as List)
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .where((e) => e['id'] == widget.session!['id'])
+        .firstOrNull;
+    return match?['revision'] as int?;
+  }
+
   Future<void> save() async {
     if (start == null || end == null || !end!.isAfter(start!)) {
       setState(() => error = 'Choose a start and a later end.');
       return;
     }
-    setState(() => busy = true);
+    setState(() {
+      busy = true;
+      error = null;
+    });
     try {
-      await widget.repository.call('saveSession', {
-        if (widget.program['id'] != null) 'programId': widget.program['id'],
-        if (widget.session != null) 'eventId': widget.session!['id'],
-        if (widget.session != null) 'revision': widget.session!['revision'],
-        'venue': {
-          for (final key in ['name', 'address', 'suburb', 'postcode'])
-            key: venueFields[key]!.text.trim(),
-          'state': venueState,
-          'lat': double.parse(venueFields['lat']!.text.trim()),
-          'lng': double.parse(venueFields['lng']!.text.trim()),
-        },
-        'timezone': zone,
-        'coachUids': coachUids.toList(),
-        'capacity': capacity.text.trim().isEmpty
-            ? null
-            : int.parse(capacity.text.trim()),
-        'registrationStatus': registration,
-        'notes': notes.text.trim(),
-        'status': status,
-        'startsAt': start!.toUtc().toIso8601String(),
-        'endsAt': end!.toUtc().toIso8601String(),
-      });
-      if (mounted) Navigator.of(context).pop();
+      try {
+        await _attemptSave();
+      } on FunctionsCallError catch (e) {
+        if (e.reason != 'stale-session' || widget.session == null) rethrow;
+        final latest = await _latestRevision();
+        if (latest == null) rethrow;
+        revision = latest;
+        try {
+          await _attemptSave();
+        } on FunctionsCallError catch (_) {
+          if (mounted) {
+            setState(
+              () => error = 'Someone else changed this. Review and save again.',
+            );
+          }
+        }
+      }
     } catch (e) {
-      if (mounted) setState(() => error = e.toString());
+      if (mounted) setState(() => error = friendlyError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -713,6 +931,41 @@ class _SessionEditorState extends State<SessionEditor> {
           'Times use $zone. Venue, capacity and coaches apply to this session only.',
         ),
         const SizedBox(height: 20),
+        sectionHeader('Venue'),
+        for (final entry in const {
+          'name': 'Venue name',
+          'address': 'Street address',
+          'suburb': 'Suburb',
+          'postcode': 'Postcode',
+          'lat': 'Latitude',
+          'lng': 'Longitude',
+        }.entries)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: TextField(
+              controller: venueFields[entry.key],
+              decoration: InputDecoration(labelText: entry.value),
+            ),
+          ),
+        DropdownButtonFormField<String>(
+          initialValue: venueState,
+          decoration: const InputDecoration(labelText: 'State or territory'),
+          items: [
+            for (final value in [
+              'ACT',
+              'NSW',
+              'NT',
+              'QLD',
+              'SA',
+              'TAS',
+              'VIC',
+              'WA',
+            ])
+              DropdownMenuItem(value: value, child: Text(value)),
+          ],
+          onChanged: (v) => setState(() => venueState = v!),
+        ),
+        sectionHeader('Time'),
         DropdownButtonFormField<String>(
           initialValue: zone,
           decoration: const InputDecoration(labelText: 'Session timezone'),
@@ -735,31 +988,27 @@ class _SessionEditorState extends State<SessionEditor> {
             end = null;
           }),
         ),
-        for (final key in venueFields.keys)
-          Padding(
-            padding: const EdgeInsets.only(top: 12),
-            child: TextField(
-              controller: venueFields[key],
-              decoration: InputDecoration(labelText: 'Session venue $key'),
-            ),
+        const SizedBox(height: 12),
+        OutlinedButton(
+          onPressed: () => pick(true),
+          child: Text(
+            start == null ? 'Choose start date & time' : 'Starts: $start',
           ),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton(
+          onPressed: () => pick(false),
+          child: Text(end == null ? 'Choose end date & time' : 'Ends: $end'),
+        ),
+        const SizedBox(height: 12),
         DropdownButtonFormField<String>(
-          initialValue: venueState,
-          decoration: const InputDecoration(labelText: 'Venue state'),
+          initialValue: status,
+          decoration: const InputDecoration(labelText: 'Session status'),
           items: [
-            for (final value in [
-              'ACT',
-              'NSW',
-              'NT',
-              'QLD',
-              'SA',
-              'TAS',
-              'VIC',
-              'WA',
-            ])
+            for (final value in ['published', 'cancelled'])
               DropdownMenuItem(value: value, child: Text(value)),
           ],
-          onChanged: (v) => setState(() => venueState = v!),
+          onChanged: (v) => setState(() => status = v!),
         ),
         const Text('Assigned session coaches'),
         for (final coach in coaches)
@@ -775,17 +1024,7 @@ class _SessionEditorState extends State<SessionEditor> {
               }
             }),
           ),
-        OutlinedButton(
-          onPressed: () => pick(true),
-          child: Text(
-            start == null ? 'Choose start date & time' : 'Starts: $start',
-          ),
-        ),
-        OutlinedButton(
-          onPressed: () => pick(false),
-          child: Text(end == null ? 'Choose end date & time' : 'Ends: $end'),
-        ),
-        const SizedBox(height: 16),
+        sectionHeader('Capacity'),
         TextField(
           controller: capacity,
           keyboardType: TextInputType.number,
@@ -803,17 +1042,15 @@ class _SessionEditorState extends State<SessionEditor> {
           ],
           onChanged: (v) => setState(() => registration = v!),
         ),
-        const SizedBox(height: 12),
-        DropdownButtonFormField<String>(
-          initialValue: status,
-          decoration: const InputDecoration(labelText: 'Session status'),
-          items: [
-            for (final value in ['published', 'cancelled'])
-              DropdownMenuItem(value: value, child: Text(value)),
-          ],
-          onChanged: (v) => setState(() => status = v!),
+        sectionHeader('Photo'),
+        CataloguePhotoField(
+          repository: widget.repository,
+          slot: 'session-${widget.session?['id'] ?? 'new'}',
+          photoUrl: photoUrl,
+          fallbackUrl: widget.program['photoUrl'] as String?,
+          onChanged: (url) => setState(() => photoUrl = url),
         ),
-        const SizedBox(height: 12),
+        sectionHeader('Notes'),
         TextField(
           controller: notes,
           maxLines: 3,
@@ -875,7 +1112,7 @@ class _SessionManagementPanelState extends State<SessionManagementPanel> {
         });
       }
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = friendlyError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -922,7 +1159,7 @@ class _SessionManagementPanelState extends State<SessionManagementPanel> {
       });
       await load();
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      if (mounted) setState(() => error = friendlyError(e));
     }
   }
 
@@ -975,7 +1212,7 @@ class _SessionManagementPanelState extends State<SessionManagementPanel> {
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
                   Text(
-                    '${dateOf(session['startsAt']).toLocal()} · ${session['status']}',
+                    '${friendlyDateTime(dateOf(session['startsAt']))} · ${session['status']}',
                   ),
                   Text(
                     '${session['venue']['name']} · Capacity: ${session['capacity'] ?? 'unlimited'}',

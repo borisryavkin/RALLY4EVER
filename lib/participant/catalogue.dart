@@ -44,6 +44,36 @@ bool acceptsReservations(Record record) => ![
   'Bookings closed',
 ].contains(availability(record));
 
+/// Groups a distance-sorted session list by program (a session with no
+/// `programId` is its own one-session group), keeping each group at the
+/// position of its first-seen (i.e. nearest) session. Within a group,
+/// reservable sessions sort before full/closed/cancelled ones, then by
+/// start date -- so a heavily-booked-out program's closed dates sink below
+/// its open ones instead of flooding the top of the list.
+List<List<Record>> groupSessionsByProgram(
+  List<Record> sessions,
+  bool Function(Record) reservable,
+) {
+  final order = <String>[];
+  final groups = <String, List<Record>>{};
+  for (final e in sessions) {
+    final key = (e['programId'] as String?) ?? 'standalone:${e['id'] ?? e['eventId']}';
+    final group = groups.putIfAbsent(key, () {
+      order.add(key);
+      return [];
+    });
+    group.add(e);
+  }
+  for (final group in groups.values) {
+    group.sort((a, b) {
+      final ar = reservable(a) ? 0 : 1, br = reservable(b) ? 0 : 1;
+      if (ar != br) return ar.compareTo(br);
+      return dateOf(a['startsAt']).compareTo(dateOf(b['startsAt']));
+    });
+  }
+  return [for (final key in order) groups[key]!];
+}
+
 bool matchesProgram(
   Record program, {
   String search = '',

@@ -91,7 +91,7 @@ class _AdminAccessPanelState extends State<AdminAccessPanel> {
     try {
       await task();
     } catch (e) {
-      if (mounted) setState(() => error = e.toString());
+      if (mounted) setState(() => error = friendlyError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -468,7 +468,7 @@ class _CoachOverviewPanelState extends State<CoachOverviewPanel> {
                           ),
                           Text(scan['eventName'] as String),
                           Text(
-                            'Scan: ${DateTime.parse(scan['scannedAt'] as String).toLocal()}',
+                            'Scan: ${friendlyDateTime(DateTime.parse(scan['scannedAt'] as String))}',
                             style: const TextStyle(fontSize: 12),
                           ),
                           Text(

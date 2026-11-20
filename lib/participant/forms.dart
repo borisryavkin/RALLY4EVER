@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'repository.dart';
 import 'legal_text.dart';
@@ -17,24 +19,135 @@ class AccountForm extends StatefulWidget {
     required this.onAction,
     required this.busy,
     required this.onForgotPassword,
+    required this.verificationPanelKey,
   });
   final ParticipantRepository repository;
   final Future<void> Function(Future<void> Function()) onAction;
   final bool busy;
   final VoidCallback onForgotPassword;
+  final GlobalKey verificationPanelKey;
   @override
   State<AccountForm> createState() => _AccountFormState();
 }
 
 class _AccountFormState extends State<AccountForm> {
   final email = TextEditingController(), password = TextEditingController();
-  bool signup = false, passwordVisible = false;
+  bool passwordVisible = false;
+  late bool signup = !widget.repository.hasSignedInBefore;
+  String? verifyHint;
+  int resendCooldown = 0;
+  Timer? _resendTicker;
   @override
   void dispose() {
+    _resendTicker?.cancel();
     email.dispose();
     password.dispose();
     super.dispose();
   }
+
+  bool get awaitingVerification =>
+      widget.repository.email != null && !widget.repository.verified;
+
+  Future<void> _openEmailApp() async {
+    final uri = Uri(scheme: 'mailto');
+    if (await canLaunchUrl(uri)) await launchUrl(uri);
+  }
+
+  Future<void> _resend() async {
+    setState(() => resendCooldown = 30);
+    _resendTicker?.cancel();
+    _resendTicker = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() => resendCooldown -= 1);
+      if (resendCooldown <= 0) timer.cancel();
+    });
+    await widget.onAction(widget.repository.resendVerificationEmail);
+  }
+
+  Future<void> _checkVerified() async {
+    setState(() => verifyHint = null);
+    await widget.onAction(widget.repository.refreshVerification);
+    if (mounted && awaitingVerification) {
+      setState(
+        () => verifyHint = "We can't see it yet. Check your inbox and spam folder.",
+      );
+    }
+  }
+
+  Widget _verificationPanel() => Container(
+    key: widget.verificationPanelKey,
+    padding: const EdgeInsets.all(20),
+    decoration: BoxDecoration(
+      color: navy,
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Check your inbox',
+          style: TextStyle(
+            color: Colors.white,
+            fontFamily: 'Jellee',
+            fontSize: 24,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          'We sent a verification link to ${widget.repository.email}. Open it, then come back here to continue.',
+          style: const TextStyle(color: Colors.white),
+        ),
+        if (verifyHint != null) ...[
+          const SizedBox(height: 14),
+          Container(
+            key: const Key('verify-hint'),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: .12),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(verifyHint!, style: const TextStyle(color: Colors.white)),
+          ),
+        ],
+        const SizedBox(height: 18),
+        OutlinedButton(
+          key: const Key('open-email-app'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.white,
+            side: const BorderSide(color: Colors.white54),
+          ),
+          onPressed: _openEmailApp,
+          child: const Text('Open email app'),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton(
+          key: const Key('resend-verification'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.white,
+            side: const BorderSide(color: Colors.white54),
+          ),
+          onPressed: widget.busy || resendCooldown > 0 ? null : _resend,
+          child: Text(
+            resendCooldown > 0 ? 'Resend in ${resendCooldown}s' : 'Resend email',
+          ),
+        ),
+        const SizedBox(height: 14),
+        FilledButton(
+          key: const Key('verified-email'),
+          style: FilledButton.styleFrom(
+            backgroundColor: Colors.white,
+            foregroundColor: navy,
+          ),
+          onPressed: widget.busy ? null : _checkVerified,
+          child: const Text("I've verified my email"),
+        ),
+      ],
+    ),
+  );
 
   @override
   Widget build(BuildContext context) => Column(
@@ -52,102 +165,101 @@ class _AccountFormState extends State<AccountForm> {
       ),
       const SizedBox(height: 14),
       Text(
-        widget.repository.email != null && !widget.repository.verified
-            ? 'Check your inbox'
-            : signup
-            ? 'Join the\ncommunity'
-            : 'Welcome\nback',
+        signup ? 'Join the\ncommunity' : 'Welcome\nback',
         style: Theme.of(context).textTheme.headlineLarge,
       ),
       const SizedBox(height: 12),
       Text(
-        widget.repository.email != null && !widget.repository.verified
-            ? 'Open the verification email, then come back here.'
-            : 'One email, one profile. Find your people and your next session.',
+        'One email, one profile. Find your people and your next session.',
       ),
-      const SizedBox(height: 28),
-      OutlinedButton.icon(
-        key: const Key('google-sign-in'),
-        onPressed: widget.busy || !widget.repository.enabled
-            ? null
-            : () => widget.onAction(widget.repository.signInGoogle),
-        icon: const Icon(Icons.account_circle_outlined),
-        label: const Text('Continue with Google'),
-      ),
-      const SizedBox(height: 8),
-      const Text(
-        'Use Google or email with the same account. Coach access is approved by your admin.',
-        style: TextStyle(fontSize: 12),
-      ),
-      const SizedBox(height: 16),
-      _field('Email', email, 'email', keyboard: TextInputType.emailAddress),
-      const SizedBox(height: 14),
-      TextField(
-        key: const Key('password'),
-        controller: password,
-        obscureText: !passwordVisible,
-        autofillHints: const [AutofillHints.password],
-        decoration: InputDecoration(
-          labelText: 'App password',
-          hintText: signup
-              ? 'At least 6 characters'
-              : 'Your Rally4Ever app password',
-          suffixIcon: IconButton(
-            key: const Key('show-login-password'),
-            tooltip: passwordVisible ? 'Hide password' : 'Show password',
-            onPressed: () => setState(() => passwordVisible = !passwordVisible),
-            icon: Icon(
-              passwordVisible ? Icons.visibility_off : Icons.visibility,
+      const SizedBox(height: 24),
+      // Once an account exists and is pending verification, that's the
+      // only thing on this screen -- re-showing "Create account"/"Sign
+      // in" and the email/password fields right below it is confusing
+      // and has nothing left to do until the link is opened.
+      if (awaitingVerification)
+        _verificationPanel()
+      else ...[
+        OutlinedButton.icon(
+          key: const Key('google-sign-in'),
+          onPressed: widget.busy || !widget.repository.enabled
+              ? null
+              : () => widget.onAction(widget.repository.signInGoogle),
+          icon: const Icon(Icons.account_circle_outlined),
+          label: const Text('Continue with Google'),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Use Google or email with the same account.',
+          style: TextStyle(fontSize: 12),
+        ),
+        const SizedBox(height: 16),
+        _field('Email', email, 'email', keyboard: TextInputType.emailAddress),
+        const SizedBox(height: 14),
+        TextField(
+          key: const Key('password'),
+          controller: password,
+          obscureText: !passwordVisible,
+          autofillHints: const [AutofillHints.password],
+          decoration: InputDecoration(
+            labelText: 'App password',
+            hintText: signup
+                ? 'At least 6 characters'
+                : 'Your Rally4Ever app password',
+            suffixIcon: IconButton(
+              key: const Key('show-login-password'),
+              tooltip: passwordVisible ? 'Hide password' : 'Show password',
+              onPressed: () =>
+                  setState(() => passwordVisible = !passwordVisible),
+              icon: Icon(
+                passwordVisible ? Icons.visibility_off : Icons.visibility,
+              ),
             ),
           ),
         ),
-      ),
-      if (!signup) ...[
-        const SizedBox(height: 4),
-        Align(
-          alignment: Alignment.centerRight,
-          child: TextButton(
-            key: const Key('forgot-password'),
-            onPressed: widget.onForgotPassword,
-            child: const Text('Set or reset app password'),
+        if (!signup) ...[
+          const SizedBox(height: 4),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              key: const Key('forgot-password'),
+              onPressed: widget.onForgotPassword,
+              child: const Text('Set or reset app password'),
+            ),
           ),
+        ],
+        const SizedBox(height: 6),
+        FilledButton(
+          key: const Key('authenticate'),
+          onPressed: widget.busy || !widget.repository.enabled
+              ? null
+              : () => widget.onAction(
+                  () => signup
+                      ? widget.repository.signUp(email.text, password.text)
+                      : widget.repository.signIn(email.text, password.text),
+                ),
+          child: Text(signup ? 'Create account' : 'Sign in'),
         ),
-      ],
-      const SizedBox(height: 6),
-      FilledButton(
-        key: const Key('authenticate'),
-        onPressed: widget.busy || !widget.repository.enabled
-            ? null
-            : () => widget.onAction(
-                () => signup
-                    ? widget.repository.signUp(email.text, password.text)
-                    : widget.repository.signIn(email.text, password.text),
-              ),
-        child: Text(signup ? 'Create account' : 'Sign in'),
-      ),
-      if (widget.repository.email != null && !widget.repository.verified) ...[
-        const SizedBox(height: 8),
-        OutlinedButton(
-          onPressed: () =>
-              widget.onAction(widget.repository.refreshVerification),
-          child: const Text("I've verified my email"),
-        ),
-      ],
-      TextButton(
-        onPressed: () => setState(() => signup = !signup),
-        child: Text(
-          signup ? 'Already a member? Sign in' : 'New here? Create an account',
-        ),
-      ),
-      if (!widget.repository.enabled)
-        const Panel(
-          color: pink,
+        const SizedBox(height: 6),
+        TextButton(
+          key: const Key('toggle-signup'),
+          onPressed: () => setState(() => signup = !signup),
           child: Text(
-            kDebugMode
-                ? 'Start the local emulators and run with USE_FIREBASE_EMULATORS=true to sign in.'
-                : 'Sign-in is unavailable. Please close and reopen the app, or contact Rally4Ever.',
+            signup
+                ? 'Already a member? Sign in'
+                : 'New here? Create an account',
           ),
         ),
+        if (!widget.repository.enabled)
+          const Panel(
+            color: pink,
+            child: Text(
+              kDebugMode
+                  ? 'Start the local emulators and run with USE_FIREBASE_EMULATORS=true to sign in.'
+                  : 'Sign-in is unavailable. Please close and reopen the app, or contact Rally4Ever.',
+            ),
+          ),
+      ],
       const SizedBox(height: 16),
     ],
   );
@@ -866,6 +978,19 @@ List<int> processPhotoBytes(Uint8List rawBytes) {
   return img.encodeJpg(resized, quality: 85);
 }
 
+/// Shared by program/session/venue cover photos: resize (not crop) so the
+/// longest side is 1600px, re-encode as JPEG. Unlike [processPhotoBytes]
+/// this keeps the original aspect ratio -- a venue photo isn't a portrait.
+List<int> processCataloguePhotoBytes(Uint8List rawBytes) {
+  if (rawBytes.lengthInBytes > 5 * 1024 * 1024) throw PhotoTooLarge();
+  final decoded = img.decodeImage(rawBytes);
+  if (decoded == null) throw PhotoUnreadable();
+  final resized = decoded.width >= decoded.height
+      ? img.copyResize(decoded, width: decoded.width.clamp(0, 1600))
+      : img.copyResize(decoded, height: decoded.height.clamp(0, 1600));
+  return img.encodeJpg(resized, quality: 80);
+}
+
 /// `+61` default, normalised to E.164. Leaves an already-E.164-looking value
 /// (`+` followed by digits) alone; treats a local `0...` number as domestic.
 String normalizeAustralianMobile(String raw) {
@@ -1079,8 +1204,13 @@ class _FeedbackFormState extends State<FeedbackForm> {
 }
 
 class NoAppCheckInForm extends StatefulWidget {
-  const NoAppCheckInForm({super.key, required this.repository});
+  const NoAppCheckInForm({
+    super.key,
+    required this.repository,
+    this.cameraEnabled = true,
+  });
   final ParticipantRepository repository;
+  final bool cameraEnabled;
   @override
   State<NoAppCheckInForm> createState() => _NoAppCheckInFormState();
 }
@@ -1102,12 +1232,18 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
   Record? position;
   CheckInLink? link;
   String? requestId, error;
-  bool accepted = false, busy = false, pending = false;
+  bool accepted = false,
+      busy = false,
+      pending = false,
+      showPasteLink = false,
+      scanning = false;
+  MobileScannerController? scanner;
   @override
   void dispose() {
     for (final c in fields.values) {
       c.dispose();
     }
+    unawaited(scanner?.dispose());
     super.dispose();
   }
 
@@ -1119,14 +1255,43 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
     try {
       await task();
     } catch (e) {
-      if (mounted) setState(() => error = e.toString());
+      if (mounted) setState(() => error = friendlyError(e));
     } finally {
       if (mounted) setState(() => busy = false);
     }
   }
 
+  /// Shared by the camera's onDetect and the paste-a-link fallback: loads
+  /// the session and its agreements from whatever QR/link text came in.
+  Future<void> _scan(String raw) => run(() async {
+    await scanner?.stop();
+    try {
+      final parsed = CheckInLink.parse(raw);
+      final pos = await widget.repository.location();
+      final info = await widget.repository.call('getNoAppForms', {
+        'eventCode': parsed.eventCode,
+        'secret': parsed.secret,
+        ...pos,
+      });
+      if (mounted) {
+        setState(() {
+          link = parsed;
+          position = pos;
+          forms = (info['forms'] as List)
+              .map((f) => Map<String, dynamic>.from(f as Map))
+              .toList();
+        });
+      }
+    } finally {
+      if (mounted && link == null) await scanner?.start();
+    }
+  });
+
   @override
   Widget build(BuildContext context) {
+    if (widget.cameraEnabled && scanning && link == null) {
+      scanner ??= MobileScannerController();
+    }
     if (pending) {
       return const Column(
         children: [
@@ -1198,30 +1363,78 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
                   }),
             child: const Text('Verify and check in'),
           ),
-        ] else ...[
-          _field('Session QR link', fields['qr']!, 'noapp-qr'),
-          OutlinedButton(
-            onPressed: busy
-                ? null
-                : () => run(() async {
-                    link = CheckInLink.parse(fields['qr']!.text);
-                    position = await widget.repository.location();
-                    final info = await widget.repository.call('getNoAppForms', {
-                      'eventCode': link!.eventCode,
-                      'secret': link!.secret,
-                      ...position!,
-                    });
-                    if (mounted) {
-                      setState(
-                        () => forms = (info['forms'] as List)
-                            .map((f) => Map<String, dynamic>.from(f as Map))
-                            .toList(),
-                      );
-                    }
-                  }),
-            child: const Text('Load session agreements'),
-          ),
+        ] else if (link == null) ...[
+          if (!scanning)
+            FilledButton.icon(
+              key: const Key('start-scan'),
+              icon: const Icon(Icons.qr_code_scanner),
+              label: const Text('Scan QR code'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(56),
+              ),
+              onPressed: () => setState(() => scanning = true),
+            )
+          else
+            ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: SizedBox(
+                height: 240,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (widget.cameraEnabled)
+                      MobileScanner(
+                        key: const Key('noapp-scanner'),
+                        controller: scanner!,
+                        onDetect: (capture) {
+                          if (busy) return;
+                          final value = capture.barcodes.firstOrNull?.rawValue;
+                          if (value != null) unawaited(_scan(value));
+                        },
+                        errorBuilder: (context, error) => const ColoredBox(
+                          color: Color(0xffe4dfdd),
+                          child: Center(
+                            child: Text(
+                              'Allow camera access, or enter a link or code instead.',
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ),
+                      )
+                    else
+                      const ColoredBox(color: Color(0xffe4dfdd)),
+                    Center(
+                      child: Container(
+                        width: 190,
+                        height: 190,
+                        decoration: BoxDecoration(
+                          border: Border.all(color: coral, width: 3),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           const SizedBox(height: 14),
+          Center(
+            child: TextButton(
+              key: const Key('toggle-paste-link'),
+              onPressed: () => setState(() => showPasteLink = !showPasteLink),
+              child: const Text('Enter a link or code instead'),
+            ),
+          ),
+          if (showPasteLink) ...[
+            _field('Session link or code', fields['qr']!, 'noapp-qr'),
+            const SizedBox(height: 8),
+            OutlinedButton(
+              key: const Key('noapp-use-code'),
+              onPressed: busy ? null : () => _scan(fields['qr']!.text),
+              child: const Text('Use this code'),
+            ),
+          ],
+        ] else ...[
           for (final item in [
             ('email', 'Email'),
             ('firstName', 'First name'),
@@ -1334,7 +1547,7 @@ class _SignInMethodsPanelState extends State<SignInMethodsPanel> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          error = e.toString().replaceFirst('Bad state: ', '');
+          error = friendlyError(e);
           if (e is RecentSignInRequired) needsVerification = true;
         });
       }

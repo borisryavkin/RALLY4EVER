@@ -67,6 +67,42 @@ ThemeData rallyTheme() => ThemeData(
   dividerTheme: const DividerThemeData(color: Color(0xffe5dfdc)),
 );
 
+const _weekdayNames = [
+  'Mon',
+  'Tue',
+  'Wed',
+  'Thu',
+  'Fri',
+  'Sat',
+  'Sun',
+];
+const _monthNames = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+];
+
+/// "Thu 19 Nov, 1:12 pm" instead of a `DateTime`'s own `toString()`
+/// ("2026-11-19 13:12:33.702+1100") -- the one place admin/coach screens
+/// format a moment for display. Always in the device's local time.
+String friendlyDateTime(DateTime value) {
+  final local = value.toLocal();
+  final hour12 = local.hour % 12 == 0 ? 12 : local.hour % 12;
+  final minute = local.minute.toString().padLeft(2, '0');
+  final period = local.hour >= 12 ? 'pm' : 'am';
+  return '${_weekdayNames[local.weekday - 1]} ${local.day} '
+      '${_monthNames[local.month - 1]}, $hour12:$minute$period';
+}
+
 class Panel extends StatelessWidget {
   const Panel({
     super.key,
@@ -96,20 +132,27 @@ class Panel extends StatelessWidget {
 }
 
 class StatusPill extends StatelessWidget {
-  const StatusPill(this.label, {super.key, this.dark = false});
+  const StatusPill(this.label, {super.key, this.dark = false, this.muted = false});
   final String label;
   final bool dark;
+  // A session that's full, closed, cancelled or over -- a visibly
+  // different (grey, not green) pill from "spots available".
+  final bool muted;
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
     decoration: BoxDecoration(
-      color: dark ? navy : const Color(0xffe1f2e7),
+      color: dark
+          ? navy
+          : muted
+          ? const Color(0xffe4dfdd)
+          : const Color(0xffe1f2e7),
       borderRadius: BorderRadius.circular(20),
     ),
     child: Text(
       label,
       style: TextStyle(
-        color: dark ? Colors.white : navy,
+        color: dark ? Colors.white : muted ? slate : navy,
         fontSize: 10,
         fontWeight: FontWeight.w700,
       ),

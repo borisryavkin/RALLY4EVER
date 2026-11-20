@@ -19,6 +19,7 @@ Future<ParticipantRepository> connectParticipantRepository() async {
       : await EmulatorBackend.connect();
   final repository = FirebaseParticipantRepository(backend);
   try {
+    await repository.loadDeviceState();
     await repository.restore();
     return repository;
   } catch (_) {

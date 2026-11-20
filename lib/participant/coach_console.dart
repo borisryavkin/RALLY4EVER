@@ -181,7 +181,7 @@ class _EventConsoleScreenState extends State<EventConsoleScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          error = '$e';
+          error = friendlyError(e);
           qr = null;
         });
       }
@@ -204,7 +204,7 @@ class _EventConsoleScreenState extends State<EventConsoleScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          error = '$e';
+          error = friendlyError(e);
           busy = false;
         });
       }
@@ -255,7 +255,7 @@ class _EventConsoleScreenState extends State<EventConsoleScreen> {
               style: Theme.of(context).textTheme.headlineMedium,
             ),
             Text(
-              '${event['venue']['name']} · ${dateOf(event['startsAt']).toLocal()}',
+              '${event['venue']['name']} · ${friendlyDateTime(dateOf(event['startsAt']))}',
             ),
             Text(
               '$counted counted in · $checked checked in · $confirmed confirmed',
@@ -277,7 +277,7 @@ class _EventConsoleScreenState extends State<EventConsoleScreen> {
                       ),
                     ),
                     Text(
-                      'QR generation ${qr!['generation']} · expires ${dateOf(qr!['expiresAt']).toLocal()}',
+                      'QR generation ${qr!['generation']} · expires ${friendlyDateTime(dateOf(qr!['expiresAt']))}',
                     ),
                   ],
                 ),

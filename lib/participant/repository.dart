@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/emulator_backend.dart';
 import '../models/attendance_models.dart';
@@ -53,6 +54,48 @@ class RecentSignInRequired implements Exception {
       'Verify with Google once more to enable email sign-in securely.';
 }
 
+/// Thrown by [ParticipantRepository.call] for every Cloud Functions
+/// failure. [reason] is the server's short machine-readable slug (from
+/// functions/src/domain.ts's `fail()`, carried in the exception's
+/// `details`) -- a caller that needs to react to a *specific* failure
+/// (e.g. a stale-revision conflict) checks [reason] instead of
+/// string-matching [message], which stays free to change wording without
+/// breaking that logic. Everything else just shows [message] via
+/// [friendlyError].
+class FunctionsCallError implements Exception {
+  const FunctionsCallError(this.code, this.reason, this.message);
+  final String code;
+  final String? reason;
+  final String message;
+  @override
+  String toString() => message;
+}
+
+/// The one place every screen turns a caught exception into user-facing
+/// text -- no screen should ever show a raw `e.toString()`, which can leak
+/// an exception's class name, a stack hint, or raw platform text. Unknown
+/// exception shapes fall back to a generic message and log the real
+/// detail instead of guessing at how to shorten it.
+String friendlyError(Object error) {
+  if (error is FormatException) return error.message;
+  if (error is FunctionsCallError) return error.message;
+  if (error is StateError) return error.message;
+  if (error is RecentSignInRequired) return error.toString();
+  if (error is FirebaseException) {
+    debugPrint('${error.plugin} error ${error.code}: ${error.message}');
+    return switch (error.code) {
+      'permission-denied' => "You don't have access to do that.",
+      'unavailable' ||
+      'network-request-failed' => 'Check your connection and try again.',
+      'not-found' || 'object-not-found' =>
+        'That could not be found. It may have been removed.',
+      _ => 'Something went wrong. Please try again.',
+    };
+  }
+  debugPrint('Unhandled error shown to the user as a generic message: $error');
+  return 'Something went wrong. Please try again.';
+}
+
 abstract class ParticipantRepository extends ChangeNotifier {
   DateTime now() => DateTime.now();
   String? uid;
@@ -81,6 +124,31 @@ abstract class ParticipantRepository extends ChangeNotifier {
   bool googleUser = false;
   bool passwordUser = false;
   String? pendingGoogleEmail;
+  // Whether this device has ever completed a sign-in before -- decides
+  // whether the account screen defaults to "Create account" (never seen
+  // one) or "Welcome back" (has). Loaded from on-device storage; false
+  // (so "Create account" shows) until that load resolves.
+  bool hasSignedInBefore = false;
+  // Last few location searches on this device (most recent first), shown
+  // above the full suburb list -- never in place of it. In-memory only in
+  // the base class; the real implementation persists on-device.
+  List<String> recentLocationSearches = [];
+  void recordLocationSearch(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return;
+    recentLocationSearches = [
+      trimmed,
+      ...recentLocationSearches.where(
+        (v) => v.toLowerCase() != trimmed.toLowerCase(),
+      ),
+    ].take(5).toList();
+    notifyListeners();
+  }
+
+  void clearRecentLocationSearches() {
+    recentLocationSearches = [];
+    notifyListeners();
+  }
   // Coarse, device-only position for "near you" browsing (Play list, Map).
   // Never written to Firestore, logs or analytics -- used only to build the
   // on-device query/sort. See requestBrowseLocation. One of: idle,
@@ -221,6 +289,9 @@ abstract class ParticipantRepository extends ChangeNotifier {
       throw UnimplementedError();
   Future<void> sendPasswordReset(String email) => throw UnimplementedError();
   Future<void> refreshVerification() => throw UnimplementedError();
+  /// Cooldown is the caller's responsibility (see AccountForm) -- this
+  /// always attempts to send.
+  Future<void> resendVerificationEmail() => throw UnimplementedError();
   Future<void> signOut() => throw UnimplementedError();
   Future<void> saveProfile(Record changes) => throw UnimplementedError();
   Future<void> saveContact(Record changes) => throw UnimplementedError();
@@ -234,6 +305,13 @@ abstract class ParticipantRepository extends ChangeNotifier {
   /// Null if there's no photo (or it can't be reached); never throws.
   Future<String?> photoDownloadUrl() async => null;
   Future<Uint8List?> venuePhotoBytes(String url) async => null;
+  /// Uploads an already-resized/compressed JPEG to the given catalogue
+  /// photo slot (e.g. `program-<id>` or `session-<id>`) and returns a
+  /// public HTTPS download URL suitable for a program/session `photoUrl`.
+  Future<String> uploadCataloguePhoto({
+    required String slot,
+    required List<int> jpegBytes,
+  }) => throw UnimplementedError();
   Future<void> signForm(Record form) => throw UnimplementedError();
   Future<Record> call(String name, Record data) => throw UnimplementedError();
   Future<Record> location() async {
@@ -275,6 +353,45 @@ class FirebaseParticipantRepository extends ParticipantRepository {
   }
   final FirebaseBackend backend;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
+  SharedPreferencesAsync? _prefsOverride;
+  SharedPreferencesAsync get _prefs =>
+      _prefsOverride ??= SharedPreferencesAsync();
+
+  /// Awaited by [connectParticipantRepository] before the repository ever
+  /// reaches the widget tree, so [hasSignedInBefore] (which decides the
+  /// account screen's default tab) and [recentLocationSearches] are
+  /// correct on the very first build -- never a flash of the wrong one
+  /// while on-device storage is still loading.
+  Future<void> loadDeviceState() async {
+    try {
+      hasSignedInBefore =
+          await _prefs.getBool('r4e_has_signed_in_before') ?? false;
+      recentLocationSearches =
+          await _prefs.getStringList('r4e_recent_location_searches') ?? [];
+      notifyListeners();
+    } catch (_) {
+      // On-device storage is unavailable (sandboxed test runner, denied
+      // permission): keep the safe in-memory defaults rather than crash.
+    }
+  }
+
+  @override
+  void recordLocationSearch(String value) {
+    super.recordLocationSearch(value);
+    unawaited(
+      _prefs.setStringList(
+        'r4e_recent_location_searches',
+        recentLocationSearches,
+      ),
+    );
+  }
+
+  @override
+  void clearRecentLocationSearches() {
+    super.clearRecentLocationSearches();
+    unawaited(_prefs.remove('r4e_recent_location_searches'));
+  }
+
   Future<void> restore() async {
     final user = backend.auth.currentUser;
     if (user != null) await _enter(user);
@@ -283,6 +400,10 @@ class FirebaseParticipantRepository extends ParticipantRepository {
   Future<void> _enter(User user) async {
     email = user.email;
     verified = user.emailVerified;
+    if (!hasSignedInBefore) {
+      hasSignedInBefore = true;
+      unawaited(_prefs.setBool('r4e_has_signed_in_before', true));
+    }
     if (!verified) {
       uid = null;
       notifyListeners();
@@ -310,7 +431,8 @@ class FirebaseParticipantRepository extends ParticipantRepository {
     }
 
     void failed(Object error) {
-      streamError = error.toString();
+      debugPrint('Profile stream failed: $error');
+      streamError = friendlyError(error);
       ready = true;
       notifyListeners();
     }
@@ -663,6 +785,13 @@ class FirebaseParticipantRepository extends ParticipantRepository {
   }
 
   @override
+  Future<void> resendVerificationEmail() async {
+    final user = backend.auth.currentUser;
+    if (user == null) throw StateError('Sign in first.');
+    await user.sendEmailVerification();
+  }
+
+  @override
   Future<void> signOut() async {
     for (final sub in _subscriptions) {
       await sub.cancel();
@@ -706,7 +835,11 @@ class FirebaseParticipantRepository extends ParticipantRepository {
       debugPrint(
         'Cloud Function "$name" failed: ${e.code} ${e.message}\n$stackTrace',
       );
-      throw StateError(friendlyFunctionsError(e));
+      throw FunctionsCallError(
+        e.code,
+        (e.details is Map) ? (e.details as Map)['reason'] as String? : null,
+        friendlyFunctionsError(e),
+      );
     }
   }
 
@@ -800,6 +933,19 @@ class FirebaseParticipantRepository extends ParticipantRepository {
       backend.storage.refFromURL(url).getData(5 * 1024 * 1024);
 
   @override
+  Future<String> uploadCataloguePhoto({
+    required String slot,
+    required List<int> jpegBytes,
+  }) async {
+    final ref = backend.storage.ref('venues/$slot/cover.jpg');
+    await ref.putData(
+      Uint8List.fromList(jpegBytes),
+      SettableMetadata(contentType: 'image/jpeg'),
+    );
+    return ref.getDownloadURL();
+  }
+
+  @override
   Future<void> feedback(
     String eventId,
     int rating,
@@ -850,7 +996,7 @@ class CheckInLink {
         !RegExp(r'^[A-Za-z0-9_-]{43}$')
             .hasMatch(uri.queryParameters['k'] ?? '')) {
       throw const FormatException(
-        'Scan a current Rally4Ever QR code from your coach.',
+        "That doesn't look like a Rally4Ever session code. Ask your coach to show the current QR code.",
       );
     }
     return CheckInLink(uri.pathSegments.last, uri.queryParameters['k']!);

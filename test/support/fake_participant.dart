@@ -7,6 +7,10 @@ class FakeParticipantRepository extends ParticipantRepository {
     String? attendance,
   }) {
     enabled = true;
+    // Existing sign-in-flow tests assume a returning user ("Welcome back")
+    // by default; a dedicated test overrides this to exercise the
+    // first-time "Create account" default.
+    hasSignedInBefore = true;
     uid = authenticated ? 'participant-1' : null;
     email = authenticated ? 'priya@example.test' : null;
     verified = authenticated;
@@ -203,6 +207,18 @@ class FakeParticipantRepository extends ParticipantRepository {
     uid = 'participant-1';
     notifyListeners();
   }
+
+  int resendVerificationEmailCalls = 0;
+  @override
+  Future<void> resendVerificationEmail() async {
+    resendVerificationEmailCalls++;
+  }
+
+  @override
+  Future<String> uploadCataloguePhoto({
+    required String slot,
+    required List<int> jpegBytes,
+  }) async => 'https://example.test/photos/$slot.jpg';
 
   @override
   Future<void> signOut() async {

@@ -73,6 +73,9 @@ class _ParticipantAppState extends State<ParticipantApp>
   String detailsReturn = 'scan';
   bool editingProfile = false;
   final mapController = MapController();
+  final verificationPanelKey = GlobalKey();
+  final _expandedProgramGroups = <String>{};
+  String _groupKey(List<Record> group) => eid(group.first);
   CheckInLink? scanned;
   Record? scanLocation;
   Record? people;
@@ -137,6 +140,14 @@ class _ParticipantAppState extends State<ParticipantApp>
       return;
     }
     if (repo.uid != null) unawaited(repo.refreshAccess());
+    // Coming back from the verification email's browser tab: silently
+    // reload the Auth user and continue the moment it's picked up, no tap
+    // required. A no-op once verified (or signed out) since repo.email is
+    // only set while this device is on the account screen's "check your
+    // inbox" state.
+    if (repo.email != null && !repo.verified) {
+      unawaited(repo.refreshVerification());
+    }
     // "Returns to the app after a while": a single fresh fix on resume,
     // never a continuous stream -- this is the one place browse location
     // refreshes outside the first-open trigger in home()/map(). Also
@@ -229,6 +240,20 @@ class _ParticipantAppState extends State<ParticipantApp>
           .firstOrNull ??
       repo.events.firstOrNull;
   String eid(Record e) => e['id'] as String? ?? e['eventId'] as String;
+
+  /// Display fallback order for item 4b: the session's own photo, else its
+  /// program's photo, else CataloguePhoto's own neutral placeholder (an
+  /// empty `photoUrl` falls through to that automatically) -- never
+  /// another venue's unrelated photo.
+  Record sessionPhotoRecord(Record e) {
+    final own = e['photoUrl'] as String? ?? '';
+    if (own.isNotEmpty) return e;
+    final program = repo.programs
+        .where((p) => p['id'] == e['programId'])
+        .firstOrNull;
+    final fallback = program?['photoUrl'] as String? ?? '';
+    return fallback.isEmpty ? e : {...e, 'photoUrl': fallback};
+  }
   void go(String next) {
     setState(() {
       page = next;
@@ -252,9 +277,26 @@ class _ParticipantAppState extends State<ParticipantApp>
     try {
       await work();
       _lastFailedAction = null;
+      // Just landed in "check your inbox" (signed up, or still unverified
+      // after a stale "I've verified" tap): bring the panel into view and
+      // get the keyboard out of the way, every time, not just once.
+      if (repo.email != null && !repo.verified) {
+        FocusManager.instance.primaryFocus?.unfocus();
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final context = verificationPanelKey.currentContext;
+          if (context != null) {
+            unawaited(
+              Scrollable.ensureVisible(
+                context,
+                duration: const Duration(milliseconds: 200),
+              ),
+            );
+          }
+        });
+      }
     } catch (e) {
       _lastFailedAction = work;
-      if (mounted) setState(() => error = readableError(e));
+      if (mounted) setState(() => error = friendlyError(e));
     } finally {
       if (mounted) {
         setState(() => busy = false);
@@ -269,14 +311,6 @@ class _ParticipantAppState extends State<ParticipantApp>
   void retryLastAction() {
     final work = _lastFailedAction;
     if (work != null) unawaited(action(work));
-  }
-
-  String readableError(Object e) {
-    if (e is FormatException) return e.message;
-    final value = e.toString();
-    return value
-        .replaceFirst(RegExp(r'^\[[^\]]+\]\s*'), '')
-        .replaceFirst('Bad state: ', '');
   }
 
   void select(Record e, String next) {
@@ -590,6 +624,7 @@ class _ParticipantAppState extends State<ParticipantApp>
         children: [
           AccountForm(
             key: const Key('account-form'),
+            verificationPanelKey: verificationPanelKey,
             repository: repo,
             onAction: action,
             busy: busy,
@@ -615,7 +650,12 @@ class _ParticipantAppState extends State<ParticipantApp>
         context,
         title: 'Check in with your coach',
         back: () => go('account'),
-        children: [NoAppCheckInForm(repository: repo)],
+        children: [
+          NoAppCheckInForm(
+            repository: repo,
+            cameraEnabled: widget.cameraEnabled,
+          ),
+        ],
       );
     }
     if (repo.uid == null) {
@@ -948,24 +988,36 @@ class _ParticipantAppState extends State<ParticipantApp>
     return repo.countedIn(eid(e)) ? 'Counted in' : sessionAvailability(e);
   }
 
-  Widget eventCard(BuildContext context, Record e, {bool highlight = false}) =>
-      Padding(
+  // Full and bookings-closed sessions stay tappable (to view details) but
+  // never offer a quick "Count me in" and read as visibly lower-priority:
+  // a muted card/title instead of the usual white/navy.
+  bool _closedForDisplay(Record e) =>
+      const {'Full', 'Bookings closed'}.contains(sessionAvailability(e));
+
+  Widget eventCard(BuildContext context, Record e, {bool highlight = false}) {
+    final closed = _closedForDisplay(e);
+    return Padding(
         padding: const EdgeInsets.only(bottom: 14),
         child: InkWell(
           key: Key('event-${eid(e)}'),
           onTap: () => select(e, 'session'),
           borderRadius: BorderRadius.circular(18),
           child: Panel(
-            color: highlight ? navy : Colors.white,
+            color: closed
+                ? const Color(0xffe9e5e1)
+                : highlight
+                ? navy
+                : Colors.white,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                StatusPill(stateFor(e)),
+                StatusPill(stateFor(e), muted: closed),
                 const SizedBox(height: 10),
                 Text(
                   e['name'] as String,
-                  style: Theme.of(context).textTheme.titleLarge
-                      ?.copyWith(color: highlight ? Colors.white : navy),
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    color: closed ? slate : (highlight ? Colors.white : navy),
+                  ),
                 ),
                 const SizedBox(height: 5),
                 Text(
@@ -1015,6 +1067,7 @@ class _ParticipantAppState extends State<ParticipantApp>
           ),
         ),
       );
+  }
 
   List<Record> get nearbySessions => nearbySessionRecords(
     repo.events,
@@ -1051,6 +1104,42 @@ class _ParticipantAppState extends State<ParticipantApp>
       );
     }
     return rows;
+  }
+
+  // Available dates sort before full/closed ones within each program, and
+  // only the next few show by default -- a heavily booked-out program
+  // (e.g. every upcoming Ultimo date full) otherwise floods the list
+  // above programs that still have room.
+  List<Widget> _sessionCards(List<Record> active) {
+    final widgets = <Widget>[];
+    for (final group in groupSessionsByProgram(active, canReserve)) {
+      final expanded = _expandedProgramGroups.contains(_groupKey(group));
+      final visible = expanded ? group : group.take(3).toList();
+      for (final e in visible) {
+        widgets.add(
+          eventCard(
+            context,
+            e,
+            highlight: repo.countedIn(eid(e)) || repo.checkin(eid(e)) != null,
+          ),
+        );
+      }
+      if (!expanded && group.length > 3) {
+        final key = _groupKey(group);
+        widgets.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 14),
+            child: TextButton(
+              key: Key('more-dates-$key'),
+              onPressed: () =>
+                  setState(() => _expandedProgramGroups.add(key)),
+              child: Text('${group.length - 3} more dates'),
+            ),
+          ),
+        );
+      }
+    }
+    return widgets;
   }
 
   Widget home(BuildContext context) {
@@ -1134,12 +1223,7 @@ class _ParticipantAppState extends State<ParticipantApp>
               'No upcoming sessions yet. Explore programs or check back soon.',
             ),
           ),
-        for (final e in active)
-          eventCard(
-            context,
-            e,
-            highlight: repo.countedIn(eid(e)) || repo.checkin(eid(e)) != null,
-          ),
+        ..._sessionCards(active),
         if (countedElsewhere.isNotEmpty) ...[
           const Text('Your other counted-in sessions'),
           for (final e in countedElsewhere)
@@ -1227,7 +1311,7 @@ class _ParticipantAppState extends State<ParticipantApp>
       back: () => go('home'),
       children: [
         if (e['catalogueManaged'] == true)
-          CataloguePhoto(record: e, repository: repo)
+          CataloguePhoto(record: sessionPhotoRecord(e), repository: repo)
         else
           ClipRRect(
             borderRadius: BorderRadius.circular(22),
@@ -2385,35 +2469,105 @@ class _ParticipantAppState extends State<ParticipantApp>
     );
   }
 
-  Widget catalogueLocation(BuildContext context) => frame(
-    context,
-    title: 'Where would you like to play?',
-    back: () => go('home'),
-    children: [
-      TextField(
-        decoration: const InputDecoration(
-          labelText: 'Search suburb or postcode',
-          prefixIcon: Icon(Icons.search),
+  void _chooseArea(String label) {
+    repo.recordLocationSearch(label);
+    setState(() {
+      area = label;
+      areaChosen = true;
+    });
+    go('home');
+  }
+
+  Widget catalogueLocation(BuildContext context) {
+    final query = locationSearch.trim().toLowerCase();
+    // One row per distinct suburb/postcode, not one per program -- several
+    // programs commonly share a venue's suburb.
+    final seenLabels = <String>{};
+    final suburbs = <Record>[];
+    for (final p in repo.programs.where((p) => p['status'] == 'active')) {
+      final v = p['venue'] as Map? ?? {};
+      if (seenLabels.add('${v['suburb']} ${v['postcode']}')) suburbs.add(p);
+    }
+    final filtered = query.isEmpty
+        ? suburbs
+        : suburbs.where((p) {
+            final v = p['venue'] as Map? ?? {};
+            return '${v['suburb']}'.toLowerCase().contains(query) ||
+                '${v['postcode']}'.toLowerCase().contains(query);
+          }).toList();
+    return frame(
+      context,
+      title: 'Choose location',
+      back: () => go('home'),
+      children: [
+        TextField(
+          key: const Key('location-search'),
+          decoration: const InputDecoration(
+            labelText: 'Search suburb or postcode',
+            prefixIcon: Icon(Icons.search),
+          ),
+          onChanged: (v) => setState(() => locationSearch = v),
         ),
-        onChanged: (v) => setState(() => locationSearch = v),
-      ),
-      const SizedBox(height: 12),
-      for (final p in repo.programs.where(
-        (p) => matchesProgram(p, search: locationSearch),
-      ))
-        ListTile(
-          title: Text('${p['venue']['suburb']} ${p['venue']['postcode']}'),
-          subtitle: Text('${p['venue']['state']} · ${p['name']}'),
-          onTap: () {
-            setState(() {
-              area = '${p['venue']['suburb']} ${p['venue']['postcode']}';
-              areaChosen = true;
-            });
-            go('home');
-          },
+        const SizedBox(height: 16),
+        // Current location and recent history are search-box-empty-only
+        // shortcuts -- they never replace the full suburb list below,
+        // which always stays visible.
+        if (query.isEmpty) ...[
+          OutlinedButton.icon(
+            key: const Key('use-my-location'),
+            icon: const Icon(Icons.my_location),
+            label: const Text('Use my current location'),
+            onPressed: () {
+              setState(() => areaChosen = false);
+              _requestBrowseLocation();
+              go('home');
+            },
+          ),
+          if (repo.recentLocationSearches.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Recent',
+                  style: TextStyle(fontWeight: FontWeight.w800, color: navy),
+                ),
+                TextButton(
+                  key: const Key('clear-recent-locations'),
+                  onPressed: () => repo.clearRecentLocationSearches(),
+                  child: const Text('Clear'),
+                ),
+              ],
+            ),
+            for (final recent in repo.recentLocationSearches)
+              ListTile(
+                key: Key('recent-$recent'),
+                leading: const Icon(Icons.history),
+                title: Text(recent),
+                onTap: () => _chooseArea(recent),
+              ),
+          ],
+          const SizedBox(height: 20),
+        ],
+        const Text(
+          'All locations',
+          style: TextStyle(fontWeight: FontWeight.w800, color: navy),
         ),
-    ],
-  );
+        if (filtered.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 12),
+            child: Text('No locations match that search.'),
+          ),
+        for (final p in filtered)
+          ListTile(
+            title: Text('${p['venue']['suburb']} ${p['venue']['postcode']}'),
+            subtitle: Text('${p['venue']['state']} · ${p['name']}'),
+            onTap: () =>
+                _chooseArea('${p['venue']['suburb']} ${p['venue']['postcode']}'),
+          ),
+      ],
+    );
+  }
   LatLng? get selectedMapPoint {
     // The device's current position is the default search centre; a
     // manually chosen place (areaChosen) always overrides it.
@@ -2590,9 +2744,9 @@ class _ParticipantAppState extends State<ParticipantApp>
                       key: Key('session-marker-${eid(e)}'),
                       onPressed: () => select(e, 'session'),
                       tooltip: e['name'] as String,
-                      icon: const Icon(
+                      icon: Icon(
                         Icons.location_on,
-                        color: coral,
+                        color: _closedForDisplay(e) ? slate : coral,
                         size: 38,
                       ),
                     ),
