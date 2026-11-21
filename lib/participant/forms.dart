@@ -730,14 +730,30 @@ class _ProfileStepState extends State<ProfileStep> {
     super.dispose();
   }
 
-  Widget choices(String label, String name, List<String> options) => Padding(
+  Widget choices(
+    String label,
+    String name,
+    List<String> options, {
+    String? why,
+  }) => Padding(
     padding: const EdgeInsets.only(bottom: 20),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: const TextStyle(fontWeight: FontWeight.w700, color: navy),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: navy,
+                ),
+              ),
+            ),
+            if (why != null) WhyWeAsk(title: 'Why we ask', body: why),
+          ],
         ),
         const SizedBox(height: 8),
         Wrap(
@@ -770,6 +786,7 @@ class _ProfileStepState extends State<ProfileStep> {
     String name,
     Map<String, String> options, {
     Set<String> exclusive = const {},
+    String? why,
   }) {
     final selected = Set<String>.from(about[name] as List? ?? const []);
     return Padding(
@@ -777,9 +794,20 @@ class _ProfileStepState extends State<ProfileStep> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: const TextStyle(fontWeight: FontWeight.w700, color: navy),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: navy,
+                  ),
+                ),
+              ),
+              if (why != null) WhyWeAsk(title: 'Why we ask', body: why),
+            ],
           ),
           const SizedBox(height: 8),
           Wrap(
@@ -956,37 +984,75 @@ class _ProfileStepState extends State<ProfileStep> {
           '50–64',
           '65+',
         ]),
+        const SizedBox(height: 16),
+        Panel(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.info_outline, size: 20, color: slate),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  "We use your postcode to show programs nearby. It's "
+                  'never shown to other members.',
+                  style: const TextStyle(color: slate),
+                ),
+              ),
+            ],
+          ),
+        ),
       ],
       if (widget.step == 2) ...[
-        choices('Gender', 'gender', [
-          'Woman',
-          'Man',
-          'Non-binary',
-          'Prefer not to say',
-        ]),
+        choices(
+          'Gender',
+          'gender',
+          ['Woman', 'Man', 'Non-binary', 'Prefer not to say'],
+          why:
+              "It helps us see who we're reaching and make sure sessions "
+              "feel welcoming for everyone. It's optional, it's grouped "
+              "with other people's answers, and it's never shown to other "
+              'members.',
+        ),
         multiChoices(
           'Cultural background',
           'culturalBackground',
           culturalBackgroundOptions,
           exclusive: culturalBackgroundExclusive,
+          why:
+              'It helps us make sure our programs are open to people from '
+              'every community, and show funders who we reach. '
+              "It's optional, grouped with other people's answers, and "
+              'never shown to other members.',
         ),
       ],
       if (widget.step == 3) ...[
-        choices('Do you have a disability or access need?', 'accessNeed', [
-          'Yes',
-          'No',
-          'Prefer not to say',
-        ]),
+        choices(
+          'Do you have a disability or access need?',
+          'accessNeed',
+          ['Yes', 'No', 'Prefer not to say'],
+          why:
+              'It helps us plan sessions that work for everyone, for '
+              "example step-free courts or a quieter start. It's "
+              'optional, and we only use it to make sessions more '
+              'welcoming.',
+        ),
         multiChoices(
           'Right now, are you…',
           'occupation',
           occupationOptions,
           exclusive: occupationExclusive,
+          why:
+              'It helps us understand who our programs reach so we can '
+              "keep them free and open. It's optional and grouped with "
+              "other people's answers.",
         ),
         multiChoices(
           'How did you hear about us?',
           'heardAbout',
           heardAboutOptions,
+          why:
+              'It helps us see which posters, partners and events are '
+              "working so we can reach more people. It's optional.",
         ),
         if ((about['heardAbout'] as List).contains('other')) ...[
           const SizedBox(height: 4),
@@ -1134,6 +1200,59 @@ class _ProfileStepState extends State<ProfileStep> {
         child: Text(widget.step == 7 ? 'Save and find a program' : 'Next'),
       ),
     ],
+  );
+}
+
+/// A small "Why we ask" link next to an optional question's heading. Opens
+/// a bottom sheet explaining the question in plain language rather than
+/// cluttering the question itself with a paragraph of context.
+class WhyWeAsk extends StatelessWidget {
+  const WhyWeAsk({super.key, required this.title, required this.body});
+  final String title;
+  final String body;
+
+  void _open(BuildContext context) => showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: const Color(0xfff2eeeb),
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+    ),
+    builder: (context) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: Theme.of(context).textTheme.headlineSmall),
+            const SizedBox(height: 16),
+            Text(body, style: const TextStyle(fontSize: 16, height: 1.5)),
+            const SizedBox(height: 24),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Got it'),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    button: true,
+    label: 'Why we ask: $title',
+    excludeSemantics: true,
+    child: TextButton.icon(
+      onPressed: () => _open(context),
+      style: TextButton.styleFrom(
+        foregroundColor: slate,
+        minimumSize: const Size(48, 48),
+      ),
+      icon: const Icon(Icons.help_outline, size: 18),
+      label: const Text('Why we ask', style: TextStyle(fontSize: 13)),
+    ),
   );
 }
 
