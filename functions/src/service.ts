@@ -134,7 +134,10 @@ export class AttendanceService {
     }
     return missing;
   }
-  baseProfile(userId: string, email: string): DocumentData {
+  // firstName is only ever a courtesy prefill the admin/participant can
+  // change immediately on the About You step -- never trusted as verified
+  // identity, and silently ignored once a profile already exists.
+  baseProfile(userId: string, email: string, firstName = ""): DocumentData {
     const at = this.stamp();
     return {
       uid: userId,
@@ -144,7 +147,7 @@ export class AttendanceService {
       mergedInto: null,
       createdAt: at,
       updatedAt: at,
-      firstName: "",
+      firstName,
       lastName: "",
       postcode: "",
       injuries: "",
@@ -190,6 +193,7 @@ export class AttendanceService {
   async reserveIdentity(
     userId: string,
     email: string,
+    firstName = "",
   ): Promise<{ uid: string; created: boolean }> {
     return this.db.runTransaction(async (tx) => {
       const ref = this.db.doc(`emailIdentities/${email}`);
@@ -222,7 +226,7 @@ export class AttendanceService {
       if (!existing.exists) {
         tx.create(
           this.db.doc(`users/${userId}`),
-          this.baseProfile(userId, email),
+          this.baseProfile(userId, email, firstName),
         );
         tx.create(
           this.db.doc(`users/${userId}/private/contact`),
@@ -238,7 +242,7 @@ export class AttendanceService {
     });
   }
   async registerIdentity(who: Identity, value: unknown) {
-    const d = input(value, ["email"]);
+    const d = input(value, ["email", "firstNameHint"]);
     const email = d.email === undefined ? who.email : normalizeEmail(d.email);
     if (email !== who.email)
       fail(
@@ -259,7 +263,9 @@ export class AttendanceService {
         "Use your current verified account email",
       );
     }
-    const result = await this.reserveIdentity(who.uid, email);
+    const firstNameHint =
+      d.firstNameHint === undefined ? "" : text(d.firstNameHint, "firstNameHint", 60, 0);
+    const result = await this.reserveIdentity(who.uid, email, firstNameHint);
     const guestHistory = result.uid === who.uid ? await claimGuestAttendance(this.db,who.uid,email,this.stamp()) : null;
     return { ...result, requiresSignIn: result.uid !== who.uid, guestHistory };
   }

@@ -53,7 +53,7 @@ void main() {
     'valid app link waits for login and opens QR flow without attendance',
     (tester) async {
       final repo = FakeParticipantRepository(authenticated: false);
-      await show(tester, repo, 'account');
+      await show(tester, repo, 'signin');
       final link = 'https://rally4ever.org/c/EVENT-1?k=${'a' * 43}';
       await tester.binding.defaultBinaryMessenger.handlePlatformMessage(
         'flutter/navigation',
@@ -78,7 +78,7 @@ void main() {
     'forgot password always shows the same neutral confirmation and a resend cooldown',
     (tester) async {
       final repo = FakeParticipantRepository(authenticated: false);
-      await show(tester, repo, 'account');
+      await show(tester, repo, 'signin');
       expect(find.text('Email me a one-time sign-in link'), findsNothing);
       expect(find.text('I have an email link'), findsNothing);
       await tester.tap(find.byKey(const Key('forgot-password')));
@@ -109,7 +109,7 @@ void main() {
     (tester) async {
       final repo = FakeParticipantRepository(authenticated: false);
       repo.passwordResetRateLimited = true;
-      await show(tester, repo, 'account');
+      await show(tester, repo, 'signin');
       await tester.tap(find.byKey(const Key('forgot-password')));
       await tester.pumpAndSettle();
       await tester.enterText(
@@ -167,7 +167,7 @@ void main() {
     ('S01-intro-program', 'welcome1'),
     ('S02-intro-people', 'welcome2'),
     ('S03-intro-wellbeing', 'welcome3'),
-    ('S04-account', 'account'),
+    ('S04-account', 'signup'),
     ('S05-profile-basics', 'profile1'),
     ('S06-profile-inclusion', 'profile2'),
     ('S07-profile-research', 'profile3'),
@@ -339,7 +339,7 @@ void main() {
     'Google Workspace without claim stays participant and shows no coach-access banner',
     (tester) async {
       final repo = FakeParticipantRepository(authenticated: false);
-      await show(tester, repo, 'account');
+      await show(tester, repo, 'signin');
       await tester.tap(find.byKey(const Key('google-sign-in')));
       await tester.pumpAndSettle();
       expect(repo.googleUser, true);
@@ -547,6 +547,11 @@ void main() {
       await tester.tap(find.byKey(const Key('profile-next')));
       await tester.pumpAndSettle();
       expect(repo.calls.contains('savePhoto'), false);
+      // First-time onboarding lands on the calm "You're in" confirmation
+      // (step 4 of 4) before Play, not straight on the home screen.
+      expect(find.text("You're in"), findsWidgets);
+      await tester.tap(find.byKey(const Key('continue-to-play')));
+      await tester.pumpAndSettle();
       expect(find.text('Play near you'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
       repo.dispose();

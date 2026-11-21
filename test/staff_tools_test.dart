@@ -98,7 +98,7 @@ void main() {
       await tester.pumpWidget(
         ParticipantApp(
           repository: repo,
-          initialPage: 'account',
+          initialPage: 'signup',
           cameraEnabled: false,
           mapTilesEnabled: false,
         ),

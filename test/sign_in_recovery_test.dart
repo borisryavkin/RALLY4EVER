@@ -27,7 +27,7 @@ void main() {
       await tester.pumpWidget(
         ParticipantApp(
           repository: repo,
-          initialPage: 'account',
+          initialPage: 'signin',
           cameraEnabled: false,
           mapTilesEnabled: false,
         ),
@@ -56,7 +56,7 @@ void main() {
             .text,
         'app-password',
       );
-      expect(find.text('Set or reset app password'), findsOneWidget);
+      expect(find.text('Forgot password?'), findsOneWidget);
       await tester.ensureVisible(find.byKey(const Key('show-login-password')));
       await tester.tap(find.byKey(const Key('show-login-password')));
       await tester.pump();

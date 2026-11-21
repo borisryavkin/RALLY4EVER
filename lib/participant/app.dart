@@ -48,7 +48,10 @@ class _ParticipantAppState extends State<ParticipantApp>
   late final ParticipantRepository repo =
       widget.repository ?? DisabledParticipantRepository();
   late String page =
-      widget.initialPage ?? (repo.uid == null ? 'welcome1' : 'home');
+      widget.initialPage ??
+      (repo.uid == null
+          ? (repo.hasSignedInBefore ? 'signin' : 'welcome1')
+          : 'home');
   String? selectedId, selectedProgramId, error;
   Future<void> Function()? _lastFailedAction;
   String locationSearch = '';
@@ -60,7 +63,7 @@ class _ParticipantAppState extends State<ParticipantApp>
   int get tab => switch (page) {
     'map' => 1,
     'profile' ||
-    'signInMethods' ||
+    'account' ||
     'role' ||
     'adminAccess' ||
     'adminVenues' ||
@@ -186,7 +189,14 @@ class _ParticipantAppState extends State<ParticipantApp>
       }
       if (repo.uid != null &&
           repo.ready &&
-          ['account', 'welcome1', 'welcome2', 'welcome3'].contains(page)) {
+          [
+            'entry',
+            'signin',
+            'signup',
+            'welcome1',
+            'welcome2',
+            'welcome3',
+          ].contains(page)) {
         page =
             (repo.profile['firstName'] as String? ?? '').isEmpty ||
                 (repo.profile['postcode'] as String? ?? '').isEmpty
@@ -205,13 +215,16 @@ class _ParticipantAppState extends State<ParticipantApp>
       }
       if (repo.uid == null &&
           ![
-            'account',
+            'entry',
+            'signin',
+            'signup',
             'welcome1',
             'welcome2',
             'welcome3',
             'noapp',
+            'forgot-password',
           ].contains(page)) {
-        page = 'account';
+        page = repo.hasSignedInBefore ? 'signin' : 'entry';
       }
     });
   }
@@ -605,10 +618,43 @@ class _ParticipantAppState extends State<ParticipantApp>
         int.tryParse(page.replaceFirst('welcome', '')) ?? 1,
       );
     }
-    if (page == 'account') {
+    if (page == 'entry') {
       return frame(
         context,
         back: () => go('welcome1'),
+        children: [
+          EntryScreen(
+            repository: repo,
+            onAction: action,
+            busy: busy,
+            onUseEmail: () => go('signup'),
+            onCheckInWithoutAccount: () => go('noapp'),
+            onSignIn: () => go('signin'),
+          ),
+        ],
+      );
+    }
+    if (page == 'signin') {
+      return frame(
+        context,
+        back: () => go('entry'),
+        children: [
+          SignInScreen(
+            key: const Key('sign-in-screen'),
+            repository: repo,
+            onAction: action,
+            busy: busy,
+            onForgotPassword: () => go('forgot-password'),
+            onCreateAccount: () => go('entry'),
+            onCheckInWithoutAccount: () => go('noapp'),
+          ),
+        ],
+      );
+    }
+    if (page == 'signup') {
+      return frame(
+        context,
+        back: () => go('entry'),
         children: [
           AccountForm(
             key: const Key('account-form'),
@@ -616,11 +662,6 @@ class _ParticipantAppState extends State<ParticipantApp>
             repository: repo,
             onAction: action,
             busy: busy,
-            onForgotPassword: () => go('forgot-password'),
-          ),
-          TextButton(
-            onPressed: () => go('noapp'),
-            child: const Text('Check in without an app account'),
           ),
         ],
       );
@@ -629,19 +670,47 @@ class _ParticipantAppState extends State<ParticipantApp>
       return frame(
         context,
         title: 'Reset password',
-        back: () => go('account'),
+        back: () => go('signin'),
         children: [ForgotPasswordForm(repository: repo)],
       );
     }
     if (page == 'noapp') {
       return frame(
         context,
-        title: 'Check in with your coach',
-        back: () => go('account'),
+        title: 'Scan the code',
+        back: () => go(repo.hasSignedInBefore ? 'signin' : 'entry'),
         children: [
           NoAppCheckInForm(
             repository: repo,
             cameraEnabled: widget.cameraEnabled,
+            onCreateAccount: () => go('entry'),
+          ),
+        ],
+      );
+    }
+    if (page == 'onboarded') {
+      return frame(
+        context,
+        children: [
+          const SizedBox(height: 40),
+          StepBar(steps: signupSteps, current: 4),
+          const SizedBox(height: 32),
+          const Icon(Icons.check_circle_outline, color: coral, size: 56),
+          const SizedBox(height: 16),
+          Text(
+            "You're in",
+            style: Theme.of(context).textTheme.headlineLarge,
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'No expectations. No judgement. Come as you are. Your next session is waiting.',
+            style: TextStyle(color: slate, height: 1.5),
+          ),
+          const SizedBox(height: 28),
+          FilledButton(
+            key: const Key('continue-to-play'),
+            onPressed: () => go('home'),
+            child: const Text('Continue'),
           ),
         ],
       );
@@ -652,7 +721,7 @@ class _ParticipantAppState extends State<ParticipantApp>
         children: [
           const Text('Sign in to join a session.'),
           FilledButton(
-            onPressed: () => go('account'),
+            onPressed: () => go(repo.hasSignedInBefore ? 'signin' : 'entry'),
             child: const Text('Sign in'),
           ),
         ],
@@ -680,11 +749,19 @@ class _ParticipantAppState extends State<ParticipantApp>
     }
     if (page.startsWith('profile') && page != 'profile') {
       final step = int.tryParse(page.replaceFirst('profile', '')) ?? 1;
+      // Only the first-time signup path is part of the 4-step journey --
+      // an existing member updating their details later (editingProfile)
+      // isn't "about to be in", they already are.
+      final finish = editingProfile ? 'profile' : 'onboarded';
       return frame(
         context,
         title: 'About you',
         back: () => go('profile'),
         children: [
+          if (!editingProfile) ...[
+            StepBar(steps: signupSteps, current: 3),
+            const SizedBox(height: 24),
+          ],
           ProfileStep(
             key: ValueKey(page),
             step: step,
@@ -700,17 +777,9 @@ class _ParticipantAppState extends State<ParticipantApp>
               } else {
                 await repo.saveProfile(changes);
               }
-              go(
-                step == 7
-                    ? (editingProfile ? 'profile' : 'home')
-                    : 'profile${step + 1}',
-              );
+              go(step == 7 ? finish : 'profile${step + 1}');
             }),
-            onSkip: () => go(
-              step == 7
-                  ? (editingProfile ? 'profile' : 'home')
-                  : 'profile${step + 1}',
-            ),
+            onSkip: () => go(step == 7 ? finish : 'profile${step + 1}'),
           ),
         ],
       );
@@ -809,9 +878,9 @@ class _ParticipantAppState extends State<ParticipantApp>
       'feedbackReminder' => feedbackReminder(context),
       'feedback' => feedback(context),
       'profile' => profile(context),
-      'signInMethods' => frame(
+      'account' => frame(
         context,
-        title: 'Sign-in methods',
+        title: 'Account',
         back: () => go('profile'),
         children: [SignInMethodsPanel(repository: repo)],
       ),
@@ -855,7 +924,7 @@ class _ParticipantAppState extends State<ParticipantApp>
                   children: [
                     Expanded(child: brand(light: light)),
                     TextButton(
-                      onPressed: () => go('account'),
+                      onPressed: () => go('entry'),
                       child: Text(
                         'Skip',
                         style: TextStyle(color: light ? Colors.white : navy),
@@ -920,7 +989,7 @@ class _ParticipantAppState extends State<ParticipantApp>
                     backgroundColor: step == 2 ? coral : navy,
                   ),
                   onPressed: () =>
-                      go(step == 3 ? 'account' : 'welcome${step + 1}'),
+                      go(step == 3 ? 'entry' : 'welcome${step + 1}'),
                   child: Text(step == 3 ? 'Get started' : 'Continue'),
                 ),
                 const SizedBox(height: 8),
@@ -2058,9 +2127,10 @@ class _ParticipantAppState extends State<ParticipantApp>
         ],
       ),
       OutlinedButton.icon(
-        onPressed: () => go('signInMethods'),
-        icon: const Icon(Icons.login),
-        label: const Text('Sign-in methods'),
+        key: const Key('go-to-account'),
+        onPressed: () => go('account'),
+        icon: const Icon(Icons.manage_accounts_outlined),
+        label: const Text('Account'),
       ),
       const SizedBox(height: 22),
       Row(
@@ -2200,7 +2270,7 @@ class _ParticipantAppState extends State<ParticipantApp>
       TextButton(
         onPressed: () => action(() async {
           await repo.signOut();
-          go('account');
+          go('signin');
         }),
         child: const Text('Sign out'),
       ),

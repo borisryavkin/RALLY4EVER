@@ -410,7 +410,14 @@ class FirebaseParticipantRepository extends ParticipantRepository {
       return;
     }
     await _refreshClaims(user);
-    final result = await call('registerIdentity', {});
+    // A courtesy prefill for a brand-new profile's About You step -- the
+    // backend only ever applies it the first time a profile is created,
+    // never overwriting a real one on a returning sign-in.
+    final firstNameHint = user.displayName?.trim().split(' ').firstOrNull;
+    final result = await call('registerIdentity', {
+      if (firstNameHint != null && firstNameHint.isNotEmpty)
+        'firstNameHint': firstNameHint,
+    });
     if (result['requiresSignIn'] == true) {
       await backend.auth.signOut();
       throw StateError(
@@ -1017,7 +1024,7 @@ class CheckInLink {
         !RegExp(r'^[A-Za-z0-9_-]{43}$')
             .hasMatch(uri.queryParameters['k'] ?? '')) {
       throw const FormatException(
-        "That doesn't look like a Rally4Ever session code. Ask your coach to show the current QR code.",
+        "That doesn't look like a RALLY4EVER session code. Ask your coach to show the current one.",
       );
     }
     return CheckInLink(uri.pathSegments.last, uri.queryParameters['k']!);

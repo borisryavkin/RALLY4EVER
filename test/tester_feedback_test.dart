@@ -75,7 +75,7 @@ Record _session(
 void main() {
   group('item 1: sign-up and email verification', () {
     testWidgets(
-      'a first-time device defaults to Create account; a returning device defaults to Welcome back; each links to the other',
+      'a first-time device defaults to the entry screen; a returning device goes straight to Sign in; each links to the other',
       (tester) async {
         setTallView(tester);
         final firstTime = FakeParticipantRepository(authenticated: false)
@@ -83,14 +83,14 @@ void main() {
         await tester.pumpWidget(
           ParticipantApp(
             repository: firstTime,
-            initialPage: 'account',
+            initialPage: 'entry',
             cameraEnabled: false,
           ),
         );
         await tester.pumpAndSettle();
-        expect(find.text('Join the\ncommunity'), findsOneWidget);
-        expect(find.text('Already a member? Sign in'), findsOneWidget);
-        await tester.tap(find.byKey(const Key('toggle-signup')));
+        expect(find.text('Join\nRALLY4EVER'), findsOneWidget);
+        expect(find.text('Already have an account? Sign in'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('go-to-signin')));
         await tester.pumpAndSettle();
         expect(find.text('Welcome\nback'), findsOneWidget);
         expect(find.text('New here? Create an account'), findsOneWidget);
@@ -100,11 +100,7 @@ void main() {
         final returning = FakeParticipantRepository(authenticated: false)
           ..hasSignedInBefore = true;
         await tester.pumpWidget(
-          ParticipantApp(
-            repository: returning,
-            initialPage: 'account',
-            cameraEnabled: false,
-          ),
+          ParticipantApp(repository: returning, cameraEnabled: false),
         );
         await tester.pumpAndSettle();
         expect(find.text('Welcome\nback'), findsOneWidget);
@@ -114,16 +110,18 @@ void main() {
     );
 
     testWidgets(
-      'removed strings never appear on the account screen',
+      'removed strings never appear on the entry or sign-in screens',
       (tester) async {
         final repo = FakeParticipantRepository(authenticated: false);
         await tester.pumpWidget(
           ParticipantApp(
             repository: repo,
-            initialPage: 'account',
+            initialPage: 'entry',
             cameraEnabled: false,
           ),
         );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('go-to-signin')));
         await tester.pumpAndSettle();
         expect(
           find.textContaining('Coach access is approved by your admin'),
@@ -144,20 +142,20 @@ void main() {
         await tester.pumpWidget(
           ParticipantApp(
             repository: repo,
-            initialPage: 'account',
+            initialPage: 'signup',
             cameraEnabled: false,
           ),
         );
         await tester.pumpAndSettle();
-        // This repo defaults to "Welcome back" (a returning device) --
-        // switch to "Create account" so the button actually calls signUp.
-        await tester.tap(find.byKey(const Key('toggle-signup')));
-        await tester.pumpAndSettle();
+        expect(find.text('STEP 1 OF 4'), findsOneWidget);
         await tester.enterText(find.byKey(const Key('email')), 'new@example.test');
         await tester.enterText(find.byKey(const Key('password')), 'Test-password-1');
         await tester.tap(find.byKey(const Key('authenticate')));
         await tester.pumpAndSettle();
-        expect(find.text('Check your inbox'), findsOneWidget);
+        expect(find.text('STEP 2 OF 4'), findsOneWidget);
+        // Appears twice: the StepBar's own step-2 label, and the panel's
+        // big headline reinforcing it -- both intentional, not a bug.
+        expect(find.text('Check your inbox'), findsNWidgets(2));
         expect(find.textContaining('new@example.test'), findsOneWidget);
         expect(find.byKey(const Key('open-email-app')), findsOneWidget);
         expect(find.byKey(const Key('resend-verification')), findsOneWidget);
@@ -182,7 +180,7 @@ void main() {
 
   group('item 2: check in without an app account', () {
     testWidgets(
-      'Scan QR code is the first and main action; pasting a link is a hidden secondary option',
+      'the camera opens immediately, no button first; pasting a link is a hidden secondary option',
       (tester) async {
         final repo = FakeParticipantRepository(authenticated: false);
         await tester.pumpWidget(
@@ -193,15 +191,8 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        expect(find.byKey(const Key('start-scan')), findsOneWidget);
-        expect(find.text('Scan QR code'), findsOneWidget);
         expect(find.byKey(const Key('toggle-paste-link')), findsOneWidget);
         expect(find.byKey(const Key('noapp-qr')), findsNothing);
-        await tester.tap(find.byKey(const Key('start-scan')));
-        await tester.pumpAndSettle();
-        // Tapping it is what asks for camera access -- not a startup
-        // permission prompt before the user has engaged with the feature.
-        expect(find.byKey(const Key('start-scan')), findsNothing);
         await tester.tap(find.byKey(const Key('toggle-paste-link')));
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('noapp-qr')), findsOneWidget);
@@ -209,7 +200,7 @@ void main() {
     );
 
     testWidgets(
-      'an invalid session code shows a friendly message, never the FormatException class name',
+      'an invalid session code shows a friendly message and a Scan again button, never the FormatException class name',
       (tester) async {
         setTallView(tester);
         final repo = FakeParticipantRepository(authenticated: false);
@@ -231,10 +222,11 @@ void main() {
         await tester.pumpAndSettle();
         expect(
           find.text(
-            "That doesn't look like a Rally4Ever session code. Ask your coach to show the current QR code.",
+            "That doesn't look like a RALLY4EVER session code. Ask your coach to show the current one.",
           ),
           findsOneWidget,
         );
+        expect(find.byKey(const Key('scan-again')), findsOneWidget);
         expect(find.textContaining('FormatException'), findsNothing);
       },
     );

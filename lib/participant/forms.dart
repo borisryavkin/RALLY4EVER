@@ -6,25 +6,246 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:permission_handler/permission_handler.dart' show openAppSettings;
 import 'package:url_launcher/url_launcher.dart';
 
 import 'repository.dart';
 import 'legal_text.dart';
 import 'theme.dart';
 
+/// Shown once on a device that's never signed in: the logo, a calm
+/// reassurance line, and three big, clearly-ordered actions -- Google
+/// first (fastest, no typing), email second, and a quieter way to just
+/// check in without creating anything at all. Never a dead end: the one
+/// link down the bottom always reaches the returning-user Sign in screen.
+class EntryScreen extends StatelessWidget {
+  const EntryScreen({
+    super.key,
+    required this.repository,
+    required this.onAction,
+    required this.busy,
+    required this.onUseEmail,
+    required this.onCheckInWithoutAccount,
+    required this.onSignIn,
+  });
+  final ParticipantRepository repository;
+  final Future<void> Function(Future<void> Function()) onAction;
+  final bool busy;
+  final VoidCallback onUseEmail, onCheckInWithoutAccount, onSignIn;
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const SizedBox(height: 56),
+      Text(
+        'Join\nRALLY4EVER',
+        style: Theme.of(context).textTheme.headlineLarge,
+      ),
+      const SizedBox(height: 12),
+      const Text(
+        'No expectations. No judgement. Come as you are.',
+        style: TextStyle(color: slate, height: 1.5),
+      ),
+      const SizedBox(height: 40),
+      FilledButton.icon(
+        key: const Key('google-sign-in'),
+        onPressed: busy || !repository.enabled
+            ? null
+            : () => onAction(repository.signInGoogle),
+        icon: const Icon(Icons.account_circle_outlined),
+        label: const Text('Continue with Google'),
+      ),
+      const SizedBox(height: 14),
+      OutlinedButton.icon(
+        key: const Key('use-my-email'),
+        onPressed: busy ? null : onUseEmail,
+        icon: const Icon(Icons.mail_outline),
+        label: const Text('Use my email'),
+      ),
+      const SizedBox(height: 14),
+      Center(
+        child: TextButton(
+          key: const Key('check-in-without-account'),
+          onPressed: onCheckInWithoutAccount,
+          child: const Text('Check in without an account'),
+        ),
+      ),
+      const SizedBox(height: 28),
+      if (!repository.enabled)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Panel(
+            color: pink,
+            child: Text(
+              kDebugMode
+                  ? 'Start the local emulators and run with USE_FIREBASE_EMULATORS=true to sign in.'
+                  : 'Sign-in is unavailable. Please close and reopen the app, or contact RALLY4EVER.',
+            ),
+          ),
+        ),
+      Center(
+        child: TextButton(
+          key: const Key('go-to-signin'),
+          onPressed: onSignIn,
+          child: const Text('Already have an account? Sign in'),
+        ),
+      ),
+    ],
+  );
+}
+
+/// Shown on a device that's signed in before -- straight to the fields,
+/// no re-pitching the community. Google and email sit together here (the
+/// entry screen keeps them as separate big buttons instead), so this is
+/// also where the "same account either way" reassurance lives.
+class SignInScreen extends StatefulWidget {
+  const SignInScreen({
+    super.key,
+    required this.repository,
+    required this.onAction,
+    required this.busy,
+    required this.onForgotPassword,
+    required this.onCreateAccount,
+    required this.onCheckInWithoutAccount,
+  });
+  final ParticipantRepository repository;
+  final Future<void> Function(Future<void> Function()) onAction;
+  final bool busy;
+  final VoidCallback onForgotPassword, onCreateAccount, onCheckInWithoutAccount;
+  @override
+  State<SignInScreen> createState() => _SignInScreenState();
+}
+
+class _SignInScreenState extends State<SignInScreen> {
+  final email = TextEditingController(), password = TextEditingController();
+  bool passwordVisible = false;
+  @override
+  void dispose() {
+    email.dispose();
+    password.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const SizedBox(height: 56),
+      Text('Welcome\nback', style: Theme.of(context).textTheme.headlineLarge),
+      const SizedBox(height: 12),
+      const Text(
+        'One email, one profile. Find your people and your next session.',
+        style: TextStyle(color: slate),
+      ),
+      const SizedBox(height: 28),
+      OutlinedButton.icon(
+        key: const Key('google-sign-in'),
+        onPressed: widget.busy || !widget.repository.enabled
+            ? null
+            : () => widget.onAction(widget.repository.signInGoogle),
+        icon: const Icon(Icons.account_circle_outlined),
+        label: const Text('Continue with Google'),
+      ),
+      const SizedBox(height: 8),
+      const Text(
+        'Same email, same account. Use Google or email, whichever you like.',
+        style: TextStyle(fontSize: 12, color: slate),
+      ),
+      const SizedBox(height: 20),
+      _field('Email', email, 'email', keyboard: TextInputType.emailAddress),
+      const SizedBox(height: 14),
+      TextField(
+        key: const Key('password'),
+        controller: password,
+        obscureText: !passwordVisible,
+        autofillHints: const [AutofillHints.password],
+        decoration: InputDecoration(
+          labelText: 'Password',
+          hintText: 'Your RALLY4EVER password',
+          suffixIcon: IconButton(
+            key: const Key('show-login-password'),
+            tooltip: passwordVisible ? 'Hide password' : 'Show password',
+            onPressed: () => setState(() => passwordVisible = !passwordVisible),
+            icon: Icon(
+              passwordVisible ? Icons.visibility_off : Icons.visibility,
+            ),
+          ),
+        ),
+      ),
+      const SizedBox(height: 4),
+      Align(
+        alignment: Alignment.centerRight,
+        child: TextButton(
+          key: const Key('forgot-password'),
+          onPressed: widget.onForgotPassword,
+          child: const Text('Forgot password?'),
+        ),
+      ),
+      const SizedBox(height: 10),
+      FilledButton(
+        key: const Key('authenticate'),
+        onPressed: widget.busy || !widget.repository.enabled
+            ? null
+            : () => widget.onAction(
+                () => widget.repository.signIn(email.text, password.text),
+              ),
+        child: const Text('Sign in'),
+      ),
+      const SizedBox(height: 6),
+      Center(
+        child: TextButton(
+          key: const Key('toggle-signup'),
+          onPressed: widget.onCreateAccount,
+          child: const Text('New here? Create an account'),
+        ),
+      ),
+      Center(
+        child: TextButton(
+          key: const Key('check-in-without-account'),
+          onPressed: widget.onCheckInWithoutAccount,
+          child: const Text('Check in without an account'),
+        ),
+      ),
+      if (!widget.repository.enabled)
+        Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Panel(
+            color: pink,
+            child: Text(
+              kDebugMode
+                  ? 'Start the local emulators and run with USE_FIREBASE_EMULATORS=true to sign in.'
+                  : 'Sign-in is unavailable. Please close and reopen the app, or contact RALLY4EVER.',
+            ),
+          ),
+        ),
+      const SizedBox(height: 16),
+    ],
+  );
+}
+
+const signupSteps = [
+  (Icons.mail_outline, 'Your email'),
+  (Icons.inbox_outlined, 'Check your inbox'),
+  (Icons.person_outline, 'About you'),
+  (Icons.check_circle_outline, "You're in"),
+];
+
+/// The email path of signing up, always a brand-new account (returning
+/// users sign in on [SignInScreen] instead) -- step 1 ("Your email") and,
+/// once submitted, step 2 ("Check your inbox") replace the form entirely
+/// with [_verificationPanel] rather than sitting above it, since there's
+/// nothing left to do here until the link is opened.
 class AccountForm extends StatefulWidget {
   const AccountForm({
     super.key,
     required this.repository,
     required this.onAction,
     required this.busy,
-    required this.onForgotPassword,
     required this.verificationPanelKey,
   });
   final ParticipantRepository repository;
   final Future<void> Function(Future<void> Function()) onAction;
   final bool busy;
-  final VoidCallback onForgotPassword;
   final GlobalKey verificationPanelKey;
   @override
   State<AccountForm> createState() => _AccountFormState();
@@ -33,7 +254,6 @@ class AccountForm extends StatefulWidget {
 class _AccountFormState extends State<AccountForm> {
   final email = TextEditingController(), password = TextEditingController();
   bool passwordVisible = false;
-  late bool signup = !widget.repository.hasSignedInBefore;
   String? verifyHint;
   int resendCooldown = 0;
   Timer? _resendTicker;
@@ -87,6 +307,8 @@ class _AccountFormState extends State<AccountForm> {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        const Icon(Icons.mail_outline, color: Colors.white, size: 36),
+        const SizedBox(height: 12),
         const Text(
           'Check your inbox',
           style: TextStyle(
@@ -98,7 +320,7 @@ class _AccountFormState extends State<AccountForm> {
         ),
         const SizedBox(height: 10),
         Text(
-          'We sent a verification link to ${widget.repository.email}. Open it, then come back here to continue.',
+          'We sent a link to ${widget.repository.email}. Open it, then come back here.',
           style: const TextStyle(color: Colors.white),
         ),
         if (verifyHint != null) ...[
@@ -153,59 +375,37 @@ class _AccountFormState extends State<AccountForm> {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      const SizedBox(height: 48),
-      const Text(
-        'ONE COMMUNITY. ONE ACCOUNT.',
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 1.1,
-          color: slate,
-        ),
-      ),
-      const SizedBox(height: 14),
+      const SizedBox(height: 32),
+      StepBar(steps: signupSteps, current: awaitingVerification ? 2 : 1),
+      const SizedBox(height: 28),
       Text(
-        signup ? 'Join the\ncommunity' : 'Welcome\nback',
+        awaitingVerification ? 'Almost there' : 'Your\nemail',
         style: Theme.of(context).textTheme.headlineLarge,
       ),
       const SizedBox(height: 12),
       Text(
-        'One email, one profile. Find your people and your next session.',
+        awaitingVerification
+            ? 'Open the link we sent, then come back here.'
+            : 'One email, one profile. Find your people and your next session.',
+        style: const TextStyle(color: slate),
       ),
       const SizedBox(height: 24),
       // Once an account exists and is pending verification, that's the
-      // only thing on this screen -- re-showing "Create account"/"Sign
-      // in" and the email/password fields right below it is confusing
-      // and has nothing left to do until the link is opened.
+      // only thing on this screen -- re-showing the form right below it
+      // is confusing and has nothing left to do until the link is opened.
       if (awaitingVerification)
         _verificationPanel()
       else ...[
-        OutlinedButton.icon(
-          key: const Key('google-sign-in'),
-          onPressed: widget.busy || !widget.repository.enabled
-              ? null
-              : () => widget.onAction(widget.repository.signInGoogle),
-          icon: const Icon(Icons.account_circle_outlined),
-          label: const Text('Continue with Google'),
-        ),
-        const SizedBox(height: 8),
-        const Text(
-          'Use Google or email with the same account.',
-          style: TextStyle(fontSize: 12),
-        ),
-        const SizedBox(height: 16),
         _field('Email', email, 'email', keyboard: TextInputType.emailAddress),
         const SizedBox(height: 14),
         TextField(
           key: const Key('password'),
           controller: password,
           obscureText: !passwordVisible,
-          autofillHints: const [AutofillHints.password],
+          autofillHints: const [AutofillHints.newPassword],
           decoration: InputDecoration(
-            labelText: 'App password',
-            hintText: signup
-                ? 'At least 6 characters'
-                : 'Your Rally4Ever app password',
+            labelText: 'Password',
+            hintText: 'At least 8 characters',
             suffixIcon: IconButton(
               key: const Key('show-login-password'),
               tooltip: passwordVisible ? 'Hide password' : 'Show password',
@@ -217,46 +417,26 @@ class _AccountFormState extends State<AccountForm> {
             ),
           ),
         ),
-        if (!signup) ...[
-          const SizedBox(height: 4),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton(
-              key: const Key('forgot-password'),
-              onPressed: widget.onForgotPassword,
-              child: const Text('Set or reset app password'),
-            ),
-          ),
-        ],
-        const SizedBox(height: 6),
+        const SizedBox(height: 16),
         FilledButton(
           key: const Key('authenticate'),
           onPressed: widget.busy || !widget.repository.enabled
               ? null
               : () => widget.onAction(
-                  () => signup
-                      ? widget.repository.signUp(email.text, password.text)
-                      : widget.repository.signIn(email.text, password.text),
+                  () => widget.repository.signUp(email.text, password.text),
                 ),
-          child: Text(signup ? 'Create account' : 'Sign in'),
-        ),
-        const SizedBox(height: 6),
-        TextButton(
-          key: const Key('toggle-signup'),
-          onPressed: () => setState(() => signup = !signup),
-          child: Text(
-            signup
-                ? 'Already a member? Sign in'
-                : 'New here? Create an account',
-          ),
+          child: const Text('Create account'),
         ),
         if (!widget.repository.enabled)
-          const Panel(
-            color: pink,
-            child: Text(
-              kDebugMode
-                  ? 'Start the local emulators and run with USE_FIREBASE_EMULATORS=true to sign in.'
-                  : 'Sign-in is unavailable. Please close and reopen the app, or contact Rally4Ever.',
+          Padding(
+            padding: const EdgeInsets.only(top: 16),
+            child: Panel(
+              color: pink,
+              child: Text(
+                kDebugMode
+                    ? 'Start the local emulators and run with USE_FIREBASE_EMULATORS=true to sign in.'
+                    : 'Sign-in is unavailable. Please close and reopen the app, or contact RALLY4EVER.',
+              ),
             ),
           ),
       ],
@@ -270,6 +450,7 @@ Widget _field(
   TextEditingController controller,
   String name, {
   TextInputType? keyboard,
+  ValueChanged<String>? onChanged,
 }) => Padding(
   padding: const EdgeInsets.only(bottom: 8),
   child: Column(
@@ -288,6 +469,7 @@ Widget _field(
         key: Key(name),
         controller: controller,
         keyboardType: keyboard,
+        onChanged: onChanged,
         decoration: InputDecoration(hintText: label),
       ),
     ],
@@ -405,7 +587,7 @@ class _ForgotPasswordFormState extends State<ForgotPasswordForm> {
       ),
       const SizedBox(height: 16),
       const Text(
-        'First used Google? Sign in with Google, then open Me → Sign-in methods to add an app password.',
+        'First used Google? Sign in with Google, then open Me → Account to add a password.',
         style: TextStyle(fontSize: 12, color: slate),
       ),
     ],
@@ -1190,14 +1372,23 @@ class _FeedbackFormState extends State<FeedbackForm> {
   );
 }
 
+const _noAppSteps = [
+  (Icons.qr_code_scanner, 'Scan'),
+  (Icons.person_outline, 'Your details'),
+  (Icons.description_outlined, 'Agreements'),
+  (Icons.check_circle_outline, 'Done'),
+];
+
 class NoAppCheckInForm extends StatefulWidget {
   const NoAppCheckInForm({
     super.key,
     required this.repository,
     this.cameraEnabled = true,
+    this.onCreateAccount,
   });
   final ParticipantRepository repository;
   final bool cameraEnabled;
+  final VoidCallback? onCreateAccount;
   @override
   State<NoAppCheckInForm> createState() => _NoAppCheckInFormState();
 }
@@ -1216,14 +1407,13 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
       k: TextEditingController(),
   };
   List<Record> forms = [];
-  Record? position;
+  Record? position, sessionInfo;
   CheckInLink? link;
   String? requestId, error;
-  bool accepted = false,
-      busy = false,
-      pending = false,
-      showPasteLink = false,
-      scanning = false;
+  // 0 scan, 1 confirm session, 2 your details, 3 agreements, 4 done.
+  int stage = 0;
+  int agreementIndex = 0;
+  bool accepted = false, busy = false, pending = false, showPasteLink = false;
   MobileScannerController? scanner;
   @override
   void dispose() {
@@ -1249,7 +1439,8 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
   }
 
   /// Shared by the camera's onDetect and the paste-a-link fallback: loads
-  /// the session and its agreements from whatever QR/link text came in.
+  /// the session (for the "Is this your session?" confirmation) and its
+  /// agreements from whatever QR/link text came in.
   Future<void> _scan(String raw) => run(() async {
     await scanner?.stop();
     try {
@@ -1264,9 +1455,11 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
         setState(() {
           link = parsed;
           position = pos;
+          sessionInfo = info;
           forms = (info['forms'] as List)
               .map((f) => Map<String, dynamic>.from(f as Map))
               .toList();
+          stage = 1;
         });
       }
     } finally {
@@ -1274,9 +1467,32 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
     }
   });
 
+  void _scanAgain() => setState(() {
+    link = null;
+    sessionInfo = null;
+    forms = [];
+    agreementIndex = 0;
+    accepted = false;
+    error = null;
+    stage = 0;
+    unawaited(scanner?.start());
+  });
+
+  static const _detailFields = [
+    ('email', 'Email'),
+    ('firstName', 'First name'),
+    ('mobile', 'Mobile'),
+    ('emergencyName', 'Emergency contact name'),
+    ('emergencyMobile', 'Emergency contact mobile'),
+  ];
+  List<String> get _missingDetails => [
+    for (final field in _detailFields)
+      if (fields[field.$1]!.text.trim().isEmpty) field.$2,
+  ];
+
   @override
   Widget build(BuildContext context) {
-    if (widget.cameraEnabled && scanning && link == null) {
+    if (widget.cameraEnabled && stage == 0) {
       scanner ??= MobileScannerController();
     }
     if (pending) {
@@ -1305,21 +1521,47 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
         ],
       );
     }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Check in with\nyour coach',
-          style: Theme.of(context).textTheme.headlineMedium,
-        ),
-        const SizedBox(height: 10),
-        const Text(
-          'No app account needed. Returning members may need to verify their email.',
-        ),
-        const SizedBox(height: 20),
-        if (error != null) Panel(color: pink, child: Text(error!)),
-        if (busy) const LinearProgressIndicator(),
-        if (requestId != null) ...[
+    if (stage == 4) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          StepBar(steps: _noAppSteps, current: 4),
+          const SizedBox(height: 32),
+          const Center(
+            child: Icon(Icons.check_circle_outline, color: coral, size: 56),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            "You're checked in",
+            style: Theme.of(context).textTheme.headlineLarge,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Your coach will confirm you in person at the court. No need to do anything else.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: slate),
+          ),
+          const SizedBox(height: 28),
+          if (widget.onCreateAccount != null)
+            Center(
+              child: TextButton(
+                key: const Key('soft-create-account'),
+                onPressed: widget.onCreateAccount,
+                child: const Text(
+                  'Want to save your details for next time? Create an account',
+                ),
+              ),
+            ),
+        ],
+      );
+    }
+    if (requestId != null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (error != null) Panel(color: pink, child: Text(error!)),
+          if (busy) const LinearProgressIndicator(),
           const Panel(
             color: pink,
             child: Text(
@@ -1331,6 +1573,7 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
             fields['emailLink']!,
             'noapp-email-link',
           ),
+          const SizedBox(height: 12),
           FilledButton(
             onPressed: busy
                 ? null
@@ -1344,119 +1587,346 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
                         'secret': link!.secret,
                       },
                     );
-                    if (result['status'] == 'pending' && mounted) {
-                      setState(() => pending = true);
+                    if (mounted) {
+                      setState(() {
+                        if (result['status'] == 'pending') pending = true;
+                        stage = 4;
+                      });
                     }
                   }),
             child: const Text('Verify and check in'),
           ),
-        ] else if (link == null) ...[
-          if (!scanning)
-            FilledButton.icon(
-              key: const Key('start-scan'),
-              icon: const Icon(Icons.qr_code_scanner),
-              label: const Text('Scan QR code'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(56),
-              ),
-              onPressed: () => setState(() => scanning = true),
-            )
-          else
-            ClipRRect(
-              borderRadius: BorderRadius.circular(24),
-              child: SizedBox(
-                height: 240,
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    if (widget.cameraEnabled)
-                      MobileScanner(
-                        key: const Key('noapp-scanner'),
-                        controller: scanner!,
-                        onDetect: (capture) {
-                          if (busy) return;
-                          final value = capture.barcodes.firstOrNull?.rawValue;
-                          if (value != null) unawaited(_scan(value));
-                        },
-                        errorBuilder: (context, error) => const ColoredBox(
-                          color: Color(0xffe4dfdd),
-                          child: Center(
-                            child: Text(
-                              'Allow camera access, or enter a link or code instead.',
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                        ),
-                      )
-                    else
-                      const ColoredBox(color: Color(0xffe4dfdd)),
-                    Center(
-                      child: Container(
-                        width: 190,
-                        height: 190,
-                        decoration: BoxDecoration(
-                          border: Border.all(color: coral, width: 3),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                      ),
-                    ),
-                  ],
+        ],
+      );
+    }
+    if (stage == 0) return _scanStage(context);
+    if (stage == 1) return _confirmStage(context);
+    if (stage == 2) return _detailsStage(context);
+    return _agreementsStage(context);
+  }
+
+  Widget _scanStage(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Text(
+        'Ask your coach to show the session QR code.',
+        style: TextStyle(color: slate),
+      ),
+      const SizedBox(height: 16),
+      if (error != null) ...[
+        Panel(color: pink, child: Text(error!)),
+        const SizedBox(height: 10),
+        Center(
+          child: OutlinedButton(
+            key: const Key('scan-again'),
+            onPressed: () => setState(() => error = null),
+            child: const Text('Scan again'),
+          ),
+        ),
+        const SizedBox(height: 10),
+      ],
+      if (busy) const LinearProgressIndicator(),
+      ClipRRect(
+        borderRadius: BorderRadius.circular(24),
+        child: SizedBox(
+          height: 260,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              if (widget.cameraEnabled)
+                MobileScanner(
+                  key: const Key('noapp-scanner'),
+                  controller: scanner!,
+                  onDetect: (capture) {
+                    if (busy) return;
+                    final value = capture.barcodes.firstOrNull?.rawValue;
+                    if (value != null) unawaited(_scan(value));
+                  },
+                  errorBuilder: (context, error) => _cameraFallback(context),
+                )
+              else
+                _cameraFallback(context),
+              Center(
+                child: Container(
+                  width: 190,
+                  height: 190,
+                  decoration: BoxDecoration(
+                    border: Border.all(color: coral, width: 3),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
                 ),
               ),
-            ),
-          const SizedBox(height: 14),
-          Center(
-            child: TextButton(
-              key: const Key('toggle-paste-link'),
-              onPressed: () => setState(() => showPasteLink = !showPasteLink),
-              child: const Text('Enter a link or code instead'),
-            ),
+            ],
           ),
-          if (showPasteLink) ...[
-            _field('Session link or code', fields['qr']!, 'noapp-qr'),
-            const SizedBox(height: 8),
+        ),
+      ),
+      const SizedBox(height: 16),
+      Center(
+        child: TextButton(
+          key: const Key('toggle-paste-link'),
+          onPressed: () => setState(() => showPasteLink = !showPasteLink),
+          child: const Text('Enter a code or link instead'),
+        ),
+      ),
+      if (showPasteLink) ...[
+        _field('Session link or code', fields['qr']!, 'noapp-qr'),
+        const SizedBox(height: 8),
+        OutlinedButton(
+          key: const Key('noapp-use-code'),
+          onPressed: busy ? null : () => _scan(fields['qr']!.text),
+          child: const Text('Use this code'),
+        ),
+      ],
+      const SizedBox(height: 16),
+      const Text(
+        'Your coach confirms every check-in in person. This does not sign you in to the member app.',
+        style: TextStyle(fontSize: 12, color: slate),
+      ),
+    ],
+  );
+
+  Widget _cameraFallback(BuildContext context) => ColoredBox(
+    color: const Color(0xffe4dfdd),
+    child: Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.camera_alt_outlined, color: slate, size: 32),
+            const SizedBox(height: 12),
+            const Text(
+              "We can't reach the camera. Enter a code or link instead, or allow camera access in Settings.",
+              textAlign: TextAlign.center,
+              style: TextStyle(color: slate),
+            ),
+            const SizedBox(height: 14),
             OutlinedButton(
-              key: const Key('noapp-use-code'),
-              onPressed: busy ? null : () => _scan(fields['qr']!.text),
-              child: const Text('Use this code'),
+              key: const Key('open-camera-settings'),
+              onPressed: () => unawaited(openAppSettings()),
+              child: const Text('Open settings'),
             ),
           ],
-        ] else ...[
-          for (final item in [
-            ('email', 'Email'),
-            ('firstName', 'First name'),
-            ('mobile', 'Mobile'),
-            ('emergencyName', 'Emergency contact name'),
-            ('emergencyMobile', 'Emergency contact mobile'),
-          ])
-            _field(item.$2, fields[item.$1]!, 'noapp-${item.$1}'),
-          for (final f in forms) ...[
-            const SizedBox(height: 12),
-            Panel(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        ),
+      ),
+    ),
+  );
+
+  Widget _confirmStage(BuildContext context) {
+    final info = sessionInfo!;
+    final start = DateTime.tryParse(info['startsAt'] as String? ?? '');
+    final venue = info['venue'] as Map? ?? {};
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        StepBar(steps: _noAppSteps, current: 1),
+        const SizedBox(height: 24),
+        Text(
+          'Is this your session?',
+          style: Theme.of(context).textTheme.headlineMedium,
+        ),
+        const SizedBox(height: 20),
+        Panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${info['name']}',
+                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+              ),
+              const SizedBox(height: 10),
+              if (start != null)
+                Row(
+                  children: [
+                    const Icon(Icons.schedule, size: 18, color: slate),
+                    const SizedBox(width: 8),
+                    Text(friendlyDateTime(start)),
+                  ],
+                ),
+              const SizedBox(height: 6),
+              Row(
                 children: [
-                  Text(
-                    '${f['title']} · v${f['version']}',
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  const SizedBox(height: 8),
-                  LegalFormText(formText(f)),
+                  const Icon(Icons.place_outlined, size: 18, color: slate),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text('${venue['name']}, ${venue['suburb']}')),
                 ],
               ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        FilledButton(
+          key: const Key('confirm-session'),
+          onPressed: () => setState(() => stage = 2),
+          child: const Text("Yes, that's it"),
+        ),
+        const SizedBox(height: 10),
+        Center(
+          child: TextButton(
+            key: const Key('scan-again'),
+            onPressed: _scanAgain,
+            child: const Text('Scan again'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _detailsStage(BuildContext context) {
+    final missing = _missingDetails;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        StepBar(steps: _noAppSteps, current: 2),
+        const SizedBox(height: 24),
+        Text('Your details', style: Theme.of(context).textTheme.headlineMedium),
+        const SizedBox(height: 20),
+        if (error != null) Panel(color: pink, child: Text(error!)),
+        _field(
+          'Email',
+          fields['email']!,
+          'noapp-email',
+          keyboard: TextInputType.emailAddress,
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 12),
+        _field(
+          'First name',
+          fields['firstName']!,
+          'noapp-firstName',
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 12),
+        _field(
+          'Mobile',
+          fields['mobile']!,
+          'noapp-mobile',
+          keyboard: TextInputType.phone,
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          'So we can reach someone if you’re hurt',
+          style: TextStyle(fontSize: 12, color: slate),
+        ),
+        const SizedBox(height: 4),
+        _field(
+          'Emergency contact name',
+          fields['emergencyName']!,
+          'noapp-emergencyName',
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 12),
+        _field(
+          'Emergency contact mobile',
+          fields['emergencyMobile']!,
+          'noapp-emergencyMobile',
+          keyboard: TextInputType.phone,
+          onChanged: (_) => setState(() {}),
+        ),
+        const SizedBox(height: 20),
+        if (missing.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              'Still needed: ${missing.join(', ')}',
+              key: const Key('missing-details'),
+              style: const TextStyle(color: slate, fontSize: 12),
             ),
-          ],
-          if (forms.isNotEmpty)
-            CheckboxListTile(
-              value: accepted,
-              onChanged: (v) => setState(() => accepted = v ?? false),
-              title: const Text('I have read and agree to these forms.'),
+          ),
+        FilledButton(
+          key: const Key('details-continue'),
+          onPressed: missing.isNotEmpty
+              ? null
+              : () => setState(() {
+                  agreementIndex = 0;
+                  stage = 3;
+                }),
+          child: const Text('Continue'),
+        ),
+        const SizedBox(height: 10),
+        Center(
+          child: TextButton(
+            onPressed: () => setState(() => stage = 1),
+            child: const Text('Back'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _agreementsStage(BuildContext context) {
+    if (forms.isEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          StepBar(steps: _noAppSteps, current: 3),
+          const SizedBox(height: 24),
+          const Panel(
+            color: pink,
+            child: Text(
+              "This session needs a form that isn't available yet. Please see your coach.",
             ),
+          ),
           const SizedBox(height: 16),
-          FilledButton(
-            onPressed: busy || !accepted || link == null
-                ? null
-                : () => run(() async {
+          Center(
+            child: TextButton(
+              onPressed: () => setState(() => stage = 2),
+              child: const Text('Back'),
+            ),
+          ),
+        ],
+      );
+    }
+    final f = forms[agreementIndex];
+    final required = f['required'] == true;
+    final last = agreementIndex == forms.length - 1;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        StepBar(steps: _noAppSteps, current: 3),
+        const SizedBox(height: 10),
+        Text(
+          'Agreement ${agreementIndex + 1} of ${forms.length}',
+          style: const TextStyle(color: slate, fontSize: 12, fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 14),
+        if (error != null) Panel(color: pink, child: Text(error!)),
+        if (busy) const LinearProgressIndicator(),
+        Panel(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${f['title']}',
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              LegalFormText(formText(f)),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        CheckboxListTile(
+          key: Key('agree-${f['id']}'),
+          value: accepted,
+          onChanged: (v) => setState(() => accepted = v ?? false),
+          title: const Text('I agree'),
+        ),
+        const SizedBox(height: 12),
+        FilledButton(
+          key: const Key('agreement-continue'),
+          onPressed: busy || (required && !accepted)
+              ? null
+              : () {
+                  if (!last) {
+                    setState(() {
+                      agreementIndex++;
+                      accepted = false;
+                    });
+                    return;
+                  }
+                  run(() async {
                     final result = await widget.repository.call(
                       'beginNoAppCheckIn',
                       {
@@ -1471,24 +1941,32 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
                           'mobile': fields['emergencyMobile']!.text,
                         },
                         'signedVersions': {
-                          for (final f in forms) f['id']: f['version'],
+                          for (final form in forms) form['id']: form['version'],
                         },
                       },
                     );
                     if (mounted) {
                       setState(() {
-                        requestId = result['requestId'] as String?;
-                        pending = result['status'] == 'pending';
+                        if (result['requestId'] != null) {
+                          requestId = result['requestId'] as String?;
+                        } else {
+                          if (result['status'] == 'pending') pending = true;
+                          stage = 4;
+                        }
                       });
                     }
-                  }),
-            child: const Text('Check in'),
+                  });
+                },
+          child: Text(last ? 'Check in' : 'Agree and continue'),
+        ),
+        const SizedBox(height: 10),
+        Center(
+          child: TextButton(
+            onPressed: () => setState(
+              () => agreementIndex == 0 ? stage = 2 : agreementIndex--,
+            ),
+            child: const Text('Back'),
           ),
-        ],
-        const SizedBox(height: 16),
-        const Text(
-          'Your coach confirms every check-in in person. This does not sign you in to the member app.',
-          style: TextStyle(fontSize: 12),
         ),
       ],
     );
@@ -1554,7 +2032,7 @@ class _SignInMethodsPanelState extends State<SignInMethodsPanel> {
       Text(widget.repository.email ?? ''),
       const SizedBox(height: 16),
       const Text(
-        'Your profile, role and attendance stay the same whichever method you use. Your Google password stays with Google; an app password is set separately.',
+        'Your profile, role and attendance stay the same whichever method you use. Your Google password stays with Google; your RALLY4EVER password is set separately.',
       ),
       const SizedBox(height: 16),
       Text(
@@ -1564,11 +2042,11 @@ class _SignInMethodsPanelState extends State<SignInMethodsPanel> {
       if (widget.repository.passwordUser)
         const Panel(
           child: Text(
-            'Email/password sign-in: connected. Use Forgot password on the sign-in screen to reset your app password.',
+            'Email/password sign-in: connected. Use Forgot password? on the sign-in screen to reset it.',
           ),
         )
       else ...[
-        const Text('Add email/password sign-in to this account'),
+        const Text('Add a password so you can also sign in with email'),
         const SizedBox(height: 12),
         TextField(
           key: const Key('link-password'),
@@ -1576,7 +2054,7 @@ class _SignInMethodsPanelState extends State<SignInMethodsPanel> {
           obscureText: !visible,
           autofillHints: const [AutofillHints.newPassword],
           decoration: InputDecoration(
-            labelText: 'New app password',
+            labelText: 'New password',
             suffixIcon: IconButton(
               onPressed: () => setState(() => visible = !visible),
               icon: Icon(visible ? Icons.visibility_off : Icons.visibility),
@@ -1589,7 +2067,7 @@ class _SignInMethodsPanelState extends State<SignInMethodsPanel> {
           key: const Key('link-password-confirm'),
           controller: confirmation,
           obscureText: !visible,
-          decoration: const InputDecoration(labelText: 'Confirm app password'),
+          decoration: const InputDecoration(labelText: 'Confirm password'),
         ),
         if (error != null) Panel(color: pink, child: Text(error!)),
         const SizedBox(height: 16),

@@ -159,3 +159,85 @@ class StatusPill extends StatelessWidget {
     ),
   );
 }
+
+/// One calm, numbered progress indicator shared by the sign-up and no-app
+/// check-in flows: "Step X of N" plus an icon per step with small arrow
+/// connectors, the current step filled in Rally Red. Deliberately slow and
+/// legible (no animation, no time pressure) -- built for an audience that
+/// may have anxiety about getting something wrong, so the whole thing is
+/// exposed to screen readers as a single plain-language announcement
+/// rather than a maze of individually-focusable icons.
+class StepBar extends StatelessWidget {
+  const StepBar({super.key, required this.steps, required this.current});
+  final List<(IconData, String)> steps;
+  final int current;
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: 'Step $current of ${steps.length}: ${steps[current - 1].$2}',
+    child: ExcludeSemantics(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'STEP $current OF ${steps.length}',
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: slate,
+              letterSpacing: 1,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              for (var i = 0; i < steps.length; i++) ...[
+                if (i > 0)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 2),
+                    child: Icon(Icons.arrow_forward, size: 14, color: slate),
+                  ),
+                Expanded(
+                  child: Column(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: i + 1 <= current ? coral : Colors.white,
+                          border: Border.all(
+                            color: i + 1 <= current
+                                ? coral
+                                : const Color(0xffd9d6df),
+                            width: 2,
+                          ),
+                        ),
+                        child: Icon(
+                          steps[i].$1,
+                          size: 18,
+                          color: i + 1 <= current ? Colors.white : slate,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        steps[i].$2,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: i + 1 == current
+                              ? FontWeight.w800
+                              : FontWeight.w500,
+                          color: i + 1 == current ? navy : slate,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+}

@@ -123,7 +123,7 @@ void main() {
       'welcome1',
       'welcome2',
       'welcome3',
-      'account',
+      'entry',
       'home',
       'profile',
       'help',
@@ -147,7 +147,7 @@ void main() {
         final scaffold = find.byType(Scaffold).last;
         expect(tester.getSize(scaffold).width, size.width);
         expect(tester.takeException(), isNull);
-        if (page == 'welcome1' || page == 'account') {
+        if (page == 'welcome1' || page == 'entry') {
           await expectLater(
             find.byType(ParticipantApp),
             matchesGoldenFile(

@@ -24,7 +24,8 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      final repo = FakeParticipantRepository(authenticated: false);
+      final repo = FakeParticipantRepository(authenticated: false)
+        ..hasSignedInBefore = false;
       await tester.pumpWidget(
         ParticipantApp(
           repository: repo,
@@ -55,7 +56,7 @@ void main() {
     await tester.pumpWidget(
       ParticipantApp(
         repository: repo,
-        initialPage: 'account',
+        initialPage: 'entry',
         cameraEnabled: false,
       ),
     );
