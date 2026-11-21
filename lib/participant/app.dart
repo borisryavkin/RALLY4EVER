@@ -516,7 +516,32 @@ class _ParticipantAppState extends State<ParticipantApp>
                               error ?? repo.streamError!,
                               style: const TextStyle(color: navy),
                             ),
-                            if (error != null && _lastFailedAction != null)
+                            if (error == googleSignInFailedMessage)
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: Wrap(
+                                  spacing: 8,
+                                  children: [
+                                    TextButton(
+                                      key: const Key('google-signin-use-email'),
+                                      onPressed: busy
+                                          ? null
+                                          : () => go(
+                                              repo.hasSignedInBefore
+                                                  ? 'signin'
+                                                  : 'signup',
+                                            ),
+                                      child: const Text('Use email instead'),
+                                    ),
+                                    TextButton(
+                                      key: const Key('google-signin-retry'),
+                                      onPressed: busy ? null : retryLastAction,
+                                      child: const Text('Try again'),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else if (error != null && _lastFailedAction != null)
                               Align(
                                 alignment: Alignment.centerRight,
                                 child: TextButton(

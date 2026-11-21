@@ -15,6 +15,53 @@ import '../models/attendance_models.dart';
 
 typedef Record = Map<String, dynamic>;
 
+/// Rally4Ever's Firebase "Web client" OAuth client (client_type 3 in
+/// google-services.json), shared by every Android/iOS app in the
+/// rally4ever-3adaf project. Not a secret -- it's the same value Google
+/// ships inside every downloadable google-services.json -- so it's a safe
+/// fallback for a dart-define config file that hasn't been filled in yet.
+const _fallbackGoogleServerClientId =
+    '55117668228-rf3r7a555us3ueufb73q122pej0bqe4h.apps.googleusercontent.com';
+
+String _resolvedGoogleServerClientId() {
+  const serverId = String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
+  return serverId.isEmpty || serverId.startsWith('REPLACE_WITH')
+      ? _fallbackGoogleServerClientId
+      : serverId;
+}
+
+/// GoogleSignIn.instance.initialize() must run exactly once for the life of
+/// the app -- calling it again mid-flow (as the old code did, once per
+/// sign-in attempt) is a known cause of Android's
+/// GoogleSignInException(canceled, [16]) showing up for reasons that have
+/// nothing to do with the user actually canceling. [connectParticipantRepository]
+/// in app_bootstrap.dart awaits this once at startup; [_nativeGoogleIdentity]
+/// below just awaits the same cached future, so a user who taps the Google
+/// button before startup's call resolves still gets exactly one
+/// initialize() call, never a second one.
+Future<void>? _googleSignInReady;
+Future<void> ensureGoogleSignInInitialized() {
+  if (kIsWeb) return Future.value();
+  return _googleSignInReady ??= Future(() async {
+    const iosClientId = String.fromEnvironment('FIREBASE_IOS_CLIENT_ID');
+    try {
+      await GoogleSignIn.instance.initialize(
+        serverClientId: _resolvedGoogleServerClientId(),
+        clientId:
+            defaultTargetPlatform == TargetPlatform.iOS &&
+                iosClientId.isNotEmpty
+            ? iosClientId
+            : null,
+      );
+    } catch (_) {
+      // A transient failure (e.g. Play Services not ready yet) shouldn't
+      // permanently wedge every later Google sign-in attempt this session.
+      _googleSignInReady = null;
+      rethrow;
+    }
+  });
+}
+
 /// Thrown by [ParticipantRepository.sendPasswordReset] only for genuine rate
 /// limiting. Every other outcome (including an unknown email) is swallowed
 /// by the implementation so callers can't distinguish them.
@@ -71,6 +118,15 @@ class FunctionsCallError implements Exception {
   String toString() => message;
 }
 
+/// Shown for any [GoogleSignInException] -- including a "canceled" one that
+/// was never really a user cancellation, which is what a misconfigured
+/// serverClientId or an unregistered signing-certificate fingerprint looks
+/// like on Android. See [friendlyError] and app.dart's error banner, which
+/// offers "Try again" / "Use email instead" specifically for this message.
+const googleSignInFailedMessage =
+    "Google sign-in didn't work this time. You can try again, or use your "
+    'email instead.';
+
 /// The one place every screen turns a caught exception into user-facing
 /// text -- no screen should ever show a raw `e.toString()`, which can leak
 /// an exception's class name, a stack hint, or raw platform text. Unknown
@@ -81,6 +137,13 @@ String friendlyError(Object error) {
   if (error is FunctionsCallError) return error.message;
   if (error is StateError) return error.message;
   if (error is RecentSignInRequired) return error.toString();
+  if (error is GoogleSignInException) {
+    debugPrint(
+      'GoogleSignInException ${error.code}: '
+      '${error.description ?? error.details ?? ''}',
+    );
+    return googleSignInFailedMessage;
+  }
   if (error is FirebaseException) {
     debugPrint('${error.plugin} error ${error.code}: ${error.message}');
     return switch (error.code) {
@@ -393,6 +456,16 @@ class FirebaseParticipantRepository extends ParticipantRepository {
   }
 
   Future<void> restore() async {
+    // Fired here (app startup), not awaited: most sessions never touch
+    // Google sign-in, so startup shouldn't wait on it, but it still only
+    // ever runs once -- see ensureGoogleSignInInitialized. A failure here
+    // isn't shown to the user; _nativeGoogleIdentity retries it (and
+    // surfaces any error) the moment someone actually taps Google sign-in.
+    unawaited(
+      ensureGoogleSignInInitialized().catchError(
+        (Object e) => debugPrint('Google Sign-In did not initialize: $e'),
+      ),
+    );
     final user = backend.auth.currentUser;
     if (user != null) await _enter(user);
   }
@@ -594,15 +667,7 @@ class FirebaseParticipantRepository extends ParticipantRepository {
 
   Future<({AuthCredential credential, String email})>
   _nativeGoogleIdentity() async {
-    const serverId = String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
-    const iosClientId = String.fromEnvironment('FIREBASE_IOS_CLIENT_ID');
-    await GoogleSignIn.instance.initialize(
-      serverClientId: serverId.isEmpty ? null : serverId,
-      clientId:
-          defaultTargetPlatform == TargetPlatform.iOS && iosClientId.isNotEmpty
-          ? iosClientId
-          : null,
-    );
+    await ensureGoogleSignInInitialized();
     final account = await GoogleSignIn.instance.authenticate();
     final token = account.authentication.idToken;
     if (token == null) {
