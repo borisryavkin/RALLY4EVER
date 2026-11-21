@@ -1,148 +1,31 @@
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:timezone/timezone.dart' as tz;
 
-import 'catalogue.dart' show CataloguePhoto;
-import 'forms.dart' show PhotoTooLarge, PhotoUnreadable, processCataloguePhotoBytes;
 import 'repository.dart';
+import 'catalogue_photos.dart';
 import 'theme.dart';
 
-/// A plain section label grouping an editor's fields (Venue, Time,
-/// Capacity, Photo, Notes) -- used by both the program and session editors.
-Widget sectionHeader(String label) => Padding(
-  padding: const EdgeInsets.only(top: 8, bottom: 10),
-  child: Text(
-    label,
-    style: const TextStyle(
-      fontWeight: FontWeight.w800,
-      color: navy,
-      fontSize: 15,
-    ),
-  ),
-);
-
-/// Shared by the program and session editors: pick/take a photo, resize and
-/// upload it, or clear it back to the parent's fallback (session) / the
-/// neutral placeholder (program). [photoUrl] empty means "no override here".
-class CataloguePhotoField extends StatefulWidget {
-  const CataloguePhotoField({
-    super.key,
-    required this.repository,
-    required this.slot,
-    required this.photoUrl,
-    required this.onChanged,
-    this.fallbackUrl,
-  });
-  final ParticipantRepository repository;
-  final String slot;
-  final String photoUrl;
-  final String? fallbackUrl;
-  final ValueChanged<String> onChanged;
-  @override
-  State<CataloguePhotoField> createState() => _CataloguePhotoFieldState();
-}
-
-class _CataloguePhotoFieldState extends State<CataloguePhotoField> {
-  bool busy = false;
-  String? error;
-
-  Future<void> _pick(ImageSource source) async {
-    setState(() {
-      busy = true;
-      error = null;
-    });
-    try {
-      final picked = await ImagePicker().pickImage(source: source);
-      if (picked == null) return;
-      final processed = processCataloguePhotoBytes(await picked.readAsBytes());
-      final url = await widget.repository.uploadCataloguePhoto(
-        slot: widget.slot,
-        jpegBytes: processed,
-      );
-      widget.onChanged(url);
-    } on PhotoTooLarge {
-      if (mounted) setState(() => error = 'Choose a photo under 5 MB.');
-    } on PhotoUnreadable {
-      if (mounted) {
-        setState(() => error = 'That file could not be read as an image.');
-      }
-    } catch (e) {
-      if (mounted) setState(() => error = friendlyError(e));
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
-  }
-
-  Future<void> _choose() async {
-    final source = await showModalBottomSheet<ImageSource>(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.photo_camera_outlined),
-              title: const Text('Take a photo'),
-              onTap: () => Navigator.pop(context, ImageSource.camera),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('Choose from library'),
-              onTap: () => Navigator.pop(context, ImageSource.gallery),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (source != null) await _pick(source);
-  }
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 12),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Photo', style: TextStyle(fontWeight: FontWeight.w700)),
-        const SizedBox(height: 8),
-        CataloguePhoto(
-          record: {
-            'name': 'Preview',
-            'photoUrl': widget.photoUrl.isNotEmpty
-                ? widget.photoUrl
-                : (widget.fallbackUrl ?? ''),
-          },
-          repository: widget.repository,
-        ),
-        const SizedBox(height: 8),
-        if (busy) const LinearProgressIndicator(),
-        if (error != null) Panel(color: pink, child: Text(error!)),
-        Wrap(
-          spacing: 8,
-          children: [
-            OutlinedButton(
-              key: Key('${widget.slot}-change-photo'),
-              onPressed: busy ? null : _choose,
-              child: const Text('Change photo'),
-            ),
-            if (widget.fallbackUrl != null &&
-                widget.fallbackUrl!.isNotEmpty &&
-                widget.photoUrl.isNotEmpty)
-              OutlinedButton(
-                onPressed: busy ? null : () => widget.onChanged(''),
-                child: const Text('Use venue photo'),
-              ),
-            if (widget.photoUrl.isNotEmpty &&
-                (widget.fallbackUrl == null || widget.fallbackUrl!.isEmpty))
-              OutlinedButton(
-                onPressed: busy ? null : () => widget.onChanged(''),
-                child: const Text('Remove photo'),
-              ),
-          ],
-        ),
-      ],
-    ),
+String adminSessionTime(Record session) {
+  final d = tz.TZDateTime.from(
+    dateOf(session['startsAt']),
+    tz.getLocation(session['timezone'] as String? ?? 'Australia/Sydney'),
   );
+  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const months = [
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
+  ];
+  return '${days[d.weekday - 1]} ${d.day} ${months[d.month - 1]}, ${d.hour % 12 == 0 ? 12 : d.hour % 12}:${d.minute.toString().padLeft(2, '0')} ${d.hour < 12 ? 'am' : 'pm'}';
 }
 
 class CatalogueAdminPanel extends StatefulWidget {
@@ -328,7 +211,7 @@ class _CatalogueAdminPanelState extends State<CatalogueAdminPanel> {
                   TextButton(
                     onPressed: () => schedule(p, e),
                     child: Text(
-                      'Edit ${friendlyDateTime(dateOf(e['startsAt']))} · ${e['status']}',
+                      'Edit ${adminSessionTime(e)} · ${e['status']}',
                     ),
                   ),
 
@@ -376,8 +259,7 @@ class _ProgramEditorState extends State<ProgramEditor> {
       sport = 'tennis',
       state = 'NSW',
       zone = 'Australia/Sydney',
-      registration = 'open',
-      photoUrl = '';
+      registration = 'open';
   List<Record> coaches = [];
   Set<String> coachUids = {};
   bool busy = false;
@@ -392,7 +274,6 @@ class _ProgramEditorState extends State<ProgramEditor> {
     state = v['state'] as String? ?? state;
     zone = p['timezone'] as String? ?? zone;
     registration = p['registrationStatus'] as String? ?? registration;
-    photoUrl = p['photoUrl'] as String? ?? '';
     coachUids = Set<String>.from(p['coachUids'] as List? ?? []);
     revision = p['revision'] as int?;
     final initial = {
@@ -406,6 +287,7 @@ class _ProgramEditorState extends State<ProgramEditor> {
       'schedule': p['scheduleText'],
       'coachNames': (p['coachNames'] as List? ?? []).join(', '),
       'notes': p['notes'],
+      'photoUrl': p['photoUrl'],
       'capacity': p['capacity'],
     };
     for (final entry in initial.entries) {
@@ -527,7 +409,7 @@ class _ProgramEditorState extends State<ProgramEditor> {
           .where((v) => v.isNotEmpty)
           .toList(),
       'notes': value('notes'),
-      'photoUrl': photoUrl,
+      'photoUrl': value('photoUrl'),
       'capacity': capacity,
       'registrationStatus': registration,
     };
@@ -605,7 +487,6 @@ class _ProgramEditorState extends State<ProgramEditor> {
             'active',
             'archived',
           ], (v) => status = v),
-          sectionHeader('Venue'),
           field('venue', 'Venue name', required: true),
           field('address', 'Street address'),
           field('suburb', 'Suburb', required: true),
@@ -643,7 +524,6 @@ class _ProgramEditorState extends State<ProgramEditor> {
             'Australia/Darwin',
             'Australia/Hobart',
           ], (v) => zone = v),
-          sectionHeader('Time'),
           field(
             'schedule',
             'Regular schedule / term dates',
@@ -670,22 +550,14 @@ class _ProgramEditorState extends State<ProgramEditor> {
                     : coachUids.remove(coach['uid']),
               ),
             ),
-          sectionHeader('Capacity'),
+          field('notes', 'What participants should know', lines: 4),
+          field('photoUrl', 'Photo URL (HTTPS)'),
           field('capacity', 'Default session capacity (blank = unlimited)'),
           dropdown('Reservations', registration, [
             'open',
             'full',
             'closed',
           ], (v) => registration = v),
-          sectionHeader('Photo'),
-          CataloguePhotoField(
-            repository: widget.repository,
-            slot: 'program-${widget.program?['id'] ?? 'new'}',
-            photoUrl: photoUrl,
-            onChanged: (url) => setState(() => photoUrl = url),
-          ),
-          sectionHeader('Notes'),
-          field('notes', 'What participants should know', lines: 4),
           if (error != null) Panel(color: pink, child: Text(error!)),
           const SizedBox(height: 16),
           FilledButton(
@@ -751,12 +623,13 @@ class _SessionEditorState extends State<SessionEditor> {
   }
 
   final capacity = TextEditingController(), notes = TextEditingController();
-  String registration = 'open', status = 'published', photoUrl = '';
+  String registration = 'open', status = 'published';
   int? revision;
   @override
   void initState() {
     super.initState();
     final session = widget.session;
+    revision = session?['revision'] as int?;
     zone = (session?['timezone'] ?? widget.program['timezone']) as String;
     final venue = (session?['venue'] ?? widget.program['venue']) as Map;
     venueState = venue['state'] as String? ?? 'NSW';
@@ -775,13 +648,11 @@ class _SessionEditorState extends State<SessionEditor> {
     capacity.text =
         '${(session != null ? session['capacity'] : widget.program['capacity']) ?? ''}';
     notes.text = '${session?['notes'] ?? widget.program['notes'] ?? ''}';
-    photoUrl = session?['photoUrl'] as String? ?? '';
     registration =
         session?['registrationStatus'] as String? ??
         widget.program['registrationStatus'] as String? ??
         'open';
     status = session?['status'] as String? ?? 'published';
-    revision = session?['revision'] as int?;
   }
 
   String? error;
@@ -843,6 +714,10 @@ class _SessionEditorState extends State<SessionEditor> {
     if (widget.session != null) 'eventId': widget.session!['id'],
     if (widget.session != null) 'revision': revision,
     'venue': {
+      for (final key in ['id', 'code', 'photoUrl'])
+        if ((widget.session?['venue'] ?? widget.program['venue'])?[key] !=
+            null)
+          key: (widget.session?['venue'] ?? widget.program['venue'])[key],
       for (final key in ['name', 'address', 'suburb', 'postcode'])
         key: venueFields[key]!.text.trim(),
       'state': venueState,
@@ -856,7 +731,6 @@ class _SessionEditorState extends State<SessionEditor> {
         : int.parse(capacity.text.trim()),
     'registrationStatus': registration,
     'notes': notes.text.trim(),
-    'photoUrl': photoUrl,
     'status': status,
     'startsAt': start!.toUtc().toIso8601String(),
     'endsAt': end!.toUtc().toIso8601String(),
@@ -923,6 +797,18 @@ class _SessionEditorState extends State<SessionEditor> {
     body: ListView(
       padding: const EdgeInsets.all(24),
       children: [
+        if (widget.session != null)
+          CataloguePhotoControl(
+            repository: widget.repository,
+            record: widget.session!,
+            kind: 'session',
+            onSaved: () => setState(() {}),
+            onBusy: (value) {
+              if (mounted) setState(() => busy = value);
+            },
+          )
+        else
+          const Text('Save the session before adding its own photo.'),
         Text(
           '${widget.program['name']}',
           style: Theme.of(context).textTheme.headlineMedium,
@@ -931,25 +817,27 @@ class _SessionEditorState extends State<SessionEditor> {
           'Times use $zone. Venue, capacity and coaches apply to this session only.',
         ),
         const SizedBox(height: 20),
-        sectionHeader('Venue'),
-        for (final entry in const {
-          'name': 'Venue name',
-          'address': 'Street address',
-          'suburb': 'Suburb',
-          'postcode': 'Postcode',
-          'lat': 'Latitude',
-          'lng': 'Longitude',
-        }.entries)
+        Text('Venue', style: Theme.of(context).textTheme.titleLarge),
+        for (final key in venueFields.keys)
           Padding(
-            padding: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.only(top: 12),
             child: TextField(
-              controller: venueFields[entry.key],
-              decoration: InputDecoration(labelText: entry.value),
+              controller: venueFields[key],
+              decoration: InputDecoration(
+                labelText: const {
+                  'name': 'Venue name',
+                  'address': 'Street address',
+                  'suburb': 'Suburb',
+                  'postcode': 'Postcode',
+                  'lat': 'Latitude',
+                  'lng': 'Longitude',
+                }[key],
+              ),
             ),
           ),
         DropdownButtonFormField<String>(
           initialValue: venueState,
-          decoration: const InputDecoration(labelText: 'State or territory'),
+          decoration: const InputDecoration(labelText: 'Venue state'),
           items: [
             for (final value in [
               'ACT',
@@ -965,7 +853,21 @@ class _SessionEditorState extends State<SessionEditor> {
           ],
           onChanged: (v) => setState(() => venueState = v!),
         ),
-        sectionHeader('Time'),
+        const Text('Assigned session coaches'),
+        for (final coach in coaches)
+          CheckboxListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text('${coach['email']}'),
+            value: coachUids.contains(coach['uid']),
+            onChanged: (selected) => setState(() {
+              if (selected == true) {
+                coachUids.add(coach['uid'] as String);
+              } else {
+                coachUids.remove(coach['uid']);
+              }
+            }),
+          ),
+        Text('Time', style: Theme.of(context).textTheme.titleLarge),
         DropdownButtonFormField<String>(
           initialValue: zone,
           decoration: const InputDecoration(labelText: 'Session timezone'),
@@ -988,43 +890,24 @@ class _SessionEditorState extends State<SessionEditor> {
             end = null;
           }),
         ),
-        const SizedBox(height: 12),
         OutlinedButton(
           onPressed: () => pick(true),
           child: Text(
-            start == null ? 'Choose start date & time' : 'Starts: $start',
+            start == null
+                ? 'Choose start date & time'
+                : 'Starts: ${adminSessionTime({'startsAt': start, 'timezone': zone})}',
           ),
         ),
-        const SizedBox(height: 8),
         OutlinedButton(
           onPressed: () => pick(false),
-          child: Text(end == null ? 'Choose end date & time' : 'Ends: $end'),
-        ),
-        const SizedBox(height: 12),
-        DropdownButtonFormField<String>(
-          initialValue: status,
-          decoration: const InputDecoration(labelText: 'Session status'),
-          items: [
-            for (final value in ['published', 'cancelled'])
-              DropdownMenuItem(value: value, child: Text(value)),
-          ],
-          onChanged: (v) => setState(() => status = v!),
-        ),
-        const Text('Assigned session coaches'),
-        for (final coach in coaches)
-          CheckboxListTile(
-            contentPadding: EdgeInsets.zero,
-            title: Text('${coach['email']}'),
-            value: coachUids.contains(coach['uid']),
-            onChanged: (selected) => setState(() {
-              if (selected == true) {
-                coachUids.add(coach['uid'] as String);
-              } else {
-                coachUids.remove(coach['uid']);
-              }
-            }),
+          child: Text(
+            end == null
+                ? 'Choose end date & time'
+                : 'Ends: ${adminSessionTime({'startsAt': end, 'timezone': zone})}',
           ),
-        sectionHeader('Capacity'),
+        ),
+        const SizedBox(height: 16),
+        Text('Capacity', style: Theme.of(context).textTheme.titleLarge),
         TextField(
           controller: capacity,
           keyboardType: TextInputType.number,
@@ -1042,15 +925,18 @@ class _SessionEditorState extends State<SessionEditor> {
           ],
           onChanged: (v) => setState(() => registration = v!),
         ),
-        sectionHeader('Photo'),
-        CataloguePhotoField(
-          repository: widget.repository,
-          slot: 'session-${widget.session?['id'] ?? 'new'}',
-          photoUrl: photoUrl,
-          fallbackUrl: widget.program['photoUrl'] as String?,
-          onChanged: (url) => setState(() => photoUrl = url),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String>(
+          initialValue: status,
+          decoration: const InputDecoration(labelText: 'Session status'),
+          items: [
+            for (final value in ['published', 'cancelled'])
+              DropdownMenuItem(value: value, child: Text(value)),
+          ],
+          onChanged: (v) => setState(() => status = v!),
         ),
-        sectionHeader('Notes'),
+        const SizedBox(height: 12),
+        Text('Notes', style: Theme.of(context).textTheme.titleLarge),
         TextField(
           controller: notes,
           maxLines: 3,
@@ -1211,9 +1097,7 @@ class _SessionManagementPanelState extends State<SessionManagementPanel> {
                     '${session['name']}',
                     style: Theme.of(context).textTheme.titleLarge,
                   ),
-                  Text(
-                    '${friendlyDateTime(dateOf(session['startsAt']))} · ${session['status']}',
-                  ),
+                  Text('${adminSessionTime(session)} · ${session['status']}'),
                   Text(
                     '${session['venue']['name']} · Capacity: ${session['capacity'] ?? 'unlimited'}',
                   ),
@@ -1237,12 +1121,10 @@ class _SessionManagementPanelState extends State<SessionManagementPanel> {
                       ),
                       child: const Text('Edit / cancel / assign coaches'),
                     )
-                  else
+                  else if (session['programId'] == null)
                     TextButton(
                       onPressed: () => edit({...session, 'id': null}, session),
-                      child: const Text(
-                        'Edit / assign coaches (legacy session)',
-                      ),
+                      child: const Text('Edit session / assign coaches'),
                     ),
                 ],
               ),

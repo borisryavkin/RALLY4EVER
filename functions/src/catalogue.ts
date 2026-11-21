@@ -132,7 +132,7 @@ export class CatalogueService {
       if (capacity != null && rsvps.size > (capacity as number)) fail("failed-precondition", "capacity-below-reservations", "Capacity is below existing reservations");
       const at = this.service.stamp();
       const event = { ...(programId ? {programId} : {}), catalogueManaged: !!programId, name: p.name, sport: p.sport, venue, timezone,
-        notes: d.notes === undefined ? (p.notes ?? "") : text(d.notes, "notes", 4000, 0), photoUrl: d.photoUrl === undefined ? (p.photoUrl ?? "") : photo(d.photoUrl), coachNames, coachUids,
+        notes: d.notes === undefined ? (p.notes ?? "") : text(d.notes, "notes", 4000, 0), photoUrl: d.photoUrl === undefined ? (old.data()?.photoUrl ?? "") : photo(d.photoUrl), coachNames, coachUids,
         capacity, registrationStatus, bookedCount: rsvps.size, startsAt, endsAt, status,
         code: old.data()?.code ?? `s-${eventId}`, requiredFormIds: old.data()?.requiredFormIds ?? ["conduct", "waiver"],
         geofenceRadiusM: old.data()?.geofenceRadiusM ?? 150, createdAt: old.data()?.createdAt ?? at,

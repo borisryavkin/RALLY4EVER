@@ -97,8 +97,20 @@ test('venue photos require admin claim AND active profile; authenticated users c
  await assertFails(uploadBytes(ref(storage('participant-1'),path),jpeg,jpegMeta));
  await assertFails(uploadBytes(ref(storage('coach-1'),path),jpeg,jpegMeta));
  await assertFails(uploadBytes(ref(storage('admin-1','participant'),path),jpeg,jpegMeta));
- await assertFails(getBytes(ref(env.unauthenticatedContext().storage(),path)));
+ await assertSucceeds(getBytes(ref(env.unauthenticatedContext().storage(),path)));
  await assertFails(uploadBytes(ref(storage('admin-1'),'venues/court-one/code.html'),jpeg,{contentType:'text/html'}));
+ await seedProfile('admin-1','participant');
+ await assertFails(uploadBytes(ref(storage('admin-1'),path),jpeg,jpegMeta));
+});
+
+test('session photos are public; admin-only writes enforce MIME, size and revoked access',async()=>{
+ const path='sessions/session-one/photo.jpg';
+ await assertSucceeds(uploadBytes(ref(storage('admin-1'),path),jpeg,jpegMeta));
+ await assertSucceeds(getBytes(ref(env.unauthenticatedContext().storage(),path)));
+ await assertFails(uploadBytes(ref(storage('participant-1'),path),jpeg,jpegMeta));
+ await assertFails(uploadBytes(ref(env.unauthenticatedContext().storage(),path),jpeg,jpegMeta));
+ await assertFails(uploadBytes(ref(storage('admin-1'),path),jpeg,{contentType:'text/plain'}));
+ await assertFails(uploadBytes(ref(storage('admin-1'),path),new Uint8Array(5*1024*1024+1),jpegMeta));
  await seedProfile('admin-1','participant');
  await assertFails(uploadBytes(ref(storage('admin-1'),path),jpeg,jpegMeta));
 });

@@ -110,6 +110,7 @@ abstract class ParticipantRepository extends ChangeNotifier {
   Record contact = {};
   bool contactReady = false;
   List<Record> programs = [];
+  List<Record> venues = [];
   bool catalogueReady = false;
   String? catalogueError;
   List<Record> events = [],
@@ -304,14 +305,13 @@ abstract class ParticipantRepository extends ChangeNotifier {
 
   /// Null if there's no photo (or it can't be reached); never throws.
   Future<String?> photoDownloadUrl() async => null;
+  Future<String> uploadCataloguePhoto(
+    String kind,
+    String id,
+    Uint8List bytes,
+    ValueChanged<double> progress,
+  ) => throw UnimplementedError();
   Future<Uint8List?> venuePhotoBytes(String url) async => null;
-  /// Uploads an already-resized/compressed JPEG to the given catalogue
-  /// photo slot (e.g. `program-<id>` or `session-<id>`) and returns a
-  /// public HTTPS download URL suitable for a program/session `photoUrl`.
-  Future<String> uploadCataloguePhoto({
-    required String slot,
-    required List<int> jpegBytes,
-  }) => throw UnimplementedError();
   Future<void> signForm(Record form) => throw UnimplementedError();
   Future<Record> call(String name, Record data) => throw UnimplementedError();
   Future<Record> location() async {
@@ -528,6 +528,7 @@ class FirebaseParticipantRepository extends ParticipantRepository {
       (v) => checkins = v,
     );
     watch('forms', db.collection('forms'), (v) => forms = v);
+    watch('venues', db.collection('venues'), (v) => venues = v);
     watch(
       'consents',
       db.collection('consents').where('uid', isEqualTo: uid),
@@ -929,21 +930,41 @@ class FirebaseParticipantRepository extends ParticipantRepository {
   }
 
   @override
-  Future<Uint8List?> venuePhotoBytes(String url) =>
-      backend.storage.refFromURL(url).getData(5 * 1024 * 1024);
+  Future<String> uploadCataloguePhoto(
+    String kind,
+    String id,
+    Uint8List bytes,
+    ValueChanged<double> progress,
+  ) async {
+    if (!canAdmin || !['session', 'venue'].contains(kind)) {
+      throw StateError('Admin access required');
+    }
+    final folder = kind == 'venue' ? 'venues' : 'sessions';
+    final ref = backend.storage.ref(
+      '$folder/$id/${DateTime.now().microsecondsSinceEpoch}.jpg',
+    );
+    final task = ref.putData(
+      bytes,
+      SettableMetadata(
+        contentType: 'image/jpeg',
+        cacheControl: 'public,max-age=3600',
+      ),
+    );
+    final subscription = task.snapshotEvents.listen(
+      (s) =>
+          progress(s.totalBytes == 0 ? 0 : s.bytesTransferred / s.totalBytes),
+    );
+    try {
+      await task;
+    } finally {
+      await subscription.cancel();
+    }
+    return 'https://firebasestorage.googleapis.com/v0/b/${ref.bucket}/o/${Uri.encodeComponent(ref.fullPath)}?alt=media';
+  }
 
   @override
-  Future<String> uploadCataloguePhoto({
-    required String slot,
-    required List<int> jpegBytes,
-  }) async {
-    final ref = backend.storage.ref('venues/$slot/cover.jpg');
-    await ref.putData(
-      Uint8List.fromList(jpegBytes),
-      SettableMetadata(contentType: 'image/jpeg'),
-    );
-    return ref.getDownloadURL();
-  }
+  Future<Uint8List?> venuePhotoBytes(String url) =>
+      backend.storage.refFromURL(url).getData(5 * 1024 * 1024);
 
   @override
   Future<void> feedback(

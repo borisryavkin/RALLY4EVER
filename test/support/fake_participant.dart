@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart' show ValueChanged;
 import 'package:rally4ever/participant/repository.dart';
 
 class FakeParticipantRepository extends ParticipantRepository {
@@ -215,10 +218,12 @@ class FakeParticipantRepository extends ParticipantRepository {
   }
 
   @override
-  Future<String> uploadCataloguePhoto({
-    required String slot,
-    required List<int> jpegBytes,
-  }) async => 'https://example.test/photos/$slot.jpg';
+  Future<String> uploadCataloguePhoto(
+    String kind,
+    String id,
+    Uint8List bytes,
+    ValueChanged<double> progress,
+  ) async => 'https://example.test/photos/$kind-$id.jpg';
 
   @override
   Future<void> signOut() async {

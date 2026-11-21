@@ -717,3 +717,5 @@ summary {
 .login-brand > img {
   filter: brightness(0) invert(1);
 }
+
+.photo-empty .photo-brand { height: 48px; width: 64px; filter: brightness(0) invert(1); }

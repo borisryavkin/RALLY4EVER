@@ -978,19 +978,6 @@ List<int> processPhotoBytes(Uint8List rawBytes) {
   return img.encodeJpg(resized, quality: 85);
 }
 
-/// Shared by program/session/venue cover photos: resize (not crop) so the
-/// longest side is 1600px, re-encode as JPEG. Unlike [processPhotoBytes]
-/// this keeps the original aspect ratio -- a venue photo isn't a portrait.
-List<int> processCataloguePhotoBytes(Uint8List rawBytes) {
-  if (rawBytes.lengthInBytes > 5 * 1024 * 1024) throw PhotoTooLarge();
-  final decoded = img.decodeImage(rawBytes);
-  if (decoded == null) throw PhotoUnreadable();
-  final resized = decoded.width >= decoded.height
-      ? img.copyResize(decoded, width: decoded.width.clamp(0, 1600))
-      : img.copyResize(decoded, height: decoded.height.clamp(0, 1600));
-  return img.encodeJpg(resized, quality: 80);
-}
-
 /// `+61` default, normalised to E.164. Leaves an already-E.164-looking value
 /// (`+` followed by digits) alone; treats a local `0...` number as domestic.
 String normalizeAustralianMobile(String raw) {

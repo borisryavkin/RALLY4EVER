@@ -1,0 +1,18 @@
+{
+  "bundle": "/Users/borisryavkin/technical/flutter/rally4ever/rally4ever/build/releases/rally4ever-1.0.3-21-photo-changes.aab",
+  "bytes": 79959635,
+  "sha256": "acbe852a2d875b0b06f5c375ef61f0166de1dea9650e14f0adb44848f78b1e13",
+  "package": "org.raly4ever",
+  "versionName": "1.0.3",
+  "versionCode": 21,
+  "projectId": "rally4ever-3adaf",
+  "verifiedArchitectures": [
+    "armeabi-v7a",
+    "arm64-v8a",
+    "x86_64"
+  ],
+  "uploadCertificateSha1": "11:51:C4:0F:AF:82:97:8B:80:1D:BF:D5:3F:1E:44:E7:EB:0F:AF:AD",
+  "uploadKeystoreMatches": true,
+  "bundletoolValid": true,
+  "jarSignatureVerified": true
+}

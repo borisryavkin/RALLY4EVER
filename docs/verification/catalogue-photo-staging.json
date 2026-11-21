@@ -1,0 +1,19 @@
+{
+  "projectId": "rally4ever-3adaf",
+  "bucket": "rally4ever-3adaf.firebasestorage.app",
+  "region": "australia-southeast1",
+  "backup": "backups/photo-proof-1795134405237.json",
+  "venueId": "photo-proof-1795134405237",
+  "objectPath": "venues/photo-proof-1795134405237/1795134405237.jpg",
+  "adminUploadHttp": 200,
+  "participantUploadHttp": 403,
+  "publicReadHttp": 200,
+  "adminSavePhotoHttp": 200,
+  "participantSavePhotoHttp": 403,
+  "participantSavePhotoReason": "admin-claim-required",
+  "revision": 2,
+  "qaUid": "JM1iNzKHwNRQNA9VqAUAcgNIUB32",
+  "qaAccountCreated": true,
+  "noExistingProfileOrAuthUserChanged": true,
+  "noProfileOrAuthUserDeleted": true
+}

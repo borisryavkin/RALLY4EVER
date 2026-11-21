@@ -1,0 +1,15 @@
+{
+  "ipa": "/Users/borisryavkin/technical/flutter/rally4ever/rally4ever/build/ios/ipa/rally4ever.ipa",
+  "bytes": 39180057,
+  "sha256": "b2480ead2d9466a10a3e7e2ca8bab6bb97e1621175bf78da0352ae483aca1401",
+  "bundleId": "org.rally4ever",
+  "version": "1.0.3",
+  "build": "21",
+  "projectId": "rally4ever-3adaf",
+  "teamId": "7HGT5BT6KT",
+  "appleDistributionSignature": true,
+  "archiveSignatureVerified": true,
+  "exportOptions": "ios/ExportOptions.plist",
+  "testFlightInternalTestingOnly": false,
+  "exportedIpaSignatureVerified": true
+}

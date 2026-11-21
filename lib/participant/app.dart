@@ -15,6 +15,7 @@ import 'legal_text.dart';
 import 'access.dart';
 import 'catalogue.dart';
 import 'catalogue_admin.dart';
+import 'catalogue_photos.dart';
 import 'coach_console.dart';
 import 'repository.dart';
 import 'theme.dart';
@@ -62,6 +63,7 @@ class _ParticipantAppState extends State<ParticipantApp>
     'signInMethods' ||
     'role' ||
     'adminAccess' ||
+    'adminVenues' ||
     'adminSessions' ||
     'adminCatalogue' ||
     'coachTools' => 3,
@@ -240,20 +242,6 @@ class _ParticipantAppState extends State<ParticipantApp>
           .firstOrNull ??
       repo.events.firstOrNull;
   String eid(Record e) => e['id'] as String? ?? e['eventId'] as String;
-
-  /// Display fallback order for item 4b: the session's own photo, else its
-  /// program's photo, else CataloguePhoto's own neutral placeholder (an
-  /// empty `photoUrl` falls through to that automatically) -- never
-  /// another venue's unrelated photo.
-  Record sessionPhotoRecord(Record e) {
-    final own = e['photoUrl'] as String? ?? '';
-    if (own.isNotEmpty) return e;
-    final program = repo.programs
-        .where((p) => p['id'] == e['programId'])
-        .firstOrNull;
-    final fallback = program?['photoUrl'] as String? ?? '';
-    return fallback.isEmpty ? e : {...e, 'photoUrl': fallback};
-  }
   void go(String next) {
     setState(() {
       page = next;
@@ -765,6 +753,17 @@ class _ParticipantAppState extends State<ParticipantApp>
             StaffSessionsPanel(repository: repo)
           else
             const Text('Staff access required.'),
+        ],
+      ),
+      'adminVenues' => frame(
+        context,
+        title: 'Admin · venues',
+        back: () => go('role'),
+        children: [
+          if (repo.canAdmin)
+            VenueManagementPanel(repository: repo)
+          else
+            const Text('Admin access required.'),
         ],
       ),
       'adminSessions' => frame(
@@ -1310,17 +1309,7 @@ class _ParticipantAppState extends State<ParticipantApp>
       title: 'Come as you are',
       back: () => go('home'),
       children: [
-        if (e['catalogueManaged'] == true)
-          CataloguePhoto(record: sessionPhotoRecord(e), repository: repo)
-        else
-          ClipRRect(
-            borderRadius: BorderRadius.circular(22),
-            child: Image.asset(
-              'assets/wavley.jpg',
-              height: 200,
-              fit: BoxFit.cover,
-            ),
-          ),
+        CataloguePhoto(record: e, repository: repo),
         const SizedBox(height: 18),
         StatusPill(stateFor(e)),
         const SizedBox(height: 12),
@@ -2314,6 +2303,10 @@ class _ParticipantAppState extends State<ParticipantApp>
         FilledButton(
           onPressed: () => go('adminSessions'),
           child: const Text('Sessions'),
+        ),
+        FilledButton(
+          onPressed: () => go('adminVenues'),
+          child: const Text('Venues & photos'),
         ),
         FilledButton(
           onPressed: () => go('adminAccess'),
