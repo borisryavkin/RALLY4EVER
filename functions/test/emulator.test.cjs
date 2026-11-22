@@ -1215,6 +1215,32 @@ test('public check-in enforces time, distance, email and request binding server-
  const request=await call('beginNoAppCheckIn',{...data,deferCompletion:true},null);
  await error(()=>call('completeNoAppCheckIn',{requestId:request.requestId,secret:'wrong'},null),'invalid-secret','PERMISSION_DENIED');
 });
+test('public check-in never blocks on location: missing device location or a venue with no coordinates still succeeds, pending, with distanceM null',async()=>{
+ const missingLocation=await noAppData('no-location@example.test');
+ const started=await call('beginNoAppCheckIn',{...missingLocation,lat:undefined,lng:undefined},null);
+ assert.equal(started.status,'pending');
+ const mappingMissing=(await db.doc(`guestEmailIdentities/${missingLocation.email}`).get()).data();
+ const savedMissing=(await db.doc(`checkins/event-1_${mappingMissing.uid}`).get()).data();
+ assert.equal(savedMissing.lat,null);
+ assert.equal(savedMissing.lng,null);
+ assert.equal(savedMissing.distanceM,null);
+
+ const old=(await db.doc('events/event-1').get()).data();
+ await db.doc('events/event-1').update({'venue.lat':null,'venue.lng':null});
+ const noVenueCoords=await noAppData('no-venue-coords@example.test');
+ const started2=await call('beginNoAppCheckIn',noVenueCoords,null);
+ assert.equal(started2.status,'pending');
+ const mapping2=(await db.doc(`guestEmailIdentities/${noVenueCoords.email}`).get()).data();
+ const saved2=(await db.doc(`checkins/event-1_${mapping2.uid}`).get()).data();
+ assert.equal(saved2.lat,-33.8926);
+ assert.equal(saved2.distanceM,null);
+ await db.doc('events/event-1').update({'venue.lat':old.venue.lat,'venue.lng':old.venue.lng});
+
+ const badPair1=await noAppData('bad-pair-1@example.test');
+ await error(()=>call('beginNoAppCheckIn',{...badPair1,lat:-33.8926,lng:undefined},null),'invalid-location','INVALID_ARGUMENT');
+ const badPair2=await noAppData('bad-pair-2@example.test');
+ await error(()=>call('beginNoAppCheckIn',{...badPair2,lat:undefined,lng:151.2511},null),'invalid-location','INVALID_ARGUMENT');
+});
 test('verified signup claims guest history without deleting scans or overwriting conflicts',async()=>{
  const data=await noAppData('guest-claim@example.test');const scan=await call('beginNoAppCheckIn',data,null);const old=(await db.doc(`checkins/${scan.checkinId}`).get()).data();
  const member=await auth.createUser({uid:'claim-member',email:data.email,emailVerified:true,password:'Emulator-Claim-Password-123!'});

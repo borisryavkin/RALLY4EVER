@@ -20,7 +20,16 @@ export class NoAppService {
   if(!infoOnly)this.service.window(e);
   const k=(await tx.get(this.service.db.doc(`eventSecrets/${eventId}`))).data();
   if(!k||k.expiresAt.toMillis()<=this.service.now()||!secretMatches(secret,k.currentSecretHash))fail('permission-denied','invalid-secret','This code expired. Scan the current coach QR.');
-  if(!infoOnly){checkDistance(coordinate(d.lat,'lat'),coordinate(d.lng,'lng'),coordinate(e.venue?.lat,'lat'),coordinate(e.venue?.lng,'lng'),e.geofenceRadiusM??150);}
+  // Distance is advisory, same as the logged-in checkIn flow: a missing
+  // device fix (denied/approximate location) or a venue with no
+  // coordinates yet must never block a no-account check-in.
+  if(!infoOnly){
+   if((d.lat==null)!==(d.lng==null))fail('invalid-argument','invalid-location','Supply both lat and lng, or neither');
+   const venueLat=e.venue?.lat,venueLng=e.venue?.lng;
+   if(d.lat!=null&&d.lng!=null&&typeof venueLat==='number'&&typeof venueLng==='number'){
+    checkDistance(coordinate(d.lat,'lat'),coordinate(d.lng,'lng'),coordinate(venueLat,'lat'),coordinate(venueLng,'lng'),e.geofenceRadiusM??150);
+   }
+  }
   return {e,eventId};
  }
  async validate(d:DocumentData){return this.service.db.runTransaction(tx=>this.validateTx(tx,d));}
@@ -38,7 +47,9 @@ export class NoAppService {
   // Never attach a typed email to a member UID, or sign forms for that member,
   // without ownership proof. New guests get no Auth user and no users/profile.
   if(mapping && (!account||mapping.uid!==account.uid))fail('failed-precondition','identity-conflict','Ask an admin to review the existing email identity');
-  const requestId=randomBytes(24).toString('hex'),secret=d.secret, safe={email,eventCode:d.eventCode,lat:d.lat,lng:d.lng,firstName:text(d.firstName,'name',100),signedVersions};
+  // Firestore rejects an explicit `undefined` value (unlike a missing key),
+  // so a device with no fix is stored as null, never left undefined.
+  const requestId=randomBytes(24).toString('hex'),secret=d.secret, safe={email,eventCode:d.eventCode,lat:d.lat??null,lng:d.lng??null,firstName:text(d.firstName,'name',100),signedVersions};
   await this.service.db.doc(`noAppRequests/${requestId}`).create({email,expectedUid:account?.uid??null,data:safe,secretHash:hash(secret as string),createdAt:this.service.stamp(),expiresAt:Timestamp.fromMillis(this.service.now()+900000),consumed:false});
   if(account){
    await this.limit('noapp-email',email,3,3600000);
@@ -86,7 +97,8 @@ export class NoAppService {
    tx.set(guestRef,{uid:participantUid,emailLower:email,firstName,mergedInto:null,createdAt:guest.data()?.createdAt??at,updatedAt:at,identityVerification:verification},{merge:true});
    if(!verifiedUid)tx.set(this.service.db.doc(`guestEmailIdentities/${email}`),{uid:guestUid,emailLower:email,updatedAt:at});
    for(const c of receipts)tx.set(this.service.db.doc(`consents/${participantUid}_${c.formId}`),c);
-   const distanceM=checkDistance(data.lat,data.lng,e.venue.lat,e.venue.lng,e.geofenceRadiusM??150);
+   const venueLat=e.venue?.lat,venueLng=e.venue?.lng;
+   const distanceM=(data.lat!=null&&data.lng!=null&&typeof venueLat==='number'&&typeof venueLng==='number')?checkDistance(data.lat,data.lng,venueLat,venueLng,e.geofenceRadiusM??150):null;
    tx.create(scanRef,{eventId,uid:participantUid,guest:!profile?.exists,firstName,scannedAt:at,method:'camera',lat:data.lat,lng:data.lng,distanceM,status:'pending',confirmedBy:null,confirmedAt:null,walkIn:!rsvp.exists||rsvp.data()!.cancelledAt!==null,identityVerification:verification,corrections:[],eventEndsAt:e.endsAt,feedbackReminderPending:false});
    tx.update(ref,{consumed:true,verifiedAt:verifiedUid?at:null,checkinId:scanRef.id,eventId});
    return {status:'pending',checkinId:scanRef.id,eventId,verification,distanceM};
