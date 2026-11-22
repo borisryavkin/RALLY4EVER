@@ -38,7 +38,8 @@ export class NoAppService {
  async authAccount(email:string){try{return await this.service.auth.getUserByEmail(email);}catch(e){if((e as {code?:string}).code!=='auth/user-not-found')throw e;return null;}}
  authEndpoint(path:string){if(process.env.FUNCTIONS_EMULATOR==='true')return `${authEmulatorOrigin()}/identitytoolkit.googleapis.com/v1/accounts:${path}?key=demo-api-key`;if(!process.env.NO_APP_API_KEY)fail('failed-precondition','email-link-unconfigured','Ask the coach to check in manually; email verification is not configured');return `https://identitytoolkit.googleapis.com/v1/accounts:${path}?key=${process.env.NO_APP_API_KEY}`;}
  async begin(value:unknown,ip:string){
-  const d=input(value,['email','eventCode','secret','lat','lng','firstName','mobile','emergencyContact','injuries','signedVersions','deferCompletion']);
+  const d=input(value,['email','eventCode','secret','lat','lng','firstName','mobile','emergencyContact','injuries','signedVersions','deferCompletion','countOnly','anonymousToken']);
+  if(d.countOnly===true)return this.countOnly(d,ip);
   const email=normalizeEmail(d.email);text(d.firstName,'name',100);await this.limit('noapp-ip',ip,10,60000);await this.limit('noapp-email-start',email,10,3600000);const {e}=await this.validate(d);
   const signedVersions=input(d.signedVersions??{},[...requiredForms(e),...optionalForms]);
   for(const version of Object.values(signedVersions))if(!(Number.isInteger(version)&&Number(version)>0 || typeof version==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(version)))fail('invalid-argument','invalid-form-version','Invalid agreement version');
@@ -60,6 +61,31 @@ export class NoAppService {
   if(d.deferCompletion===true)return {status:'ready',requestId};
   // Preserve the existing native no-app client's one-call contract.
   return this.complete({requestId,secret},ip);
+ }
+ async countOnly(value:DocumentData,ip:string){
+  const d=input(value,['eventCode','secret','lat','lng','signedVersions','deferCompletion','countOnly','anonymousToken']);
+  const token=text(d.anonymousToken,'anonymousToken',128);
+  if(!/^[A-Za-z0-9_-]{43}$/.test(token))fail('invalid-argument','invalid-token','Scan again to start an anonymous check-in');
+  await this.limit('noapp-ip',ip,10,60000);
+  return this.service.db.runTransaction(async tx=>{
+   const {e,eventId}=await this.validateTx(tx,d);
+   // A random device/session token makes retries idempotent without an email,
+   // account, guest profile, or cross-session identity. Never store the token.
+   const participantUid='anon-'+hash(`${eventId}:${token}`).slice(0,40);
+   const ref=this.service.db.doc(`checkins/${eventId}_${participantUid}`),old=await tx.get(ref);
+   if(old.exists)return {status:old.data()!.status,checkinId:ref.id,eventId,anonymous:true,unchanged:true};
+   const versions=input(d.signedVersions??{},[...requiredForms(e),...optionalForms]),receipts=[];
+   for(const formId of [...requiredForms(e),...optionalForms.filter(f=>versions[f]!==undefined&&!requiredForms(e).includes(f))]){
+    const f=(await tx.get(this.service.db.doc(`forms/${id(formId,'formId')}`))).data();
+    if(!publishedForm(f,this.service.now()))fail('failed-precondition','form-unavailable','A required agreement is missing or unpublished. Ask the coach.');
+    if(versions[formId]!==f.version)fail('failed-precondition','unsigned-forms','Read and accept each current agreement',{missingForms:[formId]});
+    receipts.push({uid:participantUid,formId,version:f.version,signedAt:this.service.stamp()});
+   }
+   const at=this.service.stamp(),venueLat=e.venue?.lat,venueLng=e.venue?.lng;
+   const distanceM=d.lat!=null&&d.lng!=null&&typeof venueLat==='number'&&typeof venueLng==='number'?checkDistance(coordinate(d.lat,'lat'),coordinate(d.lng,'lng'),venueLat,venueLng,e.geofenceRadiusM??150):null;
+   tx.create(ref,{eventId,uid:participantUid,anonymous:true,guest:true,firstName:'Anonymous +1',scannedAt:at,method:'camera',lat:null,lng:null,distanceM,status:'pending',confirmedBy:null,confirmedAt:null,walkIn:true,identityVerification:'anonymous',formAcceptances:receipts,corrections:[],eventEndsAt:e.endsAt,feedbackReminderPending:false});
+   return {status:'pending',checkinId:ref.id,eventId,anonymous:true,distanceM};
+  });
  }
  async complete(value:unknown,ip:string){
   const d=input(value,['requestId','oobCode','secret','lat','lng']);await this.limit('noapp-complete',ip,10,60000);

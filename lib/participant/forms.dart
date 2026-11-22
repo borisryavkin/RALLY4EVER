@@ -1637,6 +1637,8 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
   int stage = 0;
   int agreementIndex = 0;
   bool accepted = false, busy = false, pending = false, showPasteLink = false;
+  bool countOnly = false;
+  final Map<String, dynamic> signedVersions = {};
   MobileScannerController? scanner;
   @override
   void initState() {
@@ -1658,6 +1660,7 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
   }
 
   Future<void> run(Future<void> Function() task) async {
+    if (busy) return;
     setState(() {
       busy = true;
       error = null;
@@ -1713,6 +1716,8 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
     forms = [];
     agreementIndex = 0;
     accepted = false;
+    countOnly = false;
+    signedVersions.clear();
     error = null;
     stage = 0;
     unawaited(scanner?.start());
@@ -2030,6 +2035,24 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
         StepBar(steps: _noAppSteps, current: 1),
         const SizedBox(height: 24),
         Text('Your details', style: Theme.of(context).textTheme.headlineMedium),
+        const SizedBox(height: 12),
+        OutlinedButton(
+          key: const Key('noapp-count-only'),
+          onPressed: busy
+              ? null
+              : () => setState(() {
+                  countOnly = true;
+                  signedVersions.clear();
+                  agreementIndex = 0;
+                  accepted = false;
+                  stage = 3;
+                }),
+          child: const Text('Skip details — count me as +1'),
+        ),
+        const Text(
+          'No name, email or account. Read the required agreements, then ask your coach to confirm your +1.',
+          style: TextStyle(color: slate),
+        ),
         const SizedBox(height: 20),
         if (error != null) Panel(color: pink, child: Text(error!)),
         _field(
@@ -2089,6 +2112,9 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
           onPressed: missing.isNotEmpty
               ? null
               : () => setState(() {
+                  countOnly = false;
+                  signedVersions.clear();
+                  accepted = false;
                   agreementIndex = 0;
                   stage = 3;
                 }),
@@ -2145,6 +2171,12 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
           ),
         ),
         const SizedBox(height: 14),
+        if (countOnly)
+          const Panel(
+            child: Text(
+              'Anonymous +1. Your personal details will not be sent. Your coach must confirm attendance.',
+            ),
+          ),
         if (error != null) Panel(color: pink, child: Text(error!)),
         if (busy) const LinearProgressIndicator(),
         Panel(
@@ -2176,6 +2208,11 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
           onPressed: busy || (required && !accepted)
               ? null
               : () {
+                  if (accepted) {
+                    signedVersions['${f['id']}'] = f['version'];
+                  } else {
+                    signedVersions.remove('${f['id']}');
+                  }
                   if (!last) {
                     setState(() {
                       agreementIndex++;
@@ -2187,29 +2224,38 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
                     final result = await widget.repository.call(
                       'beginNoAppCheckIn',
                       {
-                        'email': fields['email']!.text,
+                        if (countOnly) ...{
+                          'countOnly': true,
+                          'anonymousToken': widget.repository.anonymousTokenFor(
+                            '${sessionInfo!['eventId'] ?? link!.eventCode}',
+                          ),
+                        } else ...{
+                          'email': fields['email']!.text,
+                          'firstName': fields['firstName']!.text,
+                          'mobile': fields['mobile']!.text,
+                          'emergencyContact': {
+                            'name': fields['emergencyName']!.text,
+                            'mobile': fields['emergencyMobile']!.text,
+                          },
+                        },
                         'eventCode': link!.eventCode,
                         'secret': link!.secret,
                         ...position!,
-                        'firstName': fields['firstName']!.text,
-                        'mobile': fields['mobile']!.text,
-                        'emergencyContact': {
-                          'name': fields['emergencyName']!.text,
-                          'mobile': fields['emergencyMobile']!.text,
-                        },
-                        'signedVersions': {
-                          for (final form in forms) form['id']: form['version'],
-                        },
+                        'signedVersions': Map<String, dynamic>.from(
+                          signedVersions,
+                        ),
                       },
                     );
-                    widget.repository.saveNoAppCheckIn({
-                      'email': fields['email']!.text.trim(),
-                      'firstName': fields['firstName']!.text.trim(),
-                      'mobile': fields['mobile']!.text.trim(),
-                      'emergencyName': fields['emergencyName']!.text.trim(),
-                      'emergencyMobile': fields['emergencyMobile']!.text
-                          .trim(),
-                    });
+                    if (!countOnly) {
+                      widget.repository.saveNoAppCheckIn({
+                        'email': fields['email']!.text.trim(),
+                        'firstName': fields['firstName']!.text.trim(),
+                        'mobile': fields['mobile']!.text.trim(),
+                        'emergencyName': fields['emergencyName']!.text.trim(),
+                        'emergencyMobile': fields['emergencyMobile']!.text
+                            .trim(),
+                      });
+                    }
                     if (mounted) {
                       setState(() {
                         if (result['requestId'] != null) {

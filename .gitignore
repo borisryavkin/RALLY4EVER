@@ -125,3 +125,7 @@ assets/fonts/Proxima-Nova-Extra-Condensed/
 /web-admin/node_modules/
 /web-admin/dist/
 /web-admin/src/firebase-config.generated.json
+
+/web-checkin/node_modules/
+/web-checkin/dist/
+/web-checkin/src/firebase-config.generated.json

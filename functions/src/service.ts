@@ -459,7 +459,7 @@ export class AttendanceService {
         status,
         confirmedBy: who.uid,
         confirmedAt: this.stamp(),
-        feedbackReminderPending: status === "confirmed",
+        feedbackReminderPending: status === "confirmed" && !scan.data()!.anonymous,
       });
       return { checkinId, status, unchanged: false };
     });
@@ -492,7 +492,7 @@ export class AttendanceService {
         status: d.status,
         confirmedBy: who.uid,
         confirmedAt: this.stamp(),
-        feedbackReminderPending: d.status === "confirmed",
+        feedbackReminderPending: d.status === "confirmed" && !scan.data()!.anonymous,
         corrections: [
           ...corrections,
           {

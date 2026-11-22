@@ -532,3 +532,36 @@ test('spreadsheet details reject injection, oversized data and non-admin writes 
  await rejects(()=>consoleService().saveSession(who('participant-1'),{eventId:'denied',changes:adminSession(),operations:spreadsheet()}),'admin-claim-required');
  assert.equal((await db.doc('programOperations/denied').get()).exists,false);assert.equal((await db.doc('sessionOperations/denied').get()).exists,false);
 });
+
+async function anonymousFixture(){
+ await createProgram();await session();
+ await db.doc('events/session-one').update({startsAt:Timestamp.fromMillis(now-60000),endsAt:Timestamp.fromMillis(now+3600000),requiredFormIds:['conduct','waiver']});
+ const {hash}=require('./lib/domain');const secret='a'.repeat(43);
+ await db.doc('eventSecrets/session-one').set({currentSecretHash:hash(secret),expiresAt:Timestamp.fromMillis(now+60000)});
+ for(const formId of ['conduct','waiver'])await db.doc(`forms/${formId}`).set({body:'Emulator fixture agreement',version:'2026-11-20',publishedAt:Timestamp.fromMillis(now-60000)});
+ const {NoAppService}=require('./lib/no_app');
+ return {noApp:new NoAppService(catalogue.service),data:{eventCode:(await db.doc('events/session-one').get()).data().code,secret,countOnly:true,anonymousToken:'b'.repeat(43),lat:-33.8926,lng:151.2511,signedVersions:{conduct:'2026-11-20',waiver:'2026-11-20'}}};
+}
+test('anonymous +1 is idempotent, contains no personal details, creates no identity, and needs coach confirmation',async()=>{
+ const {noApp,data}=await anonymousFixture();const beforeProfiles=(await db.collection('users').get()).size,beforeAuth=(await getAuth(app).listUsers()).users.length;
+ const [a,b]=await Promise.all([noApp.begin(data,'anon-test'),noApp.begin(data,'anon-test')]);assert.equal(a.checkinId,b.checkinId);assert.equal((await db.collection('checkins').get()).size,1);
+ let c=(await db.doc(`checkins/${a.checkinId}`).get()).data();assert.equal(c.firstName,'Anonymous +1');assert.equal(c.status,'pending');assert.equal(c.anonymous,true);assert.equal(c.formAcceptances.length,2);assert.equal(c.email,undefined);assert.equal(c.mobile,undefined);assert.equal(c.lat,null);assert.equal(c.lng,null);assert.equal(c.anonymousToken,undefined);
+ for(const collection of ['guests','guestEmailIdentities','emailIdentities','noAppRequests'])assert.equal((await db.collection(collection).get()).size,0);
+ assert.equal((await db.collection('users').get()).size,beforeProfiles);assert.equal((await getAuth(app).listUsers()).users.length,beforeAuth);
+ const {StaffService}=require('./lib/staff');const roster=await new StaffService(catalogue.service).getEventConsole(who('coach-1','coach'),{eventId:'session-one'});assert.equal(roster.roster[0].firstName,'Anonymous +1');
+ await rejects(()=>catalogue.service.coachDecision(who('participant-1'),{eventId:'session-one',uid:c.uid,decision:'confirm'}),'event-role-required');
+ await catalogue.service.coachDecision(who('coach-1','coach'),{eventId:'session-one',uid:c.uid,decision:'confirm'});
+ c=(await db.doc(`checkins/${a.checkinId}`).get()).data();assert.equal(c.status,'confirmed');assert.equal(c.feedbackReminderPending,false);
+});
+test('anonymous +1 preserves QR, location, time, form and rate-limit guards',async()=>{
+ const {noApp,data}=await anonymousFixture();
+ await rejects(()=>noApp.begin({...data,secret:'wrong'},'guard-1'),'invalid-secret');
+ await rejects(()=>noApp.begin({...data,lat:0,lng:0},'guard-2'),'too-far');
+ await rejects(()=>noApp.begin({...data,signedVersions:{}},'guard-3'),'unsigned-forms');
+ await db.doc('forms/waiver').update({published:false});await rejects(()=>noApp.begin(data,'guard-4'),'form-unavailable');await db.doc('forms/waiver').update({published:true});
+ await db.doc('events/session-one').update({startsAt:Timestamp.fromMillis(now+660000)});await rejects(()=>noApp.begin(data,'guard-5'),'too-early');
+ await db.doc('events/session-one').update({startsAt:Timestamp.fromMillis(now-3600000),endsAt:Timestamp.fromMillis(now-1)});await rejects(()=>noApp.begin(data,'guard-6'),'too-late');
+ await db.doc('events/session-one').update({endsAt:Timestamp.fromMillis(now+3600000)});
+ await rejects(()=>noApp.begin({...data,email:'do-not-store@example.test'},'guard-7'),'unknown-field');
+ for(let i=0;i<10;i++)await noApp.begin(data,'limited');await rejects(()=>noApp.begin(data,'limited'),'rate-limit');
+});

@@ -205,3 +205,12 @@ The following are deployed only to `rally4ever-3adaf`, region `australia-southea
 | `adminRemoveDemo` | preview `{}`; apply `{apply:true, expectedPaths:[...]}` from exact preview | preview count/per-collection counts/paths; apply removed count/paths | `demo-changed`, `demo-in-use`, `demo-too-large` |
 
 Permission failures are HTTP 403 `PERMISSION_DENIED`; missing sign-in is HTTP 401 `UNAUTHENTICATED`; validation is HTTP 400 `INVALID_ARGUMENT`; stale revisions/previews are HTTP 409 `ABORTED`; publication/original-context/reference constraints are `FAILED_PRECONDITION`. All writes use trusted server timestamps, increment revisions, and retain audit snapshots. Venue image finalization validates the owned path/type/size and removes download tokens before storing the reference. `saveProgram`, `listUsers`, `setUserRole`, `getEventConsole`, `coachDecision` and `assignEventCoaches` are reused by the web client; current protected admin claim checks also apply to their admin operations.
+
+
+### Anonymous +1 (22 November 2026)
+
+The no-account details screen and hosted check-in page offer **Skip details — count me as +1**. Required published agreements still need explicit acceptance. `beginNoAppCheckIn` accepts `{countOnly:true, anonymousToken, eventCode, secret, lat?, lng?, signedVersions}`. No name/email/mobile/emergency contact is accepted in this mode. A 32-byte random token is persisted only on the device per session; the backend hashes it with the event ID for idempotency. It stores one pending `checkins` document labelled `Anonymous +1`, with `anonymous:true`, current form-version acceptances, scan time and advisory distance, and no precise coordinates. It creates no Auth user, profile, guest, email identity or RSVP.
+
+QR rotation/expiry, 10-minute window, location checks when coordinates are available, rate limits, and assigned-coach/admin confirmation remain enforced. Only confirmed attendance counts as confirmed attendance; +1 starts pending. Anonymous records receive no feedback reminder. Optional forms are recorded only when explicitly accepted. Anonymous counts cannot be deduplicated across different devices; coach confirmation remains the attendance safeguard.
+
+The hosted check-in source is now included in this branch under `web-checkin/`, with a `checkin` Hosting target. Build with `node scripts/build-checkin.mjs` (requires ignored `config/staging.web.json`). Deploy only this site with `firebase deploy --project rally4ever-3adaf --only hosting:checkin`. No Firestore or Storage rules change is required.

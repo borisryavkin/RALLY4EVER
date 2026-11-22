@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -238,11 +239,20 @@ abstract class ParticipantRepository extends ChangeNotifier {
     recentLocationSearches = [];
     notifyListeners();
   }
+
   // Details from the last no-account check-in on this device (email,
   // firstName, mobile, emergencyName, emergencyMobile), so a returning
   // no-account participant doesn't have to retype everything. In-memory
   // only in the base class; the real implementation persists on-device.
   Map<String, String> lastNoAppCheckIn = {};
+  Map<String, String> anonymousCheckInTokens = {};
+  String anonymousTokenFor(String eventId) =>
+      anonymousCheckInTokens.putIfAbsent(
+        eventId,
+        () => base64Url
+            .encode(List.generate(32, (_) => Random.secure().nextInt(256)))
+            .replaceAll('=', ''),
+      );
   void saveNoAppCheckIn(Map<String, String> details) {
     lastNoAppCheckIn = details;
   }
@@ -387,6 +397,7 @@ abstract class ParticipantRepository extends ChangeNotifier {
       throw UnimplementedError();
   Future<void> sendPasswordReset(String email) => throw UnimplementedError();
   Future<void> refreshVerification() => throw UnimplementedError();
+
   /// Cooldown is the caller's responsibility (see AccountForm) -- this
   /// always attempts to send.
   Future<void> resendVerificationEmail() => throw UnimplementedError();
@@ -473,11 +484,29 @@ class FirebaseParticipantRepository extends ParticipantRepository {
           jsonDecode(storedNoAppCheckIn) as Map,
         );
       }
+      final tokens = await _prefs.getString('r4e_anonymous_checkin_tokens');
+      if (tokens != null) {
+        anonymousCheckInTokens = Map<String, String>.from(
+          jsonDecode(tokens) as Map,
+        );
+      }
       notifyListeners();
     } catch (_) {
       // On-device storage is unavailable (sandboxed test runner, denied
       // permission): keep the safe in-memory defaults rather than crash.
     }
+  }
+
+  @override
+  String anonymousTokenFor(String eventId) {
+    final token = super.anonymousTokenFor(eventId);
+    unawaited(
+      _prefs.setString(
+        'r4e_anonymous_checkin_tokens',
+        jsonEncode(anonymousCheckInTokens),
+      ),
+    );
+    return token;
   }
 
   @override
