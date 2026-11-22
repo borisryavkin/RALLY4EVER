@@ -21,6 +21,7 @@ import 'coach_console.dart';
 import 'repository.dart';
 import 'theme.dart';
 import 'user_avatar.dart';
+import 'profile_summary.dart';
 
 class ParticipantApp extends StatefulWidget {
   const ParticipantApp({
@@ -498,6 +499,7 @@ class _ParticipantAppState extends State<ParticipantApp>
     bool navigation = false,
     VoidCallback? back,
     bool showTitleIcon = true,
+    bool showAppBar = true,
     // A single-column form or onboarding-style screen reads better at a
     // narrower width than a list/map screen on a wide tablet; pass 560
     // for those (onboarding, sign-in, create account, About you, check-in).
@@ -507,7 +509,7 @@ class _ParticipantAppState extends State<ParticipantApp>
     final wide = isWide(context);
     final contentMaxWidth = maxWidth ?? wideContentMaxWidth;
     final content = SafeArea(
-      top: false,
+      top: !showAppBar,
       child: Column(
         children: [
           if (busy) const LinearProgressIndicator(minHeight: 3),
@@ -602,26 +604,31 @@ class _ParticipantAppState extends State<ParticipantApp>
     );
     return Scaffold(
       backgroundColor: dark ? navy : cream,
-      appBar: AppBar(
-        backgroundColor: dark ? navy : cream,
-        foregroundColor: dark ? Colors.white : navy,
-        leading: back != null ? BackButton(onPressed: back) : null,
-        automaticallyImplyLeading: false,
-        title: title != null
-            ? Text(title, style: TextStyle(color: dark ? Colors.white : navy))
-            : brand(light: dark),
-        actions: [
-          if (title != null && showTitleIcon)
-            Padding(
-              padding: const EdgeInsets.only(right: 20),
-              child: Icon(
-                Icons.sports_tennis,
-                color: dark ? pink : coral,
-                size: 19,
-              ),
-            ),
-        ],
-      ),
+      appBar: showAppBar
+          ? AppBar(
+              backgroundColor: dark ? navy : cream,
+              foregroundColor: dark ? Colors.white : navy,
+              leading: back != null ? BackButton(onPressed: back) : null,
+              automaticallyImplyLeading: false,
+              title: title != null
+                  ? Text(
+                      title,
+                      style: TextStyle(color: dark ? Colors.white : navy),
+                    )
+                  : brand(light: dark),
+              actions: [
+                if (title != null && showTitleIcon)
+                  Padding(
+                    padding: const EdgeInsets.only(right: 20),
+                    child: Icon(
+                      Icons.sports_tennis,
+                      color: dark ? pink : coral,
+                      size: 19,
+                    ),
+                  ),
+              ],
+            )
+          : null,
       body: navigation && wide
           ? Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2149,194 +2156,67 @@ class _ParticipantAppState extends State<ParticipantApp>
   Widget profile(BuildContext context) => frame(
     context,
     title: 'Profile & preferences',
+    showAppBar: false,
     navigation: true,
     children: [
-      if (repo.canAdmin)
+      if (repo.canAdmin) ...[
+        const SizedBox(height: 20),
         FilledButton.icon(
           onPressed: () => go('role'),
           icon: const Icon(Icons.admin_panel_settings),
           label: const Text('Admin'),
         ),
+      ],
       if (repo.canAdmin || repo.canCoach)
         OutlinedButton.icon(
           onPressed: () => go('coachTools'),
           icon: const Icon(Icons.qr_code),
           label: const Text('Coach tools'),
         ),
-      Row(
-        children: [
-          GestureDetector(
-            onTap: () => _editMePhoto(context),
-            child: Stack(
-              alignment: Alignment.bottomRight,
-              children: [
-                UserAvatar(
-                  repository: repo,
-                  radius: 28,
-                  textStyle: const TextStyle(
-                    color: Colors.white,
-                    fontFamily: 'Jellee',
-                    fontWeight: FontWeight.w700,
-                    fontSize: 24,
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.all(3),
-                  decoration: const BoxDecoration(
-                    color: coral,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.edit, color: Colors.white, size: 12),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  repo.profile['firstName'] as String? ?? 'Member',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                Text(repo.email ?? '', style: const TextStyle(fontSize: 11)),
-              ],
-            ),
-          ),
-          IconButton(
-            onPressed: () {
-              editingProfile = true;
-              go('profile1');
-            },
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Edit details',
-          ),
-        ],
-      ),
-      const SizedBox(height: 22),
-      Row(
-        children: [
-          Expanded(
-            child: Panel(
-              child: Column(
-                children: [
-                  Text(
-                    '${repo.checkins.where((c) => c['status'] == 'confirmed').length}',
-                    style: Theme.of(context).textTheme.headlineMedium,
-                  ),
-                  const Text(
-                    'Confirmed sessions',
-                    style: TextStyle(fontSize: 11),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Panel(
-              child: Column(
-                children: [
-                  Text(
-                    '${repo.rsvps.where((r) => r['cancelledAt'] == null).length}',
-                    style: Theme.of(context).textTheme.headlineMedium,
-                  ),
-                  const Text('Counted in', style: TextStyle(fontSize: 11)),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-      const SizedBox(height: 24),
-      Text('Forms', style: Theme.of(context).textTheme.titleLarge),
-      const SizedBox(height: 10),
-      const Text(
-        'Code of Conduct · Data Collection · Photo Release. All 3 are required.',
-      ),
-      const SizedBox(height: 10),
-      FilledButton.icon(
-        key: const Key('profile-sign-forms'),
-        onPressed: () {
+      ProfileSummary(
+        repo: repo,
+        sessionDate: eventDate,
+        onEdit: () {
+          editingProfile = true;
+          go('profile1');
+        },
+        onPhoto: () => _editMePhoto(context),
+        onSignForms: () {
           detailsReturn = 'profile';
           go('agreements');
         },
-        icon: const Icon(Icons.draw_outlined),
-        label: const Text('Sign forms'),
-      ),
-      const SizedBox(height: 16),
-      Text('Your sessions', style: Theme.of(context).textTheme.titleLarge),
-      const SizedBox(height: 10),
-      if (repo.checkins.isEmpty)
-        const Text(
-          'Your attendance history will appear after your first check-in.',
-        ),
-      for (final c in repo.checkins) ...[
-        Builder(
-          builder: (context) {
-            final e = repo.events
-                .where((e) => eid(e) == c['eventId'])
-                .firstOrNull;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: InkWell(
-                onTap: () {
-                  selectedId = c['eventId'] as String;
-                  go('waiting');
-                },
-                child: Panel(
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              e?['name'] as String? ??
-                                  'Session ${c['eventId']}',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            Text(
-                              e == null ? '' : eventDate(e),
-                              style: const TextStyle(fontSize: 11),
-                            ),
-                          ],
-                        ),
-                      ),
-                      StatusPill(c['status'] as String),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        ),
-      ],
-      const SizedBox(height: 18),
-      OutlinedButton(
-        onPressed: () {
-          detailsReturn = 'profile';
-          go('details');
+        onSession: (id) {
+          selectedId = id;
+          go('waiting');
         },
-        child: const Text('Update safety details'),
       ),
+      const SizedBox(height: 18),
       ExpansionTile(
-        title: const Text('Sign-in methods'),
-        children: [SignInMethodsPanel(repository: repo)],
-      ),
-      TextButton(
-        onPressed: () => action(repo.refreshAccess),
-        child: const Text('Refresh roles & access'),
-      ),
-      TextButton(
-        onPressed: () => action(() async {
-          await repo.signOut();
-          go('signin');
-        }),
-        child: const Text('Sign out'),
+        title: const Text('Preferences'),
+        children: [
+          OutlinedButton(
+            onPressed: () {
+              detailsReturn = 'profile';
+              go('details');
+            },
+            child: const Text('Update safety details'),
+          ),
+          ExpansionTile(
+            title: const Text('Sign-in methods'),
+            children: [SignInMethodsPanel(repository: repo)],
+          ),
+          TextButton(
+            onPressed: () => action(repo.refreshAccess),
+            child: const Text('Refresh roles & access'),
+          ),
+          TextButton(
+            onPressed: () => action(() async {
+              await repo.signOut();
+              go('signin');
+            }),
+            child: const Text('Sign out'),
+          ),
+        ],
       ),
     ],
   );

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rally4ever/participant/app.dart';
 import 'package:rally4ever/participant/form_groups.dart';
+import 'package:rally4ever/participant/profile_summary.dart';
 
 import 'support/fake_participant.dart';
 
@@ -44,7 +45,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('go-to-account')), findsNothing);
-      expect(find.widgetWithText(FilledButton, 'Sign forms'), findsOneWidget);
+      expect(find.widgetWithText(TextButton, 'Sign forms'), findsOneWidget);
       await tester.tap(find.byKey(const Key('profile-sign-forms')));
       await tester.pumpAndSettle();
       for (final title in [
@@ -70,7 +71,7 @@ void main() {
         repo.consents.map((c) => c['formId']).toSet(),
         requiredAgreementIds.toSet(),
       );
-      expect(find.text('Profile & preferences'), findsOneWidget);
+      expect(find.byType(ProfileSummary), findsOneWidget);
     },
   );
   test(
