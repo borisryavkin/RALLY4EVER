@@ -81,7 +81,12 @@ export function matchVenue({ venueName, state, suburb }, existingVenues) {
  * caller can log it) but the caller must never overwrite its content --
  * see docs/import/programs-mapping.md's central safety rule. */
 export function matchProgram({ name, state, sport, venueName, day }, existingPrograms) {
-  const candidateId = mintProgramId(state, sport, name);
+  // A display name like "Pickleball at Macquarie University" would
+  // otherwise double up with the sport already baked into the ID
+  // template (nsw-pickleball-pickleball-at-...); strip that redundant
+  // "<sport> at " prefix for ID minting only, never for the stored name.
+  const idName = name.replace(new RegExp(`^${sport}\\s+at\\s+`, 'i'), '');
+  const candidateId = mintProgramId(state, sport, idName);
   const byId = existingPrograms.find((p) => p.id === candidateId && !p.isDemo);
   if (byId) return { status: 'matched', id: byId.id, via: 'id', reviewed: byId.needsVerification === false };
 

@@ -106,6 +106,13 @@ node_modules/
 # full, or published anywhere participant-readable.
 /data-private/
 
+# The full planned-write payload (includes the same coach/contact
+# personal data as the source spreadsheets, in programOperational/
+# venueOperational entries) -- never committed. dry-run-report.md,
+# needs-review.csv and venues-needing-photos.csv contain no personal data
+# and are committed as the human-readable summary.
+/docs/import/dry-run.json
+
 # Font source archives/specimens (and macOS cruft) are reference material,
 # not build inputs -- only the specific .ttf/.otf files pubspec.yaml
 # registers are committed. Proxima Nova Extra Condensed is Fontspring DEMO

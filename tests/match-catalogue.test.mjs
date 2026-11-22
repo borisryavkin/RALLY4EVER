@@ -83,6 +83,15 @@ test('matchProgram sends an uncorroborated venue match to review rather than gue
   assert.equal(result.candidateId, 'humanitix-unsw-pickleball');
 });
 
+test('matchProgram strips a redundant "<sport> at " prefix when minting a new ID, but keeps it in the stored name elsewhere', () => {
+  const result = matchProgram(
+    { name: 'Pickleball at Macquarie University', state: 'NSW', sport: 'pickleball', venueName: 'Macquarie University Sport & Aquatic Centre', day: 'Mon' },
+    [],
+  );
+  assert.equal(result.status, 'new');
+  assert.equal(result.id, 'nsw-pickleball-macquarie-university');
+});
+
 test('matchProgram creates a new deterministic ID when nothing matches', () => {
   const result = matchProgram(
     { name: 'Brand New Town', state: 'VIC', sport: 'tennis', venueName: 'Somewhere New', day: 'Mon' },
