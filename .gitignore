@@ -101,6 +101,11 @@ node_modules/
 # Real-project rollback snapshots and personal-data backups: never committed.
 /backups/
 
+# Source spreadsheets for the programs import contain personal/operational
+# data (coach names, phone numbers, contacts) -- never committed, logged in
+# full, or published anywhere participant-readable.
+/data-private/
+
 # Font source archives/specimens (and macOS cruft) are reference material,
 # not build inputs -- only the specific .ttf/.otf files pubspec.yaml
 # registers are committed. Proxima Nova Extra Condensed is Fontspring DEMO
