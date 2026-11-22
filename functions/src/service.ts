@@ -314,8 +314,16 @@ export class AttendanceService {
     const d = input(value, ["eventCode", "secret", "lat", "lng", "method"]);
     const code = id(d.eventCode, "eventCode"),
       secret = text(d.secret, "secret", 128);
-    const lat = coordinate(d.lat, "lat"),
-      lng = coordinate(d.lng, "lng");
+    // Both lat and lng, or neither -- never one without the other. A
+    // participant whose device location was unavailable (permission
+    // denied, GPS off, or just unreliable) still gets checked in: the
+    // coach confirms everyone in person regardless, and distanceM is
+    // already a nullable, informational-only field for exactly this
+    // reason (see docs/DATA_MODEL.md).
+    if ((d.lat === undefined) !== (d.lng === undefined))
+      fail("invalid-argument", "invalid-location", "Supply both lat and lng, or neither");
+    const lat = d.lat === undefined ? null : coordinate(d.lat, "lat"),
+      lng = d.lng === undefined ? null : coordinate(d.lng, "lng");
     const method = d.method ?? "app";
     if (method !== "app" && method !== "camera")
       fail("invalid-argument", "invalid-method", "Use app or camera check-in");
@@ -362,13 +370,15 @@ export class AttendanceService {
           "This QR code is invalid or expired; ask the coach for a new code",
         );
       }
-      const distance = checkDistance(
-        lat,
-        lng,
-        coordinate(e.venue?.lat, "lat"),
-        coordinate(e.venue?.lng, "lng"),
-        e.geofenceRadiusM ?? 150,
-      );
+      // Distance is informational/advisory only (the coach always confirms
+      // attendance in person) -- never block a check-in just because the
+      // participant's location, or the venue's own coordinates, aren't
+      // known. Only enforce the geofence when both sides are present.
+      const venueLat = e.venue?.lat, venueLng = e.venue?.lng;
+      const distance =
+        lat != null && lng != null && typeof venueLat === "number" && typeof venueLng === "number"
+          ? checkDistance(lat, lng, venueLat, venueLng, e.geofenceRadiusM ?? 150)
+          : null;
       const missing = await this.missingForms(tx, who.uid, e);
       if (missing.length)
         fail(

@@ -262,6 +262,41 @@ test("checkIn rejects too early, too late and too far with clear reasons", async
     .update({ endsAt: Timestamp.fromMillis(Date.now() + 3600000) });
   await error(() => scan({ lat: 0, lng: 0 }), "too-far", "FAILED_PRECONDITION");
 });
+test("checkIn never blocks on location: missing device location or a venue with no coordinates still succeeds, pending, with distanceM null", async () => {
+  // No lat/lng sent at all (device location unavailable) -- still checks
+  // in; distance is informational only, the coach confirms in person.
+  const result = await scan({ lat: undefined, lng: undefined });
+  const saved = (
+    await db.doc(`checkins/event-1_participant-1`).get()
+  ).data();
+  assert.equal(result.status, "pending");
+  assert.equal(saved.lat, null);
+  assert.equal(saved.lng, null);
+  assert.equal(saved.distanceM, null);
+});
+test("checkIn never blocks when the venue itself has no coordinates, even if the device sent a location", async () => {
+  await db.doc("events/event-1").update({ "venue.lat": null, "venue.lng": null });
+  const result = await scan();
+  const saved = (
+    await db.doc(`checkins/event-1_participant-1`).get()
+  ).data();
+  assert.equal(result.status, "pending");
+  assert.equal(saved.lat, -33.8926);
+  assert.equal(saved.lng, 151.2511);
+  assert.equal(saved.distanceM, null);
+});
+test("checkIn rejects a lat without a matching lng, or vice versa, rather than guessing", async () => {
+  await error(
+    () => scan({ lat: -33.8926, lng: undefined }),
+    "invalid-location",
+    "INVALID_ARGUMENT",
+  );
+  await error(
+    () => scan({ lat: undefined, lng: 151.2511 }),
+    "invalid-location",
+    "INVALID_ARGUMENT",
+  );
+});
 test("checkIn rejects wrong/expired secret, unsigned/outdated forms and missing details", async () => {
   await error(
     () => scan({ secret: "wrong" }),
