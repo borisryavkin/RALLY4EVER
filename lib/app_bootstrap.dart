@@ -57,7 +57,8 @@ class _AppBootstrapState extends State<AppBootstrap> {
         _repository = repository;
       }
       return _StartupResult(repository: repository);
-    } catch (error) {
+    } catch (error, stackTrace) {
+      debugPrint('Backend startup failed: $error\n$stackTrace');
       // Capture before a rebuild attaches FutureBuilder's listener on retry.
       return _StartupResult(error: error);
     }
@@ -105,7 +106,9 @@ class _AppBootstrapState extends State<AppBootstrap> {
                             ),
                             const SizedBox(height: 12),
                             Text(
-                              error is FirebaseException
+                              error is FunctionsCallError
+                                  ? 'Support code: functions/${error.code}/${error.reason ?? 'request-failed'}'
+                                  : error is FirebaseException
                                   ? 'Support code: ${error.plugin}/${error.code}'
                                   : 'Support code: backend-startup',
                               key: const Key('startup-support-code'),

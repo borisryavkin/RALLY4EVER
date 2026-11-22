@@ -118,6 +118,30 @@ class FunctionsCallError implements Exception {
   String toString() => message;
 }
 
+/// Optional name prefilling must remain compatible with deployed functions
+/// that only accept the original email/token contract. Retry only the known
+/// unknown-field rejection, never authentication, identity or network failures.
+@visibleForTesting
+Future<Record> registerIdentityCompatible(
+  Future<Record> Function(String, Record) invoke, {
+  String? firstNameHint,
+}) async {
+  final hint = firstNameHint?.trim();
+  final payload = <String, dynamic>{
+    if (hint != null && hint.isNotEmpty) 'firstNameHint': hint,
+  };
+  try {
+    return await invoke('registerIdentity', payload);
+  } on FunctionsCallError catch (error) {
+    if (payload.isEmpty ||
+        error.code != 'invalid-argument' ||
+        error.reason != 'unknown-field') {
+      rethrow;
+    }
+    return invoke('registerIdentity', {});
+  }
+}
+
 /// Shown for any [GoogleSignInException] -- including a "canceled" one that
 /// was never really a user cancellation, which is what a misconfigured
 /// serverClientId or an unregistered signing-certificate fingerprint looks
@@ -487,10 +511,10 @@ class FirebaseParticipantRepository extends ParticipantRepository {
     // backend only ever applies it the first time a profile is created,
     // never overwriting a real one on a returning sign-in.
     final firstNameHint = user.displayName?.trim().split(' ').firstOrNull;
-    final result = await call('registerIdentity', {
-      if (firstNameHint != null && firstNameHint.isNotEmpty)
-        'firstNameHint': firstNameHint,
-    });
+    final result = await registerIdentityCompatible(
+      call,
+      firstNameHint: firstNameHint,
+    );
     if (result['requiresSignIn'] == true) {
       await backend.auth.signOut();
       throw StateError(

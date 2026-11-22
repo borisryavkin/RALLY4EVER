@@ -110,4 +110,143 @@ void main() {
     expect(find.byKey(const Key('retry-backend')), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  test(
+    'legacy registerIdentity rejects hint then accepts original contract',
+    () async {
+      final payloads = <Record>[];
+      final result = await registerIdentityCompatible((name, data) async {
+        expect(name, 'registerIdentity');
+        payloads.add(Map.of(data));
+        if (data.containsKey('firstNameHint')) {
+          throw const FunctionsCallError(
+            'invalid-argument',
+            'unknown-field',
+            'Unexpected input field',
+          );
+        }
+        return {
+          'uid': 'existing-user',
+          'created': false,
+          'requiresSignIn': false,
+        };
+      }, firstNameHint: ' Boris ');
+      expect(payloads, [
+        {'firstNameHint': 'Boris'},
+        {},
+      ]);
+      expect(result, {
+        'uid': 'existing-user',
+        'created': false,
+        'requiresSignIn': false,
+      });
+    },
+  );
+
+  test('current registerIdentity retains name prefill without retry', () async {
+    var calls = 0;
+    final result = await registerIdentityCompatible((name, data) async {
+      calls++;
+      expect(data, {'firstNameHint': 'Priya'});
+      return {'uid': 'new-user', 'created': true};
+    }, firstNameHint: 'Priya');
+    expect(calls, 1);
+    expect(result['created'], true);
+  });
+
+  test(
+    'no display name sends only the original verified-token contract',
+    () async {
+      var calls = 0;
+      await registerIdentityCompatible((name, data) async {
+        calls++;
+        expect(data, isEmpty);
+        return {'uid': 'existing-user'};
+      });
+      expect(calls, 1);
+    },
+  );
+
+  test('compatibility does not retry identity, permission, quota or network failures', () async {
+    for (final error in [
+      const FunctionsCallError(
+        'failed-precondition',
+        'identity-conflict',
+        'Resolve identity',
+      ),
+      const FunctionsCallError(
+        'permission-denied',
+        'email-mismatch',
+        'Verify account',
+      ),
+      const FunctionsCallError('resource-exhausted', 'rate-limit', 'Try later'),
+      const FunctionsCallError('unavailable', null, 'Offline'),
+      const FunctionsCallError(
+        'invalid-argument',
+        'invalid-input',
+        'Invalid name',
+      ),
+    ]) {
+      var calls = 0;
+      await expectLater(
+        registerIdentityCompatible((name, data) async {
+          calls++;
+          throw error;
+        }, firstNameHint: 'Boris'),
+        throwsA(same(error)),
+      );
+      expect(calls, 1);
+    }
+  });
+
+  testWidgets(
+    'legacy function during startup reaches sign-in instead of backend failure',
+    (tester) async {
+      await tester.pumpWidget(
+        AppBootstrap(
+          connect: () async {
+            await registerIdentityCompatible((name, data) async {
+              if (data.isNotEmpty) {
+                throw const FunctionsCallError(
+                  'invalid-argument',
+                  'unknown-field',
+                  'Unexpected input field',
+                );
+              }
+              return {'uid': 'existing-user', 'requiresSignIn': false};
+            }, firstNameHint: 'Boris');
+            return FakeParticipantRepository(authenticated: false);
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(ParticipantApp), findsOneWidget);
+      expect(find.text('We couldn’t start sign-in'), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'function startup support code identifies failure without raw message',
+    (tester) async {
+      await tester.pumpWidget(
+        AppBootstrap(
+          connect: () async {
+            throw const FunctionsCallError(
+              'invalid-argument',
+              'unknown-field',
+              'Private backend diagnostic',
+            );
+          },
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Support code: functions/invalid-argument/unknown-field'),
+        findsOneWidget,
+      );
+      expect(find.textContaining('Private backend diagnostic'), findsNothing);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 }
