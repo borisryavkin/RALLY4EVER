@@ -107,6 +107,16 @@ export function parseTimeRange(raw) {
   const [, h1, m1, mer1, h2, m2, mer2] = m;
   const startHour = Number(h1), endHour = Number(h2);
   const startMin = m1 ? Number(m1) : 0, endMin = m2 ? Number(m2) : 0;
+  // Already unambiguous 24-hour notation (e.g. "13:00-14:00", as produced
+  // by some of the university schedule's Time column) needs no am/pm.
+  if (startHour >= 13 || endHour >= 13 || (startHour === 0 || endHour === 0)) {
+    if (startHour > 23 || endHour > 23) return { startTime: null, endTime: null, reason: 'unrecognised-format' };
+    return {
+      startTime: `${String(startHour).padStart(2, '0')}:${String(startMin).padStart(2, '0')}`,
+      endTime: `${String(endHour).padStart(2, '0')}:${String(endMin).padStart(2, '0')}`,
+      reason: null,
+    };
+  }
   // Need an am/pm somewhere to resolve either end unambiguously. If only
   // one side states it, the other end shares it unless the numbers imply
   // otherwise (e.g. "11-12pm" means 11am-12pm, "2-3pm" means 2pm-3pm):
