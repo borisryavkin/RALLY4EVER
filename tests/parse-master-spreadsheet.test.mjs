@@ -47,6 +47,10 @@ test('a clean row parses day/time/start date/frequency/venue/address', () => {
   assert.equal(row.startDate, '2025-02-21');
   assert.equal(row.frequency, 'Weekly');
   assert.equal(row.venueName, 'Armidale Tennis Centre');
+  // The suburb and the program's display name are the same source
+  // column here -- unlike the university matrix, which has no per-row
+  // suburb at all (see parse-university-matrix.test.mjs).
+  assert.equal(row.suburb, 'Armidale');
   assert.equal(row.address, 'Golf Link Rd, Armidale, NSW 2350');
   assert.deepEqual(row.review, []);
 });

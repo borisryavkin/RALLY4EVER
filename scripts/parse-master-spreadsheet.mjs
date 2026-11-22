@@ -202,7 +202,10 @@ function parseSheet(fileName, sheetName, sport, ws, headerRow, dataRows, colLett
       day, dayRaw: dayRaw == null ? null : String(dayRaw),
       startTime, endTime, rawTime,
       startDate, rawStartDate,
-      frequency, venueName, address,
+      // This sheet's own locality column doubles as both the program's
+      // display name and the venue's suburb -- unlike the university
+      // matrix, which has no comparable per-row suburb at all.
+      frequency, venueName, address, suburb: name,
       review,
       operational: {
         scName: get('scName') ?? null,

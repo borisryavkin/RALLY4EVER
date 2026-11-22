@@ -134,5 +134,4 @@ file,sheet,row,reasons
 "University_PickleBall_Program_Matrix_.xlsx","NSW - Western Sydney University",24,"Time varies across the term (most common \"12:30-2pm\" covers only 14/27 sessions) -- see admin schedule for the full list"
 "University_PickleBall_Program_Matrix_.xlsx","University of Wollongong","","no usable Schedule rows (dates marked \"need to confirm\" or missing)"
 "University_PickleBall_Program_Matrix_.xlsx","QSL - Griffith University",24,"Day of week column disagrees with the Date column for 11/13 rows (using the date-derived weekday, not the free-typed column)"
-"University_PickleBall_Program_Matrix_.xlsx","QSL - Griffith University",24,"same venue/sport/state, day not corroborated in scheduleText (candidate: qld-pickleball-carrara)"
 "University_PickleBall_Program_Matrix_.xlsx","VIC - Deakin University",24,"Day of week column disagrees with the Date column for 11/13 rows (using the date-derived weekday, not the free-typed column)"

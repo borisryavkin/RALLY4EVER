@@ -114,7 +114,11 @@ export function parseUniversitySheet(ws, sheetName, fileName) {
   if (scheduleRows.length === 0) {
     return {
       sheetName, name: `Pickleball at ${meta.universityName}`, state: meta.state, sport: 'pickleball',
-      published: false, venueName, address, day: null, startTime: null, endTime: null, frequency: null,
+      // No distinct suburb is available from this source (only a venue
+      // name + street address) -- left blank rather than reusing the
+      // program's own name, which is a display label ("Pickleball at
+      // ..."), not a place.
+      published: false, venueName, address, suburb: '', day: null, startTime: null, endTime: null, frequency: null,
       review: [...review, { reason: 'no usable Schedule rows (dates marked "need to confirm" or missing)' }],
       operational: { notes, coachName: null, schedule: [] },
       importSource: { file: fileName, sheet: sheetName, row: null },
@@ -150,7 +154,7 @@ export function parseUniversitySheet(ws, sheetName, fileName) {
 
   return {
     sheetName, name: `Pickleball at ${meta.universityName}`, state: meta.state, sport: 'pickleball',
-    published: false, venueName, address,
+    published: false, venueName, address, suburb: '',
     day: dayMode.value, startTime: parsedTime.startTime, endTime: parsedTime.endTime, frequency,
     review,
     operational: { notes, coachName: coachMode.value ?? null, schedule: scheduleRows },

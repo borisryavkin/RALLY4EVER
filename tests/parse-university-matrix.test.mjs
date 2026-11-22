@@ -60,6 +60,9 @@ test('reads the NOTES cell, Facility/Location block, and a clean weekly Schedule
   assert.equal(record.state, 'NSW');
   assert.equal(record.sport, 'pickleball');
   assert.equal(record.venueName, 'UNSW Fitness & Aquatic Centre');
+  // No distinct suburb exists in this source -- must never fall back to
+  // the program's own display name ("Pickleball at UNSW" is not a place).
+  assert.equal(record.suburb, '');
   assert.equal(record.address, 'Gate 2 B5, High St, Kensington NSW 2052');
   assert.equal(record.day, 'Tue');
   assert.equal(record.startTime, '13:00');

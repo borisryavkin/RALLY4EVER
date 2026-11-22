@@ -88,7 +88,7 @@ async function fetchCatalogue(db) {
 }
 
 function planVenue(row, venues, createdThisRun) {
-  const match = matchVenue({ venueName: row.venueName, state: row.state, suburb: row.name }, [
+  const match = matchVenue({ venueName: row.venueName, state: row.state, suburb: row.suburb }, [
     ...venues,
     ...createdThisRun,
   ]);
@@ -99,7 +99,7 @@ function buildVenueDoc(row, geocodeResult, key) {
   return {
     name: row.venueName || `${row.name} (venue to verify)`,
     address: row.address ?? '',
-    suburb: row.name,
+    suburb: row.suburb,
     postcode: '',
     state: row.state,
     lat: geocodeResult.lat,
@@ -224,7 +224,7 @@ async function main() {
       venueIsNew = true;
       venueId = venueMatch.id;
       const geo = row.venueName || row.address
-        ? await geocoder.geocodeVenue({ name: row.venueName, address: row.address, suburb: row.name, state: row.state })
+        ? await geocoder.geocodeVenue({ name: row.venueName, address: row.address, suburb: row.suburb, state: row.state })
         : { lat: null, lng: null, geocodeConfidence: 'none' };
       if (geo.lat == null) {
         report.missingCoordinates++;
