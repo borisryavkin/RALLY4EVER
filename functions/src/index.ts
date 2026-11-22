@@ -239,3 +239,5 @@ export const adminAttendanceCounts = callable((who,data)=>adminManagement.attend
 export const adminFindPeople = callable((who,data)=>adminManagement.findPeople(who,data));
 export const adminPersonAttendance = callable((who,data)=>adminManagement.personAttendance(who,data));
 export const adminFindCoordinates = callable((who,data)=>adminManagement.coordinates(who,data));
+
+export const adminVenueDeletion = callable((who,data)=>adminManagement.venueDeletion(who,data));

@@ -790,10 +790,12 @@ function VenueFields({
           }}
           options={[
             { value: "", label: "Custom venue" },
-            ...venues.map((v) => ({
-              value: v.id,
-              label: `${v.code} · ${v.name}`,
-            })),
+            ...venues
+              .filter((v) => !v.deletedAt)
+              .map((v) => ({
+                value: v.id,
+                label: `${v.code} · ${v.name}`,
+              })),
           ]}
         />
       )}
@@ -2023,19 +2025,113 @@ function CropPhoto({ file, onReady }) {
     </div>
   );
 }
-function Venues({ data, action, busy }) {
+function VenueDeleteDialog({ row, api, action, busy, onClose }) {
+  const ref = useRef(null),
+    [preview, setPreview] = useState(null),
+    [confirmation, setConfirmation] = useState(""),
+    [error, setError] = useState("");
+  useEffect(() => {
+    const dialog = ref.current;
+    dialog.showModal();
+    let live = true;
+    api("adminVenueDeletion", { venueId: row.id, operation: "preview" })
+      .then((p) => {
+        if (live) setPreview(p);
+      })
+      .catch((e) => {
+        if (live) setError(errorText(e));
+      });
+    return () => {
+      live = false;
+      dialog.close();
+    };
+  }, [row.id, api]);
+  return (
+    <dialog
+      ref={ref}
+      className="admin-dialog"
+      onCancel={(e) => {
+        e.preventDefault();
+        onClose();
+      }}
+      aria-label="Delete venue"
+    >
+      <h2>Delete {row.name}?</h2>
+      <p>
+        This hides the venue from active venue lists. You can restore it using
+        Show deleted venues. Photos, programs, sessions and attendance are never
+        deleted.
+      </p>
+      {!preview && !error && <p>Checking linked records…</p>}
+      {preview && (
+        <p>
+          {preview.programs} linked programs · {preview.sessions} linked
+          sessions
+        </p>
+      )}
+      {preview && !preview.allowed && (
+        <p role="alert">
+          This venue cannot be deleted while programs or sessions use it,
+          including archived records. Reassign those records first. Nothing will
+          be deleted.
+        </p>
+      )}
+      {preview?.allowed && (
+        <Field
+          label="Type the venue name to confirm"
+          value={confirmation}
+          onChange={(e) => setConfirmation(e.target.value)}
+        />
+      )}
+      {error && <p role="alert">{error}</p>}
+      <div className="actions">
+        <Button secondary disabled={busy} onClick={onClose}>
+          Cancel
+        </Button>
+        <Button
+          disabled={busy || !preview?.allowed || confirmation !== row.name}
+          onClick={() =>
+            action(
+              async () => {
+                await api("adminVenueDeletion", {
+                  venueId: row.id,
+                  revision: preview.revision,
+                  confirmation,
+                  operation: "delete",
+                });
+                onClose();
+              },
+              "Venue deleted. Use Show deleted venues to restore it.",
+              (e) => setError(errorText(e)),
+            )
+          }
+        >
+          Delete venue
+        </Button>
+      </div>
+    </dialog>
+  );
+}
+function Venues({ data, action, busy, api = call }) {
+  const [showDeleted, setShowDeleted] = useState(false),
+    [deleting, setDeleting] = useState(null);
   const [edit, setEdit] = useState(null),
     [search, setSearch] = useState(""),
     [batch, setBatch] = useState([]);
   const input = useRef(null);
-  const rows = data.venues.filter((v) =>
-    `${v.name} ${v.code} ${v.suburb}`
-      .toLowerCase()
-      .includes(search.toLowerCase()),
+  const rows = data.venues.filter(
+    (v) =>
+      (showDeleted || !v.deletedAt) &&
+      `${v.name} ${v.code} ${v.suburb}`
+        .toLowerCase()
+        .includes(search.toLowerCase()),
   );
   async function preview(files) {
     try {
-      const matched = matchUploads([...files], data.venues);
+      const matched = matchUploads(
+        [...files],
+        data.venues.filter((v) => !v.deletedAt),
+      );
       for (const item of matched) {
         if (item.error) continue;
         item.blob = await compressCrop(item.file);
@@ -2073,6 +2169,23 @@ function Venues({ data, action, busy }) {
           <Plus size={17} /> New venue
         </Button>
       </div>
+      <label className="check">
+        <input
+          type="checkbox"
+          checked={showDeleted}
+          onChange={(e) => setShowDeleted(e.target.checked)}
+        />{" "}
+        Show deleted venues
+      </label>
+      {deleting && (
+        <VenueDeleteDialog
+          row={deleting}
+          api={api}
+          busy={busy}
+          action={action}
+          onClose={() => setDeleting(null)}
+        />
+      )}
       <Field
         label="Search venue, suburb or code"
         value={search}
@@ -2121,9 +2234,36 @@ function Venues({ data, action, busy }) {
                 </td>
                 <td>{v.revision ?? 0}</td>
                 <td>
-                  <Button secondary onClick={() => setEdit(v)}>
-                    Edit / upload photo
-                  </Button>
+                  {v.deletedAt ? (
+                    <Button
+                      secondary
+                      disabled={busy}
+                      onClick={() =>
+                        action(() =>
+                          api("adminVenueDeletion", {
+                            venueId: v.id,
+                            revision: v.revision,
+                            operation: "restore",
+                          }),
+                        )
+                      }
+                    >
+                      Restore
+                    </Button>
+                  ) : (
+                    <>
+                      <Button secondary onClick={() => setEdit(v)}>
+                        Edit / upload photo
+                      </Button>
+                      <Button
+                        secondary
+                        disabled={busy}
+                        onClick={() => setDeleting(v)}
+                      >
+                        Delete
+                      </Button>
+                    </>
+                  )}
                 </td>
               </tr>
             ))}
@@ -2572,4 +2712,4 @@ function UserRow({ user: u, busy, onSave }) {
 }
 const rootElement = document.getElementById("root");
 if (rootElement) createRoot(rootElement).render(<App />);
-export { Programs, ProgramEditor, VenueEditor, Attendance };
+export { Programs, ProgramEditor, VenueEditor, Attendance, Venues };

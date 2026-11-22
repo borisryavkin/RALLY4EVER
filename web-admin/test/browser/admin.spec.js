@@ -292,3 +292,49 @@ test("person CSV export fetches all history pages instead of exporting just visi
   expect(requests).toHaveLength(2);
   expect(requests[1].data.cursor).toBe("history-next");
 });
+
+test("venues offer confirmed deletion, hide deleted records and restore", async ({
+  page,
+}) => {
+  await open(page, "VenueList");
+  await page
+    .getByRole("button", { name: "Delete", exact: true })
+    .first()
+    .click();
+  const dialog = page.getByRole("dialog", { name: "Delete venue" });
+  await expect(dialog.getByText("0 linked programs")).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Delete venue", exact: true }),
+  ).toBeDisabled();
+  await dialog
+    .getByLabel("Type the venue name to confirm")
+    .fill("Ultimo Community Centre");
+  await dialog
+    .getByRole("button", { name: "Delete venue", exact: true })
+    .click();
+  await expect(dialog).not.toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Edit / upload photo" }),
+  ).toHaveCount(0);
+  await page.getByLabel("Show deleted venues").check();
+  await page.getByRole("button", { name: "Restore", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Edit / upload photo" }),
+  ).toBeVisible();
+  await shot(page, "after-venue-delete-restore");
+});
+test("venue deletion explains linked records and prevents deletion", async ({
+  page,
+}) => {
+  await open(page, "VenueList", "&venueBlocked=1");
+  await page
+    .getByRole("button", { name: "Delete", exact: true })
+    .first()
+    .click();
+  const dialog = page.getByRole("dialog", { name: "Delete venue" });
+  await expect(dialog.getByRole("alert")).toContainText("cannot be deleted");
+  await expect(
+    dialog.getByRole("button", { name: "Delete venue", exact: true }),
+  ).toBeDisabled();
+  await shot(page, "after-venue-delete-blocked");
+});

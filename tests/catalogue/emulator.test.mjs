@@ -482,3 +482,29 @@ test('legacy published sessions without coach arrays remain readable after the l
  const coach=env.authenticatedContext('coach-1',{email_verified:true,role:'coach'}).firestore();
  await assertSucceeds(getDoc(doc(coach,'events/legacy-public')));
 });
+
+test('unused venue soft deletion and restore preserve photos and audit history',async()=>{
+ await db.doc('venues/unused').set({name:'Unused courts',code:'unused-nsw',revision:1,photoUrl:'https://example.test/photo.jpg'});
+ const m=management();assert.equal((await m.venueDeletion(admin,{venueId:'unused',operation:'preview'})).allowed,true);
+ await rejects(()=>m.venueDeletion(admin,{venueId:'unused',operation:'delete',revision:1,confirmation:'wrong'}),'confirmation-mismatch');
+ await m.venueDeletion(admin,{venueId:'unused',operation:'delete',revision:1,confirmation:'Unused courts'});
+ assert.ok((await db.doc('venues/unused').get()).data().deletedAt);
+ assert.equal((await consoleService().catalogue(admin,{})).venues.some(v=>v.id==='unused'),false);
+ assert.equal((await consoleService().catalogue(admin,{includeDeleted:true})).venues.some(v=>v.id==='unused'),true);
+ await rejects(()=>consoleService().saveVenue(admin,{venueId:'unused',revision:2,venue:{...program().venue,code:'unused-nsw'}}),'venue-deleted');
+ await rejects(()=>catalogue.saveProgram(admin,{programId:'deleted-venue-program',program:program({venue:{...program().venue,id:'unused'}})}),'venue-deleted');
+ await m.venueDeletion(admin,{venueId:'unused',operation:'restore',revision:2});
+ const v=(await db.doc('venues/unused').get()).data();assert.equal(v.deletedAt,null);assert.equal(v.photoUrl,'https://example.test/photo.jpg');assert.equal(v.revision,3);
+ assert.equal((await db.collection('catalogueAudits').where('venueId','==','unused').get()).size,2);
+});
+for(const kind of ['programs','events'])test('venue deletion blocks linked '+kind+' including archived records',async()=>{
+ await db.doc('venues/used').set({name:'Used courts',revision:1});await db.doc(kind+'/linked').set({venue:{id:'used',name:'Used courts'},status:'archived'});
+ const m=management(),p=await m.venueDeletion(admin,{venueId:'used',operation:'preview'});assert.equal(p.allowed,false);
+ await rejects(()=>m.venueDeletion(admin,{venueId:'used',operation:'delete',revision:1,confirmation:'Used courts'}),'venue-in-use');
+ assert.equal((await db.doc(kind+'/linked').get()).exists,true);assert.equal((await db.doc('venues/used').get()).data().deletedAt,undefined);
+});
+test('venue deletion denies participant, coach and stale admin roles',async()=>{
+ await db.doc('venues/unused').set({name:'Unused courts',revision:1});
+ for(const role of ['participant','coach'])await rejects(()=>management().venueDeletion(who('participant-1',role),{venueId:'unused',operation:'preview'}),'admin-claim-required');
+ await rejects(()=>management().venueDeletion(who('participant-1','admin'),{venueId:'unused',operation:'preview'}),'admin-required');
+});

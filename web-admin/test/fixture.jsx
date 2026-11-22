@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { adminError } from "../src/admin_helpers.mjs";
-import { Programs, VenueEditor, Attendance } from "../src/main.jsx";
+import { Programs, VenueEditor, Attendance, Venues } from "../src/main.jsx";
 const now = new Date();
 now.setHours(11, 30, 0, 0);
 const venue = {
@@ -185,6 +185,29 @@ function Fixture() {
       }));
       return {};
     }
+    if (name === "adminVenueDeletion") {
+      if (d.operation === "preview")
+        return {
+          allowed: !params.get("venueBlocked"),
+          programs: params.get("venueBlocked") ? 1 : 0,
+          sessions: 0,
+          revision: 0,
+        };
+      setData((old) => ({
+        ...old,
+        venues: old.venues.map((v) =>
+          v.id === d.venueId
+            ? {
+                ...v,
+                deletedAt:
+                  d.operation === "restore" ? null : new Date().toISOString(),
+                revision: 1,
+              }
+            : v,
+        ),
+      }));
+      return {};
+    }
     if (name === "adminFindCoordinates")
       return {
         results: [
@@ -265,6 +288,8 @@ function Fixture() {
             action={action}
             busy={busy}
           />
+        ) : screen === "VenueList" ? (
+          <Venues data={data} action={action} busy={busy} api={api} />
         ) : screen === "Programs" ? (
           <Programs
             data={data}

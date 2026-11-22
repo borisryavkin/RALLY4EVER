@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { FieldPath, Timestamp } from "firebase-admin/firestore";
-import { AdminConsoleService, wire } from "./admin_console";
+import { AdminConsoleService, wire, venueId } from "./admin_console";
 import { Identity, input, id, text, fail, hash } from "./domain";
 import { uid } from "./service";
 
@@ -12,6 +12,111 @@ export class AdminManagementService {
   ) {}
   get service() {
     return this.console.service;
+  }
+  async venueDeletion(who: Identity, value: unknown) {
+    const d = input(value, [
+      "venueId",
+      "operation",
+      "confirmation",
+      "revision",
+    ]);
+    await this.console.requireAdmin(who);
+    const key = id(d.venueId, "venueId"),
+      operation = d.operation;
+    if (!["preview", "delete", "restore"].includes(operation as string))
+      fail(
+        "invalid-argument",
+        "invalid-operation",
+        "Choose preview, delete or restore",
+      );
+    const { db } = this.service;
+    return db.runTransaction(async (tx) => {
+      if ((await this.service.actor(tx, who)).role !== "admin")
+        fail(
+          "permission-denied",
+          "admin-required",
+          "Admin access has been revoked",
+        );
+      const ref = db.doc(`venues/${key}`),
+        old = await tx.get(ref);
+      const records = await Promise.all(
+        ["programs", "events"].map((c) => tx.get(db.collection(c).limit(1001))),
+      );
+      if (records.some((q) => q.size > 1000))
+        fail(
+          "resource-exhausted",
+          "catalogue-limit",
+          "Too many records to safely check venue links. Contact your administrator.",
+        );
+      const linked = records.map((q) =>
+        q.docs.filter((r) => {
+          const p = r.data();
+          return p.venue && (p.venueId ?? venueId(p.venue)) === key;
+        }),
+      );
+      const v = old.data() ?? linked.flat()[0]?.data().venue;
+      if (!v) fail("not-found", "venue-not-found", "Venue not found");
+      const summary = {
+        allowed: linked.every((q) => q.length === 0),
+        programs: linked[0].length,
+        sessions: linked[1].length,
+        name: v.name,
+        revision: v.revision ?? 0,
+      };
+      if (operation === "preview") return summary;
+      if (d.revision !== (v.revision ?? 0))
+        fail(
+          "aborted",
+          "stale-venue",
+          "Venue changed. Reload before continuing",
+        );
+      if (operation === "delete") {
+        if (d.confirmation !== v.name)
+          fail(
+            "invalid-argument",
+            "confirmation-mismatch",
+            "Type the venue name exactly to confirm",
+          );
+        if (!summary.allowed)
+          fail(
+            "failed-precondition",
+            "venue-in-use",
+            `This venue is used by ${summary.programs} programs and ${summary.sessions} sessions. Reassign those records first; historical records are never removed.`,
+          );
+        if (v.deletedAt)
+          fail(
+            "failed-precondition",
+            "venue-deleted",
+            "This venue is already deleted",
+          );
+      } else if (!v.deletedAt)
+        fail("failed-precondition", "not-deleted", "This venue is not deleted");
+      const at = this.service.stamp();
+      const changes =
+        operation === "delete"
+          ? { deletedAt: at, deletedBy: who.uid }
+          : {
+              deletedAt: null,
+              deletedBy: null,
+              restoredAt: at,
+              restoredBy: who.uid,
+            };
+      tx.update(ref, {
+        ...changes,
+        updatedAt: at,
+        updatedBy: who.uid,
+        revision: (v.revision ?? 0) + 1,
+      });
+      tx.create(db.collection("catalogueAudits").doc(), {
+        kind: operation === "delete" ? "venue-soft-delete" : "venue-restore",
+        venueId: key,
+        actorUid: who.uid,
+        createdAt: at,
+        before: v,
+        after: changes,
+      });
+      return { venueId: key, deleted: operation === "delete" };
+    });
   }
   async programDeletion(who: Identity, value: unknown) {
     const d = input(value, [

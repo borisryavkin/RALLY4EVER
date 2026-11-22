@@ -73,7 +73,7 @@ export class AdminConsoleService {
     for (const d of [...programs.docs, ...events.docs]) {
       const v = d.data().venue;
       if (v?.name) {
-        const key = venueId(v);
+        const key = d.data().venueId ?? venueId(v);
         if (!venues.has(key))
           venues.set(key, {
             ...v,
@@ -88,7 +88,7 @@ export class AdminConsoleService {
     return wire({
       events: events.docs.filter(d=>!d.data().deletedAt&&!d.data().hiddenAt).map((d) => ({ ...d.data(), id: d.id })),
       programs: programs.docs.filter(d=>options.includeDeleted || !d.data().deletedAt).map((d) => ({ ...d.data(), id: d.id })),
-      venues: [...venues.values()],
+      venues: [...venues.values()].filter(v=>options.includeDeleted || !v.deletedAt),
       forms: forms.docs.map((d) => ({
         id: d.id,
         version: d.data().version,
@@ -174,6 +174,7 @@ export class AdminConsoleService {
       const venue =
           "venue" in changes || !old.exists ? validateVenue(p.venue) : p.venue,
         code = id(p.code ?? `s-${eventId}`, "code");
+      if(venue?.id && (await tx.get(db.doc(`venues/${id(venue.id,"venueId")}`))).data()?.deletedAt) fail("failed-precondition","venue-deleted","Restore this venue or choose another venue");
       const existingCode = await tx.get(
         db.collection("events").where("code", "==", code).limit(2),
       );
@@ -408,6 +409,7 @@ export class AdminConsoleService {
       if ((await this.service.actor(tx, who)).role !== "admin")
         fail("permission-denied", "admin-required", "Admin access revoked");
       const ref = db.doc(`venues/${key}`), old = await tx.get(ref);
+      if(old.data()?.deletedAt) fail("failed-precondition","venue-deleted","Restore this venue before editing");
       let conflicts=await tx.get(db.collection("venues").where("code","==",code).limit(2));
       if(automaticCode) {
         for(let suffix=2;conflicts.docs.some(r=>r.id!==key)&&suffix<=100;suffix++) {

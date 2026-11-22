@@ -77,6 +77,7 @@ export class CatalogueService {
     await db.runTransaction(async (tx) => {
       if ((await this.service.actor(tx, who)).role !== "admin") fail("permission-denied", "admin-required", "Admin role required");
       const ref = db.doc(`programs/${programId}`), old = await tx.get(ref);
+      if(program.venue?.id && (await tx.get(db.doc(`venues/${id(program.venue.id,"venueId")}`))).data()?.deletedAt) fail("failed-precondition","venue-deleted","Restore this venue or choose another venue");
       if(old.data()?.deletedAt) fail("failed-precondition","program-deleted","Restore this program before editing or publishing");
       if (old.exists && d.revision !== old.data()!.revision) fail("aborted", "stale-program", "Program changed. Reload before saving");
       const validateCoaches = !old.exists || JSON.stringify(old.data()?.coachUids ?? []) !== JSON.stringify(program.coachUids) || (program.status === "active" && old.data()?.status !== "active");
