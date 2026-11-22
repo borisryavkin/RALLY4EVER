@@ -309,9 +309,14 @@ class FakeParticipantRepository extends ParticipantRepository {
     notifyListeners();
   }
 
+  // Simulates permission denied / GPS off / a timeout -- any location()
+  // failure a real device can produce.
+  String? locationError;
   @override
-  Future<Record> location() async =>
-      simulatedLocation ?? {'lat': -33.8926, 'lng': 151.2511};
+  Future<Record> location() async {
+    if (locationError != null) throw StateError(locationError!);
+    return simulatedLocation ?? {'lat': -33.8926, 'lng': 151.2511};
+  }
   @override
   Future<Record> call(String name, Record data) async {
     calls.add(name);

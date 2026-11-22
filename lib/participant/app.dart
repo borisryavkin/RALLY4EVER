@@ -85,6 +85,7 @@ class _ParticipantAppState extends State<ParticipantApp>
   Record? scanLocation;
   Record? people;
   double? previewDistance;
+  String? locationError;
   final qrInput = TextEditingController();
   Timer? timer;
   MobileScannerController? scanner;
@@ -317,6 +318,7 @@ class _ParticipantAppState extends State<ParticipantApp>
   void select(Record e, String next) {
     selectedId = eid(e);
     previewDistance = null;
+    locationError = null;
     go(next);
   }
 
@@ -362,7 +364,16 @@ class _ParticipantAppState extends State<ParticipantApp>
         'This event is not available. Ask your coach to refresh the QR.',
       );
     }
-    final position = await repo.location();
+    // Location is advisory only -- the coach always confirms attendance
+    // in person. A scan never fails just because location services are
+    // off, permission was denied, or a fix couldn't be found in time;
+    // the check-in still goes through, with distance left unknown.
+    Record? position;
+    try {
+      position = await repo.location();
+    } catch (_) {
+      position = null;
+    }
     if (!mounted) return;
     scanned = link;
     scanLocation = position;
@@ -1552,6 +1563,12 @@ class _ParticipantAppState extends State<ParticipantApp>
     final opens = dateOf(e['startsAt']).subtract(const Duration(minutes: 10)),
         open = !repo.now().isBefore(opens),
         closed = repo.now().isAfter(dateOf(e['endsAt']));
+    final venueLat = e['venue']['lat'] as num?, venueLng = e['venue']['lng'] as num?;
+    // Treat exactly 0,0 ("null island") the same as missing -- it's never
+    // a real venue location, only ever a placeholder for one that hasn't
+    // been set yet.
+    final venueKnown =
+        venueLat != null && venueLng != null && !(venueLat == 0 && venueLng == 0);
     return frame(
       context,
       dark: true,
@@ -1575,50 +1592,93 @@ class _ParticipantAppState extends State<ParticipantApp>
         ),
         const SizedBox(height: 32),
         Center(
-          child: Container(
-            width: 190,
-            height: 190,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white.withValues(alpha: .08),
-              border: Border.all(color: Colors.white24),
+          child: Semantics(
+            button: open && !closed,
+            label: 'Scan QR code',
+            child: Material(
+              color: Colors.transparent,
+              shape: const CircleBorder(),
+              child: InkWell(
+                key: const Key('scan-circle'),
+                customBorder: const CircleBorder(),
+                onTap: open && !closed ? () => go('scan') : null,
+                child: Container(
+                  width: 190,
+                  height: 190,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: .08),
+                    border: Border.all(color: Colors.white24),
+                  ),
+                  child: const Icon(
+                    Icons.qr_code_scanner,
+                    color: pink,
+                    size: 78,
+                  ),
+                ),
+              ),
             ),
-            child: const Icon(Icons.qr_code_scanner, color: pink, size: 78),
           ),
         ),
         const SizedBox(height: 32),
         Text(
-          'Check in from 10 minutes before the session starts. Stay within ${e['geofenceRadiusM'] ?? 150} m of ${e['venue']['name']}.',
+          venueKnown
+              ? 'Check in from 10 minutes before the session starts. Stay within ${e['geofenceRadiusM'] ?? 150} m of ${e['venue']['name']}.'
+              : 'Check in from 10 minutes before the session starts. We don’t have an exact location for ${e['venue']['name']} yet, so you can scan from anywhere -- your coach confirms everyone in person.',
           style: const TextStyle(color: Colors.white70),
         ),
         const SizedBox(height: 18),
-        OutlinedButton(
-          key: const Key('preview-distance'),
-          style: OutlinedButton.styleFrom(foregroundColor: Colors.white),
-          onPressed: () => action(() async {
-            final p = await repo.location();
-            final distance = const Distance().as(
-              LengthUnit.Meter,
-              LatLng(
-                (p['lat'] as num).toDouble(),
-                (p['lng'] as num).toDouble(),
-              ),
-              LatLng(
-                (e['venue']['lat'] as num).toDouble(),
-                (e['venue']['lng'] as num).toDouble(),
-              ),
-            );
-            if (mounted) setState(() => previewDistance = distance);
-          }),
-          child: const Text('Check my distance'),
-        ),
+        if (venueKnown)
+          OutlinedButton(
+            key: const Key('preview-distance'),
+            style: OutlinedButton.styleFrom(foregroundColor: Colors.white),
+            onPressed: () => action(() async {
+              Record position;
+              try {
+                position = await repo.location();
+              } catch (error) {
+                if (mounted) {
+                  setState(() {
+                    previewDistance = null;
+                    locationError = friendlyError(error);
+                  });
+                }
+                return;
+              }
+              final distance = const Distance().as(
+                LengthUnit.Meter,
+                LatLng(
+                  (position['lat'] as num).toDouble(),
+                  (position['lng'] as num).toDouble(),
+                ),
+                LatLng(venueLat.toDouble(), venueLng.toDouble()),
+              );
+              if (mounted) {
+                setState(() {
+                  previewDistance = distance;
+                  locationError = null;
+                });
+              }
+            }),
+            child: const Text('Check my distance'),
+          ),
         if (previewDistance != null)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
             child: Panel(
               color: pink,
               child: Text(
-                'You are ${previewDistance!.round()} m from the venue. ${previewDistance! > (e['geofenceRadiusM'] as num? ?? 150) ? "Move closer before scanning." : "Your coach will still confirm you in person."}',
+                'You are ${previewDistance!.round()} m from the venue. ${previewDistance! > (e['geofenceRadiusM'] as num? ?? 150) ? "Move closer, or scan anyway -- your coach confirms everyone in person." : "Your coach will still confirm you in person."}',
+              ),
+            ),
+          ),
+        if (locationError != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Panel(
+              color: pink,
+              child: Text(
+                "We couldn't find your location. $locationError You can still scan to check in -- your coach confirms everyone in person.",
               ),
             ),
           ),
