@@ -51,10 +51,11 @@ export const versionMap = (forms) =>
   Object.fromEntries(forms.map((f) => [f.id, f.version]));
 
 const memoryTokens = new Map();
-export function anonymousTokenFor(eventId, storage = globalThis.localStorage) {
+export function anonymousTokenFor(eventId, storage) {
   const key = "r4e-anonymous-checkin:" + eventId;
   let saved;
   try {
+    storage ??= globalThis.localStorage;
     saved = storage?.getItem(key);
   } catch {
     /* In-memory fallback when storage is unavailable. */
