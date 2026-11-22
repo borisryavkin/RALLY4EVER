@@ -738,10 +738,27 @@ class FirebaseParticipantRepository extends ParticipantRepository {
           ..setCustomParameters({'prompt': 'select_account'});
         result = await backend.auth.signInWithPopup(provider);
       } else {
-        final identity = await _nativeGoogleIdentity();
-        googleEmail = identity.email;
-        googleCredential = identity.credential;
-        result = await backend.auth.signInWithCredential(googleCredential);
+        try {
+          final identity = await _nativeGoogleIdentity();
+          googleEmail = identity.email;
+          googleCredential = identity.credential;
+          result = await backend.auth.signInWithCredential(googleCredential);
+        } on GoogleSignInException catch (error) {
+          // The Android Credential Manager path reports "canceled" even
+          // when the user never actually canceled (a misconfigured
+          // serverClientId, an unregistered signing-certificate
+          // fingerprint, or a transient Play Services issue all look the
+          // same from here). Never leave the user stuck on that: fall
+          // back to a full browser-based OAuth flow, which doesn't go
+          // through Credential Manager at all, before giving up.
+          debugPrint(
+            'Native Google credential failed (${error.code}); falling back '
+            'to browser-based sign-in: $error',
+          );
+          final provider = GoogleAuthProvider()
+            ..setCustomParameters({'prompt': 'select_account'});
+          result = await backend.auth.signInWithProvider(provider);
+        }
       }
     } on FirebaseAuthException catch (error) {
       if (error.code == 'account-exists-with-different-credential' &&
