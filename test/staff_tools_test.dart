@@ -110,7 +110,10 @@ void main() {
       repo.notifyListeners();
       await tester.pumpAndSettle();
       expect(find.text('Tell us a little about you'), findsNothing);
-      expect(find.text('Admin view'), findsOneWidget);
+      // Lands on Play, not onboarding -- Admin access itself now lives
+      // only under Me -> Admin, not shown here regardless of role.
+      expect(find.text('Play near you'), findsOneWidget);
+      expect(find.text('Admin view'), findsNothing);
       await tester.pumpWidget(const SizedBox());
       repo.dispose();
     },

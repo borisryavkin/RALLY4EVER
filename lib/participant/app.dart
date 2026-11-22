@@ -1314,10 +1314,12 @@ class _ParticipantAppState extends State<ParticipantApp>
               .toList(),
         ),
         const SizedBox(height: 16),
-        if (repo.role != 'participant') ...[
+        // Admin access lives only under Me -> Admin now, never on Play;
+        // a coach's quick view stays here, unaffected.
+        if (repo.role == 'coach') ...[
           OutlinedButton(
             onPressed: () => go('role'),
-            child: Text('${repo.role == 'admin' ? 'Admin' : 'Coach'} view'),
+            child: const Text('Coach view'),
           ),
           const SizedBox(height: 16),
         ],

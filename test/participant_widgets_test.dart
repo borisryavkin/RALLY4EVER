@@ -377,6 +377,34 @@ void main() {
     },
   );
   testWidgets(
+    'Admin view never appears on Play, even for an admin account',
+    (tester) async {
+      final repo = FakeParticipantRepository();
+      repo.claimRole = 'admin';
+      repo.claimRoles = {'participant', 'admin'};
+      repo.profile['role'] = 'admin';
+      await show(tester, repo, 'home');
+      expect(find.text('Play near you'), findsOneWidget);
+      expect(find.text('Admin view'), findsNothing);
+      expect(find.text('Admin'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      repo.dispose();
+    },
+  );
+  testWidgets(
+    'Admin access is still reachable from Me for an admin account',
+    (tester) async {
+      final repo = FakeParticipantRepository();
+      repo.claimRole = 'admin';
+      repo.claimRoles = {'participant', 'admin'};
+      repo.profile['role'] = 'admin';
+      await show(tester, repo, 'profile');
+      expect(find.widgetWithText(FilledButton, 'Admin'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      repo.dispose();
+    },
+  );
+  testWidgets(
     'returning to the foreground refreshes role/access quietly, with no button press',
     (tester) async {
       final repo = FakeParticipantRepository();
