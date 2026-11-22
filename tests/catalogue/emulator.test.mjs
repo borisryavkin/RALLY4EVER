@@ -476,3 +476,9 @@ test('venue geocoding identifies application, caches results and denies parallel
  const address={address:'40 William Henry Street',suburb:'Ultimo',state:'NSW',postcode:'2007'};
  await rejects(()=>m.coordinates(who('participant-1'),address),'admin-claim-required');const first=m.coordinates(admin,address);await onStarted;await rejects(()=>m.coordinates(admin,{...address,address:'Another address'}),'geocoder-busy');release();const result=await first;assert.equal(result.results[0].lat,-33.88);assert.equal((await m.coordinates(admin,address)).cached,true);assert.equal(requestCount,1);
 });
+
+test('legacy published sessions without coach arrays remain readable after the list-rule fix',async()=>{
+ await db.doc('events/legacy-public').set({status:'published'});
+ const coach=env.authenticatedContext('coach-1',{email_verified:true,role:'coach'}).firestore();
+ await assertSucceeds(getDoc(doc(coach,'events/legacy-public')));
+});

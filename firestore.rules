@@ -156,8 +156,8 @@ service cloud.firestore {
       // Soft-deleted/hidden sessions have no active coach assignments and a
       // non-public status; their previous assignments are retained for Restore.
       allow read: if active() && (admin()
-        || (coachAccess() && request.auth.uid in resource.data.coachUids)
-        || resource.data.status in ['published', 'cancelled']);
+        || (coachAccess() && request.auth.uid in resource.data.get('coachUids', []))
+        || resource.data.get('status', '') in ['published', 'cancelled']);
       allow write: if admin();
     }
     match /eventSecrets/{eventId} {
