@@ -1,0 +1,24 @@
+{
+  "version": "1.0.3",
+  "build": 33,
+  "android": {
+    "internalTrack": "4701651234356647750",
+    "release": 7,
+    "status": "Available to internal testers",
+    "publishedAt": "2026-11-22T22:31:00+11:00",
+    "joinUrl": "https://play.google.com/apps/internaltest/4701651234356647750",
+    "externalDraftSaved": true,
+    "externalSetupErrors": 5
+  },
+  "ios": {
+    "uploadSucceeded": true,
+    "uploadedAt": "2026-11-22T22:30:49+11:00",
+    "supersededBuild25RemovedFromReview": true,
+    "externalGroup": "R4E Staging External",
+    "externalStatus": "Waiting for Review",
+    "automaticTesterNotification": true,
+    "originalRally4everGroupUnchanged": true,
+    "internalGroup": "boris",
+    "internalStatus": "Testing"
+  }
+}

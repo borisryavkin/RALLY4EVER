@@ -1,0 +1,18 @@
+{
+  "bundle": "/Users/borisryavkin/technical/flutter/rally4ever/rally4ever-tester-fixes/build/app/outputs/bundle/stagingRelease/app-staging-release.aab",
+  "bytes": 80405356,
+  "sha256": "a7447918d2c93974ac3ea47597ebc3e417cf172275132f6b5b3392d0aa269672",
+  "package": "org.raly4ever",
+  "versionName": "1.0.3",
+  "versionCode": 33,
+  "projectId": "rally4ever-3adaf",
+  "verifiedArchitectures": [
+    "armeabi-v7a",
+    "arm64-v8a",
+    "x86_64"
+  ],
+  "uploadCertificateSha1": "11:51:C4:0F:AF:82:97:8B:80:1D:BF:D5:3F:1E:44:E7:EB:0F:AF:AD",
+  "uploadKeystoreMatches": true,
+  "bundletoolValid": true,
+  "jarSignatureVerified": true
+}
