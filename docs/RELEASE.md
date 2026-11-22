@@ -286,3 +286,30 @@ See [MIGRATION.md](MIGRATION.md) before connecting existing member data. This pr
 ### Build 12 export questionnaire
 
 Build 12 was initially Missing Compliance because its Info.plist does not contain an export declaration. Inspected Runner and confirmed BoringSSL is bundled through dependencies. Declared standard encryption in addition to OS encryption, with no France distribution for this Australia-only internal build. Revisit this classification before any broader distribution, changed crypto dependencies or France availability. Do not blindly add an OS-only/no-encryption assertion. [Apple documentation](https://developer.apple.com/help/app-store-connect/reference/app-information/export-compliance-documentation-for-encryption/).
+
+
+## 22 November 2026 — tester-feedback build 24
+
+Owner authorized rebuilding and uploading the current tester-fixes branch to both internal-testing stores. Source implementation: b4e8794 (including 6bd7337 About you changes), branch fix/tester-feedback-batch. Both stores were checked before build: highest observed build/code 21, so 24 was unused. Version 1.0.3, build 24 on both platforms. Existing signing keys and Apple team reused.
+
+Commands used (explicit current Flutter SDK):
+
+```sh
+export FLUTTER_BIN=/Users/borisryavkin/technical/flutter/flutter/bin/flutter
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+./scripts/build-android-staging.sh --build-number 24
+./scripts/build-ios-staging.sh --build-number 24 --export-options normal
+python3 scripts/verify-android-bundle.py --bundletool /tmp/r4e-bundletool.jar --version-name 1.0.3 --version-code 24
+```
+
+**24 is now consumed; do not rerun an upload with this build number. Recheck both stores and choose 25 or higher for the next upload.**
+
+Android AAB: build/app/outputs/bundle/stagingRelease/app-staging-release.aab, 80,272,512 bytes; SHA-256 9cd4dbcbed7bf2ad90ab61c2f6ad64c2bd8aa0c4906de38def5f0bf0ff736036. Bundletool, manifest org.raly4ever / 1.0.3 / 24, all three AOT project markers, JAR signature and existing upload-keystore match passed. Upload certificate SHA-1 11:51:C4:0F:AF:82:97:8B:80:1D:BF:D5:3F:1E:44:E7:EB:0F:AF:AD. Play Internal testing release 6 shows Available to internal testers (22 Nov, 2:15 pm); no promotion to other tracks.
+
+iOS IPA: build/ios/ipa/rally4ever.ipa, 39,300,852 bytes; SHA-256 633f50a42d711e9354182f7df76099e36ab5e1b2bf68eebf77107321e6c9a0da. Embedded org.rally4ever / 1.0.3 / 24 and rally4ever-3adaf AOT marker verified; codesign deep/strict verification passed. Apple Distribution: Boris Ryavkin (7HGT5BT6KT). Normal ios/ExportOptions.plist used; distribution limited operationally to internal group boris, never external rally4ever.
+
+Pre-upload checks: 211 Flutter tests passed, one existing skip; analyze clean; ten release-guard tests passed. Android Google Sign-In remains dependent on Firebase signing-certificate registration documented in SIGN_IN_METHODS.md; upload does not resolve that configuration. Prior binaries/store draft details/metadata backed up under ignored backups/release-24. No Firebase backend deployment or profile/Auth-user writes, no key generation, no purchase or additional platform fee.
+
+iOS delivery observed in Transporter: Delivered with warning, 22 Nov 2026 at 2:16 pm; Apple processing started. The single warning is 90725 (future iOS 27 SDK requirement from April 2027); it did not block this upload. This is an upload to TestFlight, not an App Store production submission.
+
+Final store verification: Apple processing completed. TestFlight lists build 24, Ready to Submit, expires in 90 days, group boris, one invite. No external group is assigned. The existing internal group's automatic distribution assigned the build without adding testers or changing access. Play Internal testing remains Available to internal testers. Both requested internal uploads are complete.
