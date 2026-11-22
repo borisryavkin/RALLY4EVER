@@ -161,7 +161,7 @@ void main() {
           expect(box.backgroundColor, isNot(Colors.white));
           expect(
             tester.getSize(find.byType(FilledButton).last).width,
-            lessThanOrEqualTo(520),
+            lessThanOrEqualTo(560),
           );
         }
       });

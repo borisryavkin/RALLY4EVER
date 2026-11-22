@@ -429,6 +429,17 @@ class _ParticipantAppState extends State<ParticipantApp>
           child: SizedBox(
             width: constraints.maxWidth,
             child: Column(
+              // Without this, a Column's default cross-axis alignment
+              // lets each child size itself to its own preferred width --
+              // on a wide tablet, the page below (a Scaffold whose own
+              // backgroundColor is meant to fill the whole screen, e.g.
+              // onboarding's red) could end up narrower than the
+              // viewport, exposing this background colour as bars down
+              // either side instead. Stretching forces every page to
+              // take the full width; each page's own content still
+              // centres itself with a sensible max width (see frame()'s
+              // maxWidth / intro()'s introViewport).
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (widget.lanTesting)
                   Material(
@@ -491,8 +502,14 @@ class _ParticipantAppState extends State<ParticipantApp>
     bool navigation = false,
     VoidCallback? back,
     bool showTitleIcon = true,
+    // A single-column form or onboarding-style screen reads better at a
+    // narrower width than a list/map screen on a wide tablet; pass 560
+    // for those (onboarding, sign-in, create account, About you, check-in).
+    // Lists/maps/the main tabs keep the wider default.
+    double? maxWidth,
   }) {
     final wide = isWide(context);
+    final contentMaxWidth = maxWidth ?? wideContentMaxWidth;
     final content = SafeArea(
       top: false,
       child: Column(
@@ -506,7 +523,7 @@ class _ParticipantAppState extends State<ParticipantApp>
             child: Center(
               child: ConstrainedBox(
                 constraints: BoxConstraints(
-                  maxWidth: wide ? wideContentMaxWidth : double.infinity,
+                  maxWidth: wide ? contentMaxWidth : double.infinity,
                 ),
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
@@ -666,6 +683,7 @@ class _ParticipantAppState extends State<ParticipantApp>
     if (page == 'entry') {
       return frame(
         context,
+        maxWidth: 560,
         back: () => go('welcome1'),
         children: [
           EntryScreen(
@@ -682,6 +700,7 @@ class _ParticipantAppState extends State<ParticipantApp>
     if (page == 'signin') {
       return frame(
         context,
+        maxWidth: 560,
         back: () => go('entry'),
         children: [
           SignInScreen(
@@ -699,6 +718,7 @@ class _ParticipantAppState extends State<ParticipantApp>
     if (page == 'signup') {
       return frame(
         context,
+        maxWidth: 560,
         back: () => go('entry'),
         children: [
           AccountForm(
@@ -714,6 +734,7 @@ class _ParticipantAppState extends State<ParticipantApp>
     if (page == 'forgot-password') {
       return frame(
         context,
+        maxWidth: 560,
         title: 'Reset password',
         back: () => go('signin'),
         children: [ForgotPasswordForm(repository: repo)],
@@ -722,6 +743,7 @@ class _ParticipantAppState extends State<ParticipantApp>
     if (page == 'noapp') {
       return frame(
         context,
+        maxWidth: 560,
         title: 'Scan the code',
         back: () => go(repo.hasSignedInBefore ? 'signin' : 'entry'),
         children: [
@@ -736,6 +758,7 @@ class _ParticipantAppState extends State<ParticipantApp>
     if (page == 'onboarded') {
       return frame(
         context,
+        maxWidth: 560,
         children: [
           const SizedBox(height: 40),
           StepBar(steps: signupSteps, current: 4),
@@ -797,6 +820,7 @@ class _ParticipantAppState extends State<ParticipantApp>
       final finish = editingProfile ? 'profile' : 'onboarded';
       return frame(
         context,
+        maxWidth: 560,
         title: 'About you',
         showTitleIcon: false,
         back: () => go('profile'),
@@ -1047,7 +1071,7 @@ class _ParticipantAppState extends State<ParticipantApp>
 
   Widget introViewport(Widget child) => Center(
     child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 520),
+      constraints: const BoxConstraints(maxWidth: 560),
       child: !widget.lanTesting
           ? child
           : LayoutBuilder(
@@ -1584,6 +1608,7 @@ class _ParticipantAppState extends State<ParticipantApp>
         !(venueLat == 0 && venueLng == 0);
     return frame(
       context,
+      maxWidth: 560,
       dark: true,
       title: 'At the court',
       showTitleIcon: false,
@@ -1717,6 +1742,7 @@ class _ParticipantAppState extends State<ParticipantApp>
     if (widget.cameraEnabled) scanner ??= MobileScannerController();
     return frame(
       context,
+      maxWidth: 560,
       dark: true,
       title: 'Scan the coach’s QR',
       showTitleIcon: false,
