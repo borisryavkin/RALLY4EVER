@@ -353,3 +353,29 @@ Deletion blocks any history, even cancelled registrations or rejected scans. It 
 Coordinate lookup is admin-only, venue-address only, one request in flight globally, at least 1.1 seconds apart, with a 30-day cache in adminGeocodeCache and a lease in adminOperations/nominatim. Results are editable and attributed to OpenStreetMap. No autocomplete. Trusted server environment NOMINATIM_ENDPOINT can switch the HTTPS provider. Follow https://operations.osmfoundation.org/policies/nominatim/ . This feature uses existing Functions/Firestore billing; no new paid subscription was enabled and no cost was incurred by local testing.
 
 Manual post-deploy checks: sign in as admin; Attendance → search a venue/date, use Today/All dates, select a result and Refresh/Export; Search a person → name/email → history/CSV. Programs → combine sport/status/search then refresh URL; create with blank capacity and with 20, verify visible invalid-capacity error; delete an unused program by typing its name, Show deleted → Restore; a program with history must offer Archive instead. Venues → Create → verify generated code, photo controls and explicit coordinate lookup. Verify participant and anonymous callable access remains denied. Do not deploy to any other project or Hosting target.
+
+
+## 22 November 2026 — staging deployment and external-testing build 25
+
+Owner authorized deploy/push/upload, then changed distribution preference to external testing. Branch fix/tester-feedback-batch pushed to https://github.com/borisryavkin/RALLY4EVER (through 96372e1 before this report). No production store track or App Store production submission targeted.
+
+Deployed to rally4ever-3adaf only: the 11 admin functions listed above, firestore:rules and hosting:admin, followed by beginNoAppCheckIn, completeNoAppCheckIn and getNoAppForms. Firebase CLI confirmed all operations successful. Live admin HTML asset hashes match local dist. New five admin callables each return HTTP 401 UNAUTHENTICATED without authentication. No profiles/Auth users/forms/attendance were deleted or migrated.
+
+Local checks on current participant changes: Flutter 228 passed, one skipped; functions unit 16 passed; callable emulator 40 passed. Admin-specific suites remain as documented above. Backups of previously dirty files in backups/deploy-20261122-151702; previous signed artifacts and documentation in backups/release-25 (ignored).
+
+Signed staging artifacts, using existing keys, normal iOS export options:
+- Android: build/app/outputs/bundle/stagingRelease/app-staging-release.aab; 80,295,774 bytes; SHA-256 dd43715855cc343640769996bfa4a61391505696ab1fb32caf858b49029ff2f1. org.raly4ever / 1.0.3 / 25. Bundletool validation, three compiled staging project markers, JAR signature and upload-key match passed.
+- iOS: build/ios/ipa/rally4ever.ipa (also identical rally4ever-1.0.3-25.ipa); 39,302,913 bytes; SHA-256 6d6e3f19c4de013d258511aef4f6325e8efe677a779ef93cbd169b59d685dfeb. org.rally4ever / 1.0.3 / 25, staging project marker and deep/strict codesign verification passed. Highest observed TestFlight build before upload was 24.
+
+Commands used:
+```sh
+export FLUTTER_BIN=/Users/borisryavkin/technical/flutter/flutter/bin/flutter
+export JAVA_HOME='/Applications/Android Studio.app/Contents/jbr/Contents/Home'
+./scripts/build-android-staging.sh --build-number 25
+./scripts/build-ios-staging.sh --build-number 25 --export-options normal
+python3 scripts/verify-android-bundle.py --bundletool /tmp/r4e-bundletool.jar --version-name 1.0.3 --version-code 25
+```
+
+Play accepted bundle 25 into Closed testing – Alpha, draft release 1, named “25 (1.0.3) — Tester feedback fixes”. Preview reports six setup errors: complete Dashboard tasks, full description missing, no countries selected, financial-features declaration, foreground-services declaration and health declaration. Release cannot be rolled out while these remain. Existing Internal build 24 remains unchanged. Bundle 25 is now consumed; do not upload a different bundle with the same versionCode.
+
+Created separate TestFlight external group R4E Staging External (00913542-33dd-453d-a0e3-2e80c7cd1079), initially no testers or builds. Existing external group rally4ever unchanged. Requested tester recipients separately; no invitations sent. Transporter intake confirmed Rally4ever 1.0.3 (25), delivery started; final delivery/review outcome recorded below when available.
