@@ -398,3 +398,21 @@ firebase deploy --project rally4ever-3adaf --only hosting:admin
 Usage: refresh https://rally4ever-admin-3adaf.web.app → Venues → Delete → check linked-record counts → type the exact venue name → Delete venue. Show deleted venues → Restore reverses deletion. Linked venues must be reassigned before deletion; no historical records are removed. No mobile rebuild required.
 
 Hosting deployment completed; live HTML asset hashes match the verified local build.
+
+
+## Build 27 — 22 November 2026
+
+Version `1.0.3+27`, source `fc62163`, pushed to `origin/fix/tester-feedback-batch`. Includes pickleball SVG and Australian racquets spelling. `flutter analyze` clean; 231 Flutter tests passed, one skipped.
+
+```sh
+FLUTTER_BIN=/Users/borisryavkin/technical/flutter/flutter/bin/flutter ./scripts/build-android-staging.sh --build-number 27
+FLUTTER_BIN=/Users/borisryavkin/technical/flutter/flutter/bin/flutter ./scripts/build-ios-staging.sh --build-number 27 --export-options normal
+python3 scripts/verify-android-bundle.py --bundletool /tmp/r4e-bundletool.jar --version-name 1.0.3 --version-code 27
+```
+
+Both signatures, IDs, version/build numbers and embedded `rally4ever-3adaf` verified. Android upload certificate matches existing upload key. Normal iOS export permits external testing. Copies/checksums and detailed verification are saved in `~/Downloads/Rally4Ever-1.0.3-27-external-testing/`.
+
+Apple Transporter confirmed delivery (with one warning) at 4:34 pm Australia/Sydney; processing at last observation. External group assignment is blocked while build 25 of version 1.0.3 waits for Beta App Review. The original external `rally4ever` group was not changed.
+
+Google Play accepted build 27, saved as the only artifact in Closed testing Alpha draft. Old bundles were removed from this draft only and remain in the artifact library. Rollout is blocked by Dashboard setup, full description, financial-features declaration, Foreground Service declaration and health declaration. Open testing remains unavailable until production access. No production rollout or backend/Hosting deployment was performed.
+
