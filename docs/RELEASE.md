@@ -313,3 +313,43 @@ Pre-upload checks: 211 Flutter tests passed, one existing skip; analyze clean; t
 iOS delivery observed in Transporter: Delivered with warning, 22 Nov 2026 at 2:16 pm; Apple processing started. The single warning is 90725 (future iOS 27 SDK requirement from April 2027); it did not block this upload. This is an upload to TestFlight, not an App Store production submission.
 
 Final store verification: Apple processing completed. TestFlight lists build 24, Ready to Submit, expires in 90 days, group boris, one invite. No external group is assigned. The existing internal group's automatic distribution assigned the build without adding testers or changing access. Play Internal testing remains Available to internal testers. Both requested internal uploads are complete.
+
+
+## Admin fixes — local review and future deployment (NOT RUN)
+
+Source folder: `rally4ever-tester-fixes/web-admin`, branch `fix/tester-feedback-batch`.
+Existing live site remains unchanged: https://rally4ever-admin-3adaf.web.app .
+Local synthetic review: run `npm --prefix web-admin run dev -- --port 57830`, then open
+http://127.0.0.1:57830/test/fixture.html?screen=Attendance (also Programs or Venues).
+The fixture bypasses sign-in only within its separate test entry, uses fake data, and is not included in the production Vite build. Actual `/` retains Firebase admin-claim gating.
+
+Local commands from the repository root:
+
+```sh
+npm --prefix web-admin run lint
+npm --prefix web-admin test
+npm --prefix web-admin run test:browser
+npm --prefix functions run build
+npm --prefix functions test
+node scripts/test-catalogue.mjs
+DEMO_PROJECT_ID=demo-rally4ever ./node_modules/.bin/firebase emulators:exec --project demo-rally4ever --only auth,firestore,functions 'npm --prefix functions run test:emulator'
+node scripts/build-admin.mjs
+```
+
+Use Android Studio's bundled Java in JAVA_HOME for emulators if required. The build script reads the ignored staging web config; do not add generated Firebase config or config/*.json to Git. Browser tests use installed Chrome and synthetic fixtures, with external HTTPS blocked. Screenshots are under `docs/screenshots/admin-fixes/`.
+
+Deploy backend and rules before the site: the new console requires these callable versions. These commands are documentation only; NO deployment was performed:
+
+```sh
+firebase deploy --project rally4ever-3adaf --only 'functions:attendance:adminProgramDeletion,functions:attendance:adminAttendanceCounts,functions:attendance:adminFindPeople,functions:attendance:adminPersonAttendance,functions:attendance:adminFindCoordinates,functions:attendance:adminCatalogue,functions:attendance:adminSaveSession,functions:attendance:adminSaveVenue,functions:attendance:listPrograms,functions:attendance:saveProgram,functions:attendance:listStaffSessions'
+firebase deploy --project rally4ever-3adaf --only firestore:rules
+firebase deploy --project rally4ever-3adaf --only hosting:admin
+```
+
+No index deployment or data migration is required. Rules changes are limited to event read visibility/legacy-safe coach assignment checks supporting item 2. Soft deletion writes deletedAt/deletedBy and restore metadata on programs; generated future sessions get deletedAt, retained older/manual sessions get hiddenAt; all linked sessions close registration and preserve previous coach assignments in deletion metadata. Restore is admin-only and revision checked. Audit entries use catalogueAudits. No profile, Auth user, form or attendance record is modified/deleted. Hard purge is not implemented.
+
+Deletion blocks any history, even cancelled registrations or rejected scans. It refuses programs with over 300 linked sessions rather than checking incompletely. Session counts are bounded at 2,001 records per source and show a lower-bound marker if limited. Person search scans bounded pages, and history/CSV fetch remaining pages explicitly.
+
+Coordinate lookup is admin-only, venue-address only, one request in flight globally, at least 1.1 seconds apart, with a 30-day cache in adminGeocodeCache and a lease in adminOperations/nominatim. Results are editable and attributed to OpenStreetMap. No autocomplete. Trusted server environment NOMINATIM_ENDPOINT can switch the HTTPS provider. Follow https://operations.osmfoundation.org/policies/nominatim/ . This feature uses existing Functions/Firestore billing; no new paid subscription was enabled and no cost was incurred by local testing.
+
+Manual post-deploy checks: sign in as admin; Attendance → search a venue/date, use Today/All dates, select a result and Refresh/Export; Search a person → name/email → history/CSV. Programs → combine sport/status/search then refresh URL; create with blank capacity and with 20, verify visible invalid-capacity error; delete an unused program by typing its name, Show deleted → Restore; a program with history must offer Archive instead. Venues → Create → verify generated code, photo controls and explicit coordinate lookup. Verify participant and anonymous callable access remains denied. Do not deploy to any other project or Hosting target.
