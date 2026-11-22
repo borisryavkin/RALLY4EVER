@@ -490,6 +490,7 @@ class _ParticipantAppState extends State<ParticipantApp>
     bool dark = false,
     bool navigation = false,
     VoidCallback? back,
+    bool showTitleIcon = true,
   }) {
     final wide = isWide(context);
     final content = SafeArea(
@@ -589,7 +590,7 @@ class _ParticipantAppState extends State<ParticipantApp>
             ? Text(title, style: TextStyle(color: dark ? Colors.white : navy))
             : brand(light: dark),
         actions: [
-          if (title != null)
+          if (title != null && showTitleIcon)
             Padding(
               padding: const EdgeInsets.only(right: 20),
               child: Icon(
