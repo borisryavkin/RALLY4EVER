@@ -397,3 +397,70 @@ test("session spreadsheet details submit separately from participant-readable ch
   expect(payload.changes.operations).toBeUndefined();
   await shot(page, "after-session-spreadsheet-fields");
 });
+
+const operationalStatuses = [
+  "Group",
+  "Active",
+  "Starting",
+  "TBC",
+  "Tentative",
+  "In process",
+  "Pending",
+  "Unknown",
+  "Prospective",
+  "On hold",
+  "Inactive",
+  "Cancelled",
+  "One-off",
+];
+test("program offers every spreadsheet status without changing publication", async ({
+  page,
+}) => {
+  await open(page, "Programs");
+  await page.getByRole("button", { name: "Edit", exact: true }).first().click();
+  const status = page.getByLabel("Operational status", { exact: true });
+  await expect(status.locator("option")).toHaveText([
+    "Not set",
+    ...operationalStatuses,
+  ]);
+  for (const value of operationalStatuses) {
+    await status.selectOption(value);
+    await expect(status).toHaveValue(value);
+  }
+  await status.selectOption("Prospective");
+  await expect(
+    page.getByLabel("Publication status", { exact: true }),
+  ).toHaveValue("draft");
+  await shot(page, "after-program-operational-status");
+  await page.getByRole("button", { name: "Save program", exact: true }).click();
+  const payload = await page.evaluate(
+    () => window.__calls.filter((c) => c.name === "saveProgram").at(-1).data,
+  );
+  expect(payload.operations.fields.status).toBe("Prospective");
+  expect(payload.program.status).toBe("draft");
+});
+test("session offers every spreadsheet status and operational cancellation does not cancel publication", async ({
+  page,
+}) => {
+  await open(page, "SessionDetails");
+  const status = page.getByLabel("Operational status", { exact: true });
+  await expect(status.locator("option")).toHaveText([
+    "Not set",
+    ...operationalStatuses,
+  ]);
+  for (const value of operationalStatuses) {
+    await status.selectOption(value);
+    await expect(status).toHaveValue(value);
+  }
+  await status.selectOption("Cancelled");
+  await expect(
+    page.getByLabel("Publication status", { exact: true }),
+  ).toHaveValue("published");
+  await shot(page, "after-session-operational-status");
+  await page.getByRole("button", { name: "Save session", exact: true }).click();
+  const payload = await page.evaluate(
+    () => window.__calls.find((c) => c.name === "adminSaveSession").data,
+  );
+  expect(payload.operations.fields.status).toBe("Cancelled");
+  expect(payload.changes.status).toBe("published");
+});

@@ -1,6 +1,9 @@
 import React from "react";
-import { operationsFields } from "../../functions/src/operations_schema.ts";
-import { Field, Button } from "./controls.jsx";
+import {
+  operationsFields,
+  operationsStatuses,
+} from "../../functions/src/operations_schema.ts";
+import { Field, Button, Select } from "./controls.jsx";
 
 export function initialOperations(row = {}) {
   const v = row.venue ?? {};
@@ -8,7 +11,7 @@ export function initialOperations(row = {}) {
     fields: {
       location: v.suburb ?? v.name ?? "",
       state: v.state ?? "",
-      status: row.status ?? "",
+      status: "",
       scName: row.name ?? "",
       scActivities: row.sport ?? "",
       facilityName: v.name ?? "",
@@ -19,6 +22,27 @@ export function initialOperations(row = {}) {
     contacts: row.operations?.contacts ?? [],
   };
 }
+// Keep publication/booking state separate from the spreadsheet workflow status.
+export function OperationsStatus({ value = {}, onChange }) {
+  const status = value.fields?.status ?? "";
+  return (
+    <Select
+      label="Operational status"
+      value={status}
+      onChange={(status) =>
+        onChange({ ...value, fields: { ...value.fields, status } })
+      }
+      options={[
+        { value: "", label: "Not set" },
+        ...(status && !operationsStatuses.includes(status)
+          ? [{ value: status, label: `${status} (existing value)` }]
+          : []),
+        ...operationsStatuses,
+      ]}
+    />
+  );
+}
+
 export function OperationsEditor({ value = {}, onChange, inherited = false }) {
   const fields = value.fields ?? {},
     contacts = value.contacts ?? [];
@@ -47,7 +71,7 @@ export function OperationsEditor({ value = {}, onChange, inherited = false }) {
           <legend>{group}</legend>
           <div className="form-grid">
             {operationsFields
-              .filter((f) => f.group === group)
+              .filter((f) => f.group === group && f.key !== "status")
               .map((f) => (
                 <Field key={f.key} label={f.label}>
                   <textarea

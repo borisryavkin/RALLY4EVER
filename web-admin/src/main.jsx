@@ -1,4 +1,8 @@
-import { OperationsEditor, initialOperations } from "./operations.jsx";
+import {
+  OperationsEditor,
+  OperationsStatus,
+  initialOperations,
+} from "./operations.jsx";
 import { Attendance } from "./attendance.jsx";
 import { Field, Select, Button, Status } from "./controls.jsx";
 import {
@@ -636,7 +640,13 @@ function Sessions({ data, users, action, busy }) {
                   {fields.map((k) => (
                     <td key={k}>
                       {k === "status" ? (
-                        <Status value={r.status} />
+                        <>
+                          <Status value={r.status} />
+                          <small>
+                            {r.operations?.fields?.status ||
+                              "Operational status not set"}
+                          </small>
+                        </>
                       ) : k === "photoUrl" ? (
                         <Photo
                           url={resolvePhoto(r, data.venues)}
@@ -952,8 +962,12 @@ function SessionEditor({ row, data, users, busy, onSave, onClose }) {
           onChange={(x) => set("sport", x)}
           options={["tennis", "pickleball"]}
         />
+        <OperationsStatus
+          value={v.operations}
+          onChange={(value) => set("operations", value)}
+        />
         <Select
-          label="Status"
+          label="Publication status"
           value={v.status}
           onChange={(x) => set("status", x)}
           options={["draft", "published", "cancelled", "archived"]}
@@ -1256,6 +1270,10 @@ function Programs({ data, users, action, busy, api = call }) {
                 <td>{p.sport}</td>
                 <td>
                   <Status value={p.deletedAt ? "deleted" : p.status} />
+                  <small>
+                    {p.operations?.fields?.status ||
+                      "Operational status not set"}
+                  </small>
                 </td>
                 <td>{p.scheduleText}</td>
                 <td>{p.coachNames?.join(", ")}</td>
@@ -1582,8 +1600,12 @@ function ProgramEditor({ row, data, users, busy, onSave, onClose }) {
             </small>
           )}
         </div>
+        <OperationsStatus
+          value={v.operations}
+          onChange={(value) => set("operations", value)}
+        />
         <Select
-          label="Status"
+          label="Publication status"
           value={v.status}
           onChange={(x) => set("status", x)}
           options={[

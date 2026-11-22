@@ -339,3 +339,11 @@ test('legal form publication fails closed and mandatory forms cannot be omitted'
  assert.equal(publishedForm(f,200),true);
  for(const invalid of [undefined,{...f,published:false},{...f,status:'draft'},{...f,body:' '},{...f,publishedAt:Timestamp.fromMillis(300)},{...f,publishedAt:null}])assert.equal(publishedForm(invalid,200),false);
 });
+
+test('all spreadsheet workflow statuses save privately without becoming publication states',()=>{
+ const {validateOperations}=require('../lib/operations');
+ const {operationsStatuses}=require('../lib/operations_schema');
+ assert.deepEqual(operationsStatuses,['Group','Active','Starting','TBC','Tentative','In process','Pending','Unknown','Prospective','On hold','Inactive','Cancelled','One-off']);
+ assert.equal(new Set(operationsStatuses).size,operationsStatuses.length);
+ for(const status of [...operationsStatuses,'Legacy imported status',''])assert.equal(validateOperations({fields:{status}}).fields.status,status);
+});

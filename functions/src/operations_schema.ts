@@ -1,3 +1,20 @@
+// Source spreadsheet statuses, deduplicated without changing their wording.
+export const operationsStatuses = [
+  "Group",
+  "Active",
+  "Starting",
+  "TBC",
+  "Tentative",
+  "In process",
+  "Pending",
+  "Unknown",
+  "Prospective",
+  "On hold",
+  "Inactive",
+  "Cancelled",
+  "One-off",
+];
+
 // Shared admin-only spreadsheet schema; do not put these fields in public event/program documents.
 export const operationsFields = [
   {

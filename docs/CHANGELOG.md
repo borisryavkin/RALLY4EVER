@@ -504,3 +504,9 @@ Re-verification pass under a new staged task spec. The underlying fix (and the r
 
 - Release-signed staging 1.0.3+29 prepared for both platforms and verified. Apple CLI upload succeeded; App Store Connect confirms Processing at 5:30 pm. Play accepted 29 and saved it as the only bundle in the existing Closed testing Alpha draft; five pre-existing app setup/declaration requirements block rollout.
 - Deployed the five affected attendance/no-app functions and check-in Hosting only to rally4ever-3adaf. Verified ACTIVE functions, hosted three-agreement UI, unchanged legal document fields, and HTTP 401 on unauthenticated checkIn/addWalkIn. No profiles/Auth users, legal documents, rules or production store tracks changed. Backups are ignored at backups/build29-three-forms/deployed/.
+
+## 2026-11-22 — spreadsheet workflow statuses in web admin
+
+- Programs and Sessions editors now expose a shared Operational status dropdown: Group, Active, Starting, TBC, Tentative, In process, Pending, Unknown, Prospective, On hold, Inactive, Cancelled, One-off. Repeated source entries appear once; existing imported non-standard values remain selectable and are not overwritten.
+- Renamed the editor lifecycle dropdown to Publication status. Spreadsheet workflow status stays in the existing private operations.fields.status, independent of participant publishing/booking/cancellation state. Both list views show it below the publication badge. New records default to Not set instead of copying draft/published into the spreadsheet field.
+- No rules/index/function behavior or stored records changed. Backed up source and previous admin Hosting release under ignored backups/admin-status-options-20261122/. Lint, production web build, admin helper tests, 18 browser tests, and 17 backend unit tests passed. Screenshot evidence: docs/screenshots/admin-fixes/after-program-operational-status.png and after-session-operational-status.png.
