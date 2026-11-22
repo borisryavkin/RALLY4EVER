@@ -1,3 +1,4 @@
+import { OperationsEditor, initialOperations } from "./operations.jsx";
 import { Attendance } from "./attendance.jsx";
 import { Field, Select, Button, Status } from "./controls.jsx";
 import {
@@ -542,10 +543,10 @@ function Sessions({ data, users, action, busy }) {
           users={users}
           busy={busy}
           onClose={() => setEdit(null)}
-          onSave={async (changes) => {
+          onSave={async (changes, operations) => {
             if (
               await action(
-                () => call("adminSaveSession", { changes }),
+                () => call("adminSaveSession", { changes, operations }),
                 "Session created",
               )
             )
@@ -666,13 +667,14 @@ function Sessions({ data, users, action, busy }) {
                         users={users}
                         busy={busy}
                         onClose={() => setEdit(null)}
-                        onSave={async (changes) => {
+                        onSave={async (changes, operations) => {
                           if (
                             await action(() =>
                               call("adminSaveSession", {
                                 eventId: r.id,
                                 revision: r.revision ?? 0,
                                 changes,
+                                operations,
                               }),
                             )
                           )
@@ -868,7 +870,11 @@ function StaffSelect({ users, value, onChange }) {
   );
 }
 function SessionEditor({ row, data, users, busy, onSave, onClose }) {
-  const [v, setV] = useState({ ...blankSession(), ...row }),
+  const [v, setV] = useState({
+      ...blankSession(),
+      ...row,
+      operations: initialOperations(row),
+    }),
     [err, setErr] = useState(""),
     [_photoBusy, _setPhotoBusy] = useState(false);
   const set = (k, val) => setV({ ...v, [k]: val });
@@ -884,7 +890,7 @@ function SessionEditor({ row, data, users, busy, onSave, onClose }) {
           if (JSON.stringify(changes[k]) === JSON.stringify(row[k]))
             delete changes[k];
       }
-      await onSave(changes);
+      await onSave(changes, v.operations);
     } catch (e) {
       setErr(errorText(e));
     }
@@ -1064,6 +1070,11 @@ function SessionEditor({ row, data, users, busy, onSave, onClose }) {
           />
         </Field>
       </div>
+      <OperationsEditor
+        value={v.operations}
+        inherited={row.operationsInherited}
+        onChange={(operations) => set("operations", operations)}
+      />
       <p className="muted">
         Revision {row.revision ?? 0}. Changes record your account, server time
         and before/after values automatically. Original scan context is
@@ -1107,6 +1118,7 @@ function Programs({ data, users, action, busy, api = call }) {
           programId: p.id,
           revision: p.revision ?? 0,
           program: programInput({ ...p, ...patch }),
+          ...(p.operations ? { operations: p.operations } : {}),
         }),
       "Program saved",
       onError,
@@ -1461,7 +1473,7 @@ function ProgramDeleteDialog({ row, busy, api, action, onClose, onArchive }) {
   );
 }
 function ProgramEditor({ row, data, users, busy, onSave, onClose }) {
-  const [v, setV] = useState(row),
+  const [v, setV] = useState({ ...row, operations: initialOperations(row) }),
     [errors, setErrors] = useState({}),
     [problem, setProblem] = useState(""),
     [saving, setSaving] = useState(false);
@@ -1656,6 +1668,10 @@ function ProgramEditor({ row, data, users, busy, onSave, onClose }) {
           />
         </Field>
       </div>
+      <OperationsEditor
+        value={v.operations}
+        onChange={(operations) => set("operations", operations)}
+      />
       {problem && (
         <div className="notice error save-error" role="alert" tabIndex={-1}>
           <strong>{problem}</strong>
@@ -2712,4 +2728,11 @@ function UserRow({ user: u, busy, onSave }) {
 }
 const rootElement = document.getElementById("root");
 if (rootElement) createRoot(rootElement).render(<App />);
-export { Programs, ProgramEditor, VenueEditor, Attendance, Venues };
+export {
+  Programs,
+  ProgramEditor,
+  VenueEditor,
+  Attendance,
+  Venues,
+  SessionEditor,
+};

@@ -338,3 +338,59 @@ test("venue deletion explains linked records and prevents deletion", async ({
   ).toBeDisabled();
   await shot(page, "after-venue-delete-blocked");
 });
+
+test("program spreadsheet details preserve source columns and repeatable private contacts", async ({
+  page,
+}) => {
+  await open(page, "Programs");
+  await page.getByRole("button", { name: "Edit", exact: true }).first().click();
+  const details = page.locator(".spreadsheet-details");
+  await details.locator("summary").click();
+  await details.getByLabel("SC Name", { exact: true }).fill("Source SC name");
+  await details
+    .getByLabel("Equipment or merchandise needed", { exact: true })
+    .fill("Six paddles");
+  await details
+    .getByRole("button", { name: "Add contact", exact: true })
+    .click();
+  await details
+    .getByLabel("Person of Contact · contact 1", { exact: true })
+    .fill("Sample coordinator");
+  await details
+    .getByLabel("Position · contact 1", { exact: true })
+    .fill("Coordinator");
+  await page.getByRole("button", { name: "Save program", exact: true }).click();
+  await expect(
+    page
+      .locator(".editor")
+      .filter({
+        has: page.getByRole("button", { name: "Save program", exact: true }),
+      }),
+  ).toHaveCount(0);
+  const payload = await page.evaluate(
+    () => window.__calls.filter((c) => c.name === "saveProgram").at(-1).data,
+  );
+  expect(payload.operations.fields.scName).toBe("Source SC name");
+  expect(payload.operations.fields.equipment).toBe("Six paddles");
+  expect(payload.operations.contacts[0].position).toBe("Coordinator");
+  expect(payload.program.operations).toBeUndefined();
+});
+test("session spreadsheet details submit separately from participant-readable changes", async ({
+  page,
+}) => {
+  await open(page, "SessionDetails");
+  const details = page.locator(".spreadsheet-details");
+  await details.locator("summary").click();
+  await details
+    .getByLabel("Community Services Associated", { exact: true })
+    .fill("Local service");
+  await details.getByLabel("Closed Program", { exact: true }).fill("No");
+  await page.getByRole("button", { name: "Save session", exact: true }).click();
+  await expect(page.getByText("Session saved", { exact: true })).toBeVisible();
+  const payload = await page.evaluate(
+    () => window.__calls.find((c) => c.name === "adminSaveSession").data,
+  );
+  expect(payload.operations.fields.communityServices).toBe("Local service");
+  expect(payload.changes.operations).toBeUndefined();
+  await shot(page, "after-session-spreadsheet-fields");
+});

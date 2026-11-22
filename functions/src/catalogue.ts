@@ -1,3 +1,4 @@
+import {validateOperations} from './operations';
 import { randomUUID } from "node:crypto";
 import { Timestamp } from "firebase-admin/firestore";
 import { AttendanceService, uid } from "./service";
@@ -71,12 +72,14 @@ export class CatalogueService {
     return { programs: rows.docs.filter(d=>!d.data().deletedAt).map((d) => ({ ...d.data(), id: d.id })) };
   }
   async saveProgram(who: Identity, value: unknown) {
-    const d = input(value, ["programId", "program", "reason", "revision"]), program = validateProgram(d.program);
+    const d = input(value, ["programId", "program", "reason", "revision", "operations"]), program = validateProgram(d.program);
+    const operations = d.operations === undefined ? undefined : validateOperations(d.operations);
     const programId = d.programId ? id(d.programId, "programId") : randomUUID();
     const reason = d.reason === undefined ? "Program updated" : text(d.reason, "reason", 1000), { db } = this.service;
     await db.runTransaction(async (tx) => {
       if ((await this.service.actor(tx, who)).role !== "admin") fail("permission-denied", "admin-required", "Admin role required");
       const ref = db.doc(`programs/${programId}`), old = await tx.get(ref);
+      const opsRef=db.doc(`programOperations/${programId}`), oldOps=operations===undefined?null:await tx.get(opsRef);
       if(program.venue?.id && (await tx.get(db.doc(`venues/${id(program.venue.id,"venueId")}`))).data()?.deletedAt) fail("failed-precondition","venue-deleted","Restore this venue or choose another venue");
       if(old.data()?.deletedAt) fail("failed-precondition","program-deleted","Restore this program before editing or publishing");
       if (old.exists && d.revision !== old.data()!.revision) fail("aborted", "stale-program", "Program changed. Reload before saving");
@@ -88,7 +91,8 @@ export class CatalogueService {
       }
       const at = this.service.stamp();
       tx.set(ref, { ...program, needsVerification: program.status === "active" ? false : (old.data()?.needsVerification ?? false), reviewedBy: program.status === "active" ? who.uid : (old.data()?.reviewedBy ?? null), reviewedAt: program.status === "active" ? at : (old.data()?.reviewedAt ?? null), createdAt: old.data()?.createdAt ?? at, updatedAt: at, updatedBy: who.uid, revision: (old.data()?.revision ?? 0) + 1 }, { merge: true });
-      tx.create(db.collection("catalogueAudits").doc(), { kind: "program", programId, actorUid: who.uid, reason, before: old.data() ?? null, after: program, createdAt: at });
+      if(operations!==undefined) tx.set(opsRef,{...operations,revision:(old.data()?.revision??0)+1,updatedAt:at,updatedBy:who.uid});
+      tx.create(db.collection("catalogueAudits").doc(), {operationsBefore:oldOps?.data()??null,operationsAfter:operations??null, kind: "program", programId, actorUid: who.uid, reason, before: old.data() ?? null, after: program, createdAt: at });
     });
     return { programId };
   }

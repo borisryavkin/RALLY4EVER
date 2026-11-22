@@ -1,3 +1,4 @@
+import {validateOperations} from './operations';
 import { randomUUID } from "node:crypto";
 import { DocumentData, Timestamp } from "firebase-admin/firestore";
 import { AttendanceService, uid } from "./service";
@@ -58,8 +59,8 @@ export class AdminConsoleService {
     if(options.includeDeleted!==undefined && typeof options.includeDeleted!=="boolean") fail("invalid-argument","invalid-input","Invalid deleted filter");
     await this.requireAdmin(who);
     const { db } = this.service;
-    const [events, programs, stored, forms] = await Promise.all(
-      ["events", "programs", "venues", "forms"].map((c) =>
+    const [events, programs, stored, forms, programOps, sessionOps] = await Promise.all(
+      ["events", "programs", "venues", "forms", "programOperations", "sessionOperations"].map((c) =>
         db.collection(c).limit(1001).get(),
       ),
     );
@@ -69,6 +70,9 @@ export class AdminConsoleService {
         "catalogue-limit",
         "More than 1000 records: request a paginated export before editing",
       );
+    const privatePrograms=new Map(programOps.docs.map(d=>[d.id,d.data()]));
+    const privateSessions=new Map(sessionOps.docs.map(d=>[d.id,d.data()]));
+    const operations=(data:DocumentData|undefined)=>data?{fields:data.fields??{},contacts:data.contacts??[]}:undefined;
     const venues = new Map<string, DocumentData>();
     for (const d of [...programs.docs, ...events.docs]) {
       const v = d.data().venue;
@@ -86,8 +90,8 @@ export class AdminConsoleService {
     }
     for (const d of stored.docs) venues.set(d.id, { ...d.data(), id: d.id });
     return wire({
-      events: events.docs.filter(d=>!d.data().deletedAt&&!d.data().hiddenAt).map((d) => ({ ...d.data(), id: d.id })),
-      programs: programs.docs.filter(d=>options.includeDeleted || !d.data().deletedAt).map((d) => ({ ...d.data(), id: d.id })),
+      events: events.docs.filter(d=>!d.data().deletedAt&&!d.data().hiddenAt).map((d) => ({ ...d.data(), id: d.id,operations:operations(privateSessions.get(d.id)??privatePrograms.get(d.data().programId))??{},operationsInherited:!privateSessions.has(d.id)&&privatePrograms.has(d.data().programId) })),
+      programs: programs.docs.filter(d=>options.includeDeleted || !d.data().deletedAt).map((d) => ({ ...d.data(), id: d.id,operations:operations(privatePrograms.get(d.id))??{} })),
       venues: [...venues.values()].filter(v=>options.includeDeleted || !v.deletedAt),
       forms: forms.docs.map((d) => ({
         id: d.id,
@@ -97,7 +101,7 @@ export class AdminConsoleService {
     });
   }
   async saveSession(who: Identity, value: unknown) {
-    const d = input(value, ["eventId", "revision", "changes"]);
+    const d = input(value, ["eventId", "revision", "changes", "operations"]);
     await this.requireAdmin(who);
     const eventId = d.eventId ? id(d.eventId, "eventId") : randomUUID(),
       changes = input(d.changes, [
@@ -121,12 +125,14 @@ export class AdminConsoleService {
         "seedBatch",
         "programId",
       ]);
+    const operations=d.operations===undefined?undefined:validateOperations(d.operations);
     const { db } = this.service;
     await db.runTransaction(async (tx) => {
       if ((await this.service.actor(tx, who)).role !== "admin")
         fail("permission-denied", "admin-required", "Admin access revoked");
       const ref = db.doc(`events/${eventId}`),
         old = await tx.get(ref);
+      const opsRef=db.doc(`sessionOperations/${eventId}`), oldOps=operations===undefined?null:await tx.get(opsRef);
       if (old.data()?.deletedAt || old.data()?.hiddenAt) fail("failed-precondition","program-deleted","Restore the program before editing its sessions");
       if (old.exists && (old.data()!.revision ?? 0) !== d.revision)
         fail(
@@ -336,8 +342,11 @@ export class AdminConsoleService {
         updatedBy: who.uid,
       };
       tx.set(ref, next, { merge: true });
+      if(operations!==undefined) tx.set(opsRef,{...operations,revision:next.revision,updatedAt:at,updatedBy:who.uid});
       tx.create(db.collection("catalogueAudits").doc(), {
         kind: "admin-session",
+        operationsBefore:oldOps?.data()??null,
+        operationsAfter:operations??null,
         eventId,
         actorUid: who.uid,
         createdAt: at,

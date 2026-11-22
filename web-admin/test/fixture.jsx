@@ -1,7 +1,13 @@
 import React, { useState } from "react";
 import { createRoot } from "react-dom/client";
 import { adminError } from "../src/admin_helpers.mjs";
-import { Programs, VenueEditor, Attendance, Venues } from "../src/main.jsx";
+import {
+  Programs,
+  VenueEditor,
+  Attendance,
+  Venues,
+  SessionEditor,
+} from "../src/main.jsx";
 const now = new Date();
 now.setHours(11, 30, 0, 0);
 const venue = {
@@ -99,11 +105,17 @@ function Fixture() {
         ...old,
         programs: [
           ...old.programs.filter((p) => p.id !== d.programId),
-          { ...d.program, id: d.programId ?? "created-program", revision: 2 },
+          {
+            ...d.program,
+            operations: d.operations,
+            id: d.programId ?? "created-program",
+            revision: 2,
+          },
         ],
       }));
       return { programId: d.programId ?? "created-program" };
     }
+    if (name === "adminSaveSession") return {};
     if (name === "adminAttendanceCounts")
       return {
         counts: Object.fromEntries(
@@ -287,6 +299,20 @@ function Fixture() {
             api={api}
             action={action}
             busy={busy}
+          />
+        ) : screen === "SessionDetails" ? (
+          <SessionEditor
+            row={{ ...events[20], id: undefined }}
+            data={data}
+            users={users}
+            busy={busy}
+            onClose={() => {}}
+            onSave={(changes, operations) =>
+              action(
+                () => api("adminSaveSession", { changes, operations }),
+                "Session saved",
+              )
+            }
           />
         ) : screen === "VenueList" ? (
           <Venues data={data} action={action} busy={busy} api={api} />

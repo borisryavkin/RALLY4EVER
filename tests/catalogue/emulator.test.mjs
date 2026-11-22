@@ -508,3 +508,27 @@ test('venue deletion denies participant, coach and stale admin roles',async()=>{
  for(const role of ['participant','coach'])await rejects(()=>management().venueDeletion(who('participant-1',role),{venueId:'unused',operation:'preview'}),'admin-claim-required');
  await rejects(()=>management().venueDeletion(who('participant-1','admin'),{venueId:'unused',operation:'preview'}),'admin-required');
 });
+
+const {operationsFields}=require('./lib/operations_schema');
+const {validateOperations}=require('./lib/operations');
+const spreadsheet=()=>({fields:Object.fromEntries(operationsFields.map((f,i)=>[f.key,`Spreadsheet value ${i}`])),contacts:[{name:'Example contact',email:'contact@example.test',phone:'0400000000',position:'Coordinator'}]});
+test('every spreadsheet column and contact round-trips privately on programs and sessions',async()=>{
+ const operations=spreadsheet();await catalogue.saveProgram(admin,{programId:'spreadsheet-program',program:program(),operations});
+ const p=(await db.doc('programs/spreadsheet-program').get()).data(),privateP=(await db.doc('programOperations/spreadsheet-program').get()).data();
+ assert.equal(p.operations,undefined);assert.deepEqual(privateP.fields,operations.fields);assert.deepEqual(privateP.contacts,operations.contacts);
+ await consoleService().saveSession(admin,{eventId:'spreadsheet-session',changes:{...adminSession(),programId:'spreadsheet-program'}});
+ let data=await consoleService().catalogue(admin,{}),s=data.events.find(e=>e.id==='spreadsheet-session');assert.equal(s.operationsInherited,true);assert.deepEqual(s.operations,operations);
+ const override={...operations,fields:{...operations.fields,notes:'Session-specific private note'}};
+ await consoleService().saveSession(admin,{eventId:'spreadsheet-session',revision:1,changes:{notes:'Public session note'},operations:override});
+ data=await consoleService().catalogue(admin,{});s=data.events.find(e=>e.id==='spreadsheet-session');assert.equal(s.operationsInherited,false);assert.deepEqual(s.operations,override);
+ const publicS=(await db.doc('events/spreadsheet-session').get()).data();assert.equal(publicS.operations,undefined);assert.equal(publicS.notes,'Public session note');
+ await consoleService().saveSession(admin,{eventId:'spreadsheet-session',revision:2,changes:{notes:'Other public note'}});assert.deepEqual((await db.doc('sessionOperations/spreadsheet-session').get()).data().fields,override.fields);
+ for(const role of ['participant','coach'])for(const collectionName of ['programOperations','sessionOperations']) await assertFails(getDoc(doc(env.authenticatedContext('participant-1',{role}).firestore(),collectionName,collectionName==='programOperations'?'spreadsheet-program':'spreadsheet-session')));
+ await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(),'programOperations','spreadsheet-program')));
+});
+test('spreadsheet details reject injection, oversized data and non-admin writes without altering public data',async()=>{
+ assert.throws(()=>validateOperations({fields:{role:'admin'}}));assert.throws(()=>validateOperations({fields:{notes:'x'.repeat(8001)}}));assert.throws(()=>validateOperations({contacts:Array(26).fill({})}));assert.throws(()=>validateOperations({contacts:[{name:'Test',role:'admin'}]}));
+ await rejects(()=>catalogue.saveProgram(who('participant-1'),{programId:'denied',program:program(),operations:spreadsheet()}),'admin-required');
+ await rejects(()=>consoleService().saveSession(who('participant-1'),{eventId:'denied',changes:adminSession(),operations:spreadsheet()}),'admin-claim-required');
+ assert.equal((await db.doc('programOperations/denied').get()).exists,false);assert.equal((await db.doc('sessionOperations/denied').get()).exists,false);
+});
