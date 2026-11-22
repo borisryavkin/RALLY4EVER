@@ -415,3 +415,64 @@ test('photo edits use revision, allow started sessions, retain venue inheritance
  const inherited=(await db.doc('events/inherited-photo').get()).data();assert.equal(inherited.photoUrl,'');assert.equal(inherited.photoMode,'venue');assert.equal(inherited.venue.photoUrl,venue.photoUrl);
  const audits=await db.collection('catalogueAudits').where('kind','==','session-photo').get();assert.equal(audits.size,3);
 });
+
+const {AdminManagementService}=require('./lib/admin_management');
+const management=()=>new AdminManagementService(consoleService());
+async function deletionFixture(){
+ await createProgram();
+ const base={programId:'program-one',name:'Community tennis',sport:'tennis',venue:program().venue,timezone:'Australia/Sydney',status:'published',registrationStatus:'open',capacity:null,coachUids:['coach-1'],bookedCount:0,revision:1};
+ for(const [key,offset]of [['g-program-one-future',86400000],['gen-program-one-past',-86400000],['manual-future',172800000]])await db.doc('events/'+key).set({...base,startsAt:Timestamp.fromMillis(now+offset),endsAt:Timestamp.fromMillis(now+offset+3600000)});
+}
+const deletionRequest={programId:'program-one',operation:'delete',confirmation:'Community tennis',revision:1};
+test('program soft delete previews counts, preserves data, hides legacy coach queries and restores',async()=>{
+ await deletionFixture();const m=management(),beforeProfiles=(await db.collection('users').get()).docs.map(d=>d.data());
+ const preview=await m.programDeletion(admin,{programId:'program-one',operation:'preview'});assert.equal(preview.futureGenerated,1);assert.equal(preview.retainedSessions,2);assert.equal(preview.allowed,true);
+ await rejects(()=>m.programDeletion(admin,{...deletionRequest,confirmation:'Wrong name'}),'confirmation-mismatch');
+ await m.programDeletion(admin,deletionRequest);
+ const p=(await db.doc('programs/program-one').get()).data();assert.equal(p.status,'deleted');assert.equal(p.deletedBy,'admin-1');assert.ok(p.deletedAt instanceof Timestamp);
+ const future=(await db.doc('events/g-program-one-future').get()).data(),past=(await db.doc('events/gen-program-one-past').get()).data();assert.ok(future.deletedAt);assert.ok(past.hiddenAt);assert.equal(past.deletedAt,undefined);assert.deepEqual(future.coachUids,[]);
+ assert.equal((await consoleService().catalogue(admin,{})).programs.length,0);assert.equal((await consoleService().catalogue(admin,{includeDeleted:true})).programs.length,1);
+ const {StaffService}=require('./lib/staff');assert.equal((await new StaffService(catalogue.service).listStaffSessions(who('coach-1','coach'),{})).events.length,0);
+ const member=env.authenticatedContext('participant-1',{email_verified:true,role:'participant'}).firestore(),coach=env.authenticatedContext('coach-1',{email_verified:true,role:'coach'}).firestore();
+ await assertFails(getDoc(doc(member,'programs/program-one')));await assertFails(getDoc(doc(coach,'events/g-program-one-future')));
+ await assertSucceeds(getDocs(query(collection(coach,'events'),where('coachUids','array-contains','coach-1'))));
+ await rejects(()=>catalogue.saveProgram(admin,{programId:'program-one',revision:2,program:program()}),'program-deleted');
+ await m.programDeletion(admin,{programId:'program-one',operation:'restore',revision:2});
+ assert.equal((await db.doc('programs/program-one').get()).data().status,'active');assert.equal((await db.doc('events/g-program-one-future').get()).data().deletedAt,null);assert.deepEqual((await db.doc('events/manual-future').get()).data().coachUids,['coach-1']);
+ assert.deepEqual((await db.collection('users').get()).docs.map(d=>d.data()),beforeProfiles);assert.equal((await db.collection('catalogueAudits').where('kind','in',['program-soft-delete','program-restore']).get()).size,2);
+});
+for(const [collectionName,fields]of [['rsvps',{cancelledAt:Timestamp.now()}],['checkins',{status:'rejected'}],['attendance',{status:'confirmed'}],['feedback',{rating:4}]])test('delete is blocked by any '+collectionName+' history, including cancelled/rejected',async()=>{
+ await deletionFixture();await db.doc(`${collectionName}/history`).set({eventId:'gen-program-one-past',uid:'participant-1',...fields});
+ const preview=await management().programDeletion(admin,{programId:'program-one',operation:'preview'});assert.equal(preview.allowed,false);
+ await rejects(()=>management().programDeletion(admin,deletionRequest),'program-has-attendance');assert.equal((await db.doc('programs/program-one').get()).data().deletedAt,undefined);assert.equal((await db.doc(`${collectionName}/history`).get()).exists,true);
+});
+test('deletion requires admin claim and protected admin profile; stale revisions do not write',async()=>{
+ await deletionFixture();for(const role of ['participant','coach'])await rejects(()=>management().programDeletion(who('participant-1',role),deletionRequest),'admin-claim-required');
+ await rejects(()=>management().programDeletion(who('participant-1','admin'),deletionRequest),'admin-required');await rejects(()=>management().programDeletion(admin,{...deletionRequest,revision:0}),'stale-program');
+ const anonymous=env.unauthenticatedContext().firestore();await assertFails(setDoc(doc(anonymous,'programs/program-one'),{deletedAt:serverTimestamp()},{merge:true}));
+});
+test('concurrent reservation and deletion cannot orphan an RSVP',async()=>{
+ await deletionFixture();const results=await Promise.allSettled([management().programDeletion(admin,deletionRequest),catalogue.setRsvp(who('participant-1'),{eventId:'g-program-one-future'})]);
+ assert.equal(results.filter(r=>r.status==='fulfilled').length,1);const p=(await db.doc('programs/program-one').get()).data(),r=await db.doc('rsvps/g-program-one-future_participant-1').get();assert.equal(!!p.deletedAt,r.exists===false);
+});
+test('automatic venue codes are deterministic and append a unique suffix, including concurrent creates',async()=>{
+ const v={...program().venue,name:'Armidale Tennis Centre',state:'NSW',code:'',photoUrl:'',isDemo:true},c=consoleService();
+ const first=await c.saveVenue(admin,{venueId:'venue-auto-1',revision:0,venue:v});assert.equal(first.code,'armidale-tennis-centre-nsw');
+ const rest=await Promise.all(['venue-auto-2','venue-auto-3'].map(venueId=>c.saveVenue(admin,{venueId,revision:0,venue:v})));assert.deepEqual(rest.map(r=>r.code).sort(),['armidale-tennis-centre-nsw-2','armidale-tennis-centre-nsw-3']);
+});
+test('person history combines RSVPs and scans, paginates without duplicates, and requires admin',async()=>{
+ const writes=[];for(let i=0;i<60;i++){const eventId='history-'+String(i).padStart(3,'0');writes.push(db.doc('events/'+eventId).set({name:'Program '+i,venue:program().venue,timezone:'Australia/Sydney',startsAt:Timestamp.fromMillis(now+i*3600000)}),db.doc(`rsvps/${eventId}_participant-1`).set({uid:'participant-1',eventId,cancelledAt:null}));if(i<3)writes.push(db.doc(`checkins/${eventId}_participant-1`).set({uid:'participant-1',eventId,status:'confirmed',scannedAt:Timestamp.now(),distanceM:42,confirmedBy:'coach-1'}));}await Promise.all(writes);
+ const a=await management().personAttendance(admin,{uid:'participant-1'}),b=await management().personAttendance(admin,{uid:'participant-1',cursor:a.cursor});assert.equal(a.rows.length,50);assert.equal(b.rows.length,10);assert.equal(b.cursor,null);assert.equal(new Set([...a.rows,...b.rows].map(r=>r.eventId)).size,60);assert.equal(a.rows[0].confirmedBy,'coach-1');
+ const counts=await management().attendanceCounts(admin,{eventIds:['history-000']});assert.deepEqual(counts.counts['history-000'],{registered:1,checkedIn:1,limited:false});
+ await rejects(()=>management().personAttendance(who('participant-1'),{uid:'participant-1'}),'admin-claim-required');
+});
+test('name/email search has bounded pages, includes guests and excludes merged profiles',async()=>{
+ await db.doc('users/priya-search').set({firstName:'Priya',lastName:'Lal',emailLower:'priya@example.test',mergedInto:null});await db.doc('users/merged-search').set({firstName:'Priya',mergedInto:'priya-search'});await db.doc('guests/guest-priya').set({firstName:'Priya',emailLower:'visitor@example.test'});
+ const page=await management().findPeople(admin,{search:'PRIYA'});assert.equal(page.people.length,1);assert.equal(page.people[0].uid,'priya-search');assert.equal(page.cursor.collection,'guests');const guests=await management().findPeople(admin,{search:'priya',cursor:page.cursor});assert.equal(guests.people[0].guest,true);assert.equal(guests.cursor,null);
+});
+test('venue geocoding identifies application, caches results and denies parallel or non-admin lookups',async()=>{
+ let requestCount=0,release,started;const onStarted=new Promise(r=>started=r),hold=new Promise(r=>release=r);
+ const m=new AdminManagementService(consoleService(),async(url,options)=>{requestCount++;assert.match(options.headers['User-Agent'],/Rally4Ever/);assert.equal(url.searchParams.get('countrycodes'),'au');started();await hold;return new Response(JSON.stringify([{lat:'-33.88',lon:'151.196',display_name:'Ultimo, NSW'}]),{headers:{'content-type':'application/json'}});});
+ const address={address:'40 William Henry Street',suburb:'Ultimo',state:'NSW',postcode:'2007'};
+ await rejects(()=>m.coordinates(who('participant-1'),address),'admin-claim-required');const first=m.coordinates(admin,address);await onStarted;await rejects(()=>m.coordinates(admin,{...address,address:'Another address'}),'geocoder-busy');release();const result=await first;assert.equal(result.results[0].lat,-33.88);assert.equal((await m.coordinates(admin,address)).cached,true);assert.equal(requestCount,1);
+});

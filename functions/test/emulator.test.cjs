@@ -1251,3 +1251,8 @@ test('required legal forms block when absent, draft, future, blank; date version
  await db.doc('consents/participant-1_waiver').update({version:'2026-11-20'});
  const result=await scan();assert.equal(result.status,'pending');
 });
+
+test('admin program deletion callable denies anonymous, participant and coach requests',async()=>{
+ await error(()=>call('adminProgramDeletion',{operation:'preview',programId:'program-safe'},null),'sign-in-required','UNAUTHENTICATED');
+ for(const user of ['participant-1','coach-1'])await error(()=>call('adminProgramDeletion',{operation:'delete',programId:'program-safe',confirmation:'Test',revision:1},user),'admin-claim-required','PERMISSION_DENIED');
+});

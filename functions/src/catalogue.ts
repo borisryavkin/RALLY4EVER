@@ -68,7 +68,7 @@ export class CatalogueService {
       if ((await this.service.actor(tx, who)).role !== "admin") fail("permission-denied", "admin-required", "Admin role required");
     });
     const rows = await this.service.db.collection("programs").orderBy("name").limit(500).get();
-    return { programs: rows.docs.map((d) => ({ ...d.data(), id: d.id })) };
+    return { programs: rows.docs.filter(d=>!d.data().deletedAt).map((d) => ({ ...d.data(), id: d.id })) };
   }
   async saveProgram(who: Identity, value: unknown) {
     const d = input(value, ["programId", "program", "reason", "revision"]), program = validateProgram(d.program);
@@ -77,6 +77,7 @@ export class CatalogueService {
     await db.runTransaction(async (tx) => {
       if ((await this.service.actor(tx, who)).role !== "admin") fail("permission-denied", "admin-required", "Admin role required");
       const ref = db.doc(`programs/${programId}`), old = await tx.get(ref);
+      if(old.data()?.deletedAt) fail("failed-precondition","program-deleted","Restore this program before editing or publishing");
       if (old.exists && d.revision !== old.data()!.revision) fail("aborted", "stale-program", "Program changed. Reload before saving");
       const validateCoaches = !old.exists || JSON.stringify(old.data()?.coachUids ?? []) !== JSON.stringify(program.coachUids) || (program.status === "active" && old.data()?.status !== "active");
       for (const coachId of validateCoaches ? program.coachUids : []) {

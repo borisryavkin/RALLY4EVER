@@ -1,3 +1,4 @@
+import {AdminManagementService} from "./admin_management";
 import {sealVenuePhoto} from './venue_photos';
 import {AdminConsoleService} from './admin_console';
 import { StaffService } from './staff';
@@ -231,3 +232,10 @@ export const adminSaveSession = callable((who,data)=>adminConsole.saveSession(wh
 export const adminSaveVenue = callable((who,data)=>adminConsole.saveVenue(who,data));
 export const adminSetPhoto = callable((who,data)=>adminConsole.setPhoto(who,data));
 export const adminRemoveDemo = callable((who,data)=>adminConsole.demo(who,data));
+
+const adminManagement = new AdminManagementService(adminConsole);
+export const adminProgramDeletion = callable((who,data)=>adminManagement.programDeletion(who,data));
+export const adminAttendanceCounts = callable((who,data)=>adminManagement.attendanceCounts(who,data));
+export const adminFindPeople = callable((who,data)=>adminManagement.findPeople(who,data));
+export const adminPersonAttendance = callable((who,data)=>adminManagement.personAttendance(who,data));
+export const adminFindCoordinates = callable((who,data)=>adminManagement.coordinates(who,data));

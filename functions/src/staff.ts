@@ -13,7 +13,7 @@ export class StaffService {
     if(!["admin","coach"].includes(actor.role))fail("permission-denied","staff-required","Staff access required");
     const base=this.service.db.collection("events");
     const found=await (actor.role==="admin"?base.orderBy("startsAt","desc"):base.where("coachUids","array-contains",who.uid)).limit(300).get();
-    return {events:found.docs.map(d=>session(d.id,d.data())),limited:found.size===300};
+    return {events:found.docs.filter(d=>!d.data().deletedAt&&!d.data().hiddenAt).map(d=>session(d.id,d.data())),limited:found.size===300};
   }
   async getEventConsole(who: Identity, value: unknown) {
     const d=input(value,["eventId"]),eventId=id(d.eventId,"eventId");

@@ -16,6 +16,10 @@ export function wire(value: any): any {
 export function venueId(v: DocumentData): string {
   return v.id ?? `v-${hash(`${v.name}|${v.lat}|${v.lng}`).slice(0, 20)}`;
 }
+export function venueCodeBase(name:string,state:string):string {
+  const slug=name.normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,110).replace(/-$/,'');
+  return `${slug||'venue'}-${state.toLowerCase()}`;
+}
 function photos(value: unknown): string {
   const url = text(value ?? "", "photoUrl", 2048, 0);
   if (
@@ -50,7 +54,8 @@ export class AdminConsoleService {
     });
   }
   async catalogue(who: Identity, value: unknown) {
-    input(value, []);
+    const options=input(value, ["includeDeleted"]);
+    if(options.includeDeleted!==undefined && typeof options.includeDeleted!=="boolean") fail("invalid-argument","invalid-input","Invalid deleted filter");
     await this.requireAdmin(who);
     const { db } = this.service;
     const [events, programs, stored, forms] = await Promise.all(
@@ -81,8 +86,8 @@ export class AdminConsoleService {
     }
     for (const d of stored.docs) venues.set(d.id, { ...d.data(), id: d.id });
     return wire({
-      events: events.docs.map((d) => ({ ...d.data(), id: d.id })),
-      programs: programs.docs.map((d) => ({ ...d.data(), id: d.id })),
+      events: events.docs.filter(d=>!d.data().deletedAt&&!d.data().hiddenAt).map((d) => ({ ...d.data(), id: d.id })),
+      programs: programs.docs.filter(d=>options.includeDeleted || !d.data().deletedAt).map((d) => ({ ...d.data(), id: d.id })),
       venues: [...venues.values()],
       forms: forms.docs.map((d) => ({
         id: d.id,
@@ -122,6 +127,7 @@ export class AdminConsoleService {
         fail("permission-denied", "admin-required", "Admin access revoked");
       const ref = db.doc(`events/${eventId}`),
         old = await tx.get(ref);
+      if (old.data()?.deletedAt || old.data()?.hiddenAt) fail("failed-precondition","program-deleted","Restore the program before editing its sessions");
       if (old.exists && (old.data()!.revision ?? 0) !== d.revision)
         fail(
           "aborted",
@@ -363,8 +369,9 @@ export class AdminConsoleService {
           ),
         ),
       ),
-      photoUrl = photos(v.photoUrl),
-      code = id(v.code, "venue code");
+      photoUrl = photos(v.photoUrl);
+    const automaticCode = !v.code, baseCode=venueCodeBase(base.name,base.state);
+    let code = v.code ? id(v.code, "venue code") : baseCode;
     if (photoUrl.startsWith("gs://")) {
       if (
         !photoUrl.startsWith(
@@ -400,11 +407,14 @@ export class AdminConsoleService {
     await db.runTransaction(async (tx) => {
       if ((await this.service.actor(tx, who)).role !== "admin")
         fail("permission-denied", "admin-required", "Admin access revoked");
-      const ref = db.doc(`venues/${key}`),
-        old = await tx.get(ref),
-        conflicts = await tx.get(
-          db.collection("venues").where("code", "==", code).limit(2),
-        );
+      const ref = db.doc(`venues/${key}`), old = await tx.get(ref);
+      let conflicts=await tx.get(db.collection("venues").where("code","==",code).limit(2));
+      if(automaticCode) {
+        for(let suffix=2;conflicts.docs.some(r=>r.id!==key)&&suffix<=100;suffix++) {
+          code=`${baseCode}-${suffix}`;
+          conflicts=await tx.get(db.collection("venues").where("code","==",code).limit(2));
+        }
+      }
       if (conflicts.docs.some((r) => r.id !== key))
         fail(
           "already-exists",
@@ -463,7 +473,7 @@ export class AdminConsoleService {
         })),
       });
     });
-    return { venueId: key, updatedRecords: linked.length };
+    return { venueId: key, code, updatedRecords: linked.length };
   }
   async setPhoto(who: Identity, value: unknown) {
     const d = input(value, ['kind','id','revision','photoUrl','mode']);
