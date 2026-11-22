@@ -2458,13 +2458,14 @@ function VenueEditor({ row, action, busy, onClose, venues = [], api = call }) {
   async function geocode() {
     if (geoBusy) return;
     setGeoBusy(true);
+    setGeoResults([]);
     setProblem("");
     try {
       const r = await api("adminFindCoordinates", {
-        address: v.address,
-        suburb: v.suburb,
-        postcode: v.postcode,
-        state: v.state,
+        address: v.address?.trim() ?? "",
+        suburb: v.suburb?.trim() ?? "",
+        postcode: v.postcode?.trim() ?? "",
+        state: v.state?.trim() ?? "",
       });
       setGeoResults(r.results);
       if (r.results.length === 1)

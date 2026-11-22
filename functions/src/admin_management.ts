@@ -589,7 +589,10 @@ export class AdminManagementService {
         lon: string;
         display_name: string;
       }>;
+      if (!Array.isArray(raw))
+        fail("unavailable", "geocoder-unavailable", "Coordinate lookup is unavailable. You can enter coordinates manually.");
       const results = raw
+        .filter((r) => r && typeof r.lat === "string" && r.lat.trim() !== "" && typeof r.lon === "string" && r.lon.trim() !== "")
         .map((r) => ({
           lat: Number(r.lat),
           lng: Number(r.lon),
@@ -609,6 +612,9 @@ export class AdminManagementService {
         expiresAt: Timestamp.fromMillis(this.service.now() + 30 * 86400000),
       });
       return { results, cached: false };
+    } catch (error) {
+      if (error && typeof error === "object" && "code" in error && typeof error.code === "string" && "details" in error) throw error;
+      fail("unavailable", "geocoder-unavailable", "Coordinate lookup is unavailable. Try again, or enter coordinates manually.");
     } finally {
       await gate.set({ busyUntil: Timestamp.fromMillis(0) }, { merge: true });
     }

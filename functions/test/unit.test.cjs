@@ -347,3 +347,48 @@ test('all spreadsheet workflow statuses save privately without becoming publicat
  assert.equal(new Set(operationsStatuses).size,operationsStatuses.length);
  for(const status of [...operationsStatuses,'Legacy imported status',''])assert.equal(validateOperations({fields:{status}}).fields.status,status);
 });
+
+const { AdminManagementService } = require('../lib/admin_management');
+function geocodeFixture(fetcher, { cached, admin = true, busy = false } = {}) {
+  const writes = [];
+  const gate = { set: async (v) => writes.push(v) };
+  const cache = { exists: !!cached, data: () => cached, ref: { set: async (v) => writes.push(v) } };
+  const db = {
+    doc: (path) => path.startsWith('adminGeocodeCache/') ? { get: async () => cache } : gate,
+    runTransaction: async (fn) => fn({ get: async () => ({ data: () => busy ? { busyUntil: { toMillis: () => 999999 } } : {} }), set: (_, v) => writes.push(v) }),
+  };
+  const console = { requireAdmin: async () => { if (!admin) throw Object.assign(new Error('Admin required'), { code: 'permission-denied' }); }, service: { db, now: () => 1000, stamp: () => 'server-time' } };
+  return { service: new AdminManagementService(console, fetcher), writes };
+}
+const lookupAddress = { address: '40 William Henry Street', suburb: 'Ultimo', state: 'NSW', postcode: '2007' };
+test('venue coordinates use server-side Australian lookup, cache valid results and release the lock', async () => {
+  const { service, writes } = geocodeFixture(async (url, options) => {
+    assert.equal(url.hostname, 'nominatim.openstreetmap.org');
+    assert.equal(url.searchParams.get('countrycodes'), 'au');
+    assert.match(url.searchParams.get('q'), /40 William Henry Street, Ultimo, NSW, 2007, Australia/);
+    assert.match(options.headers['User-Agent'], /Rally4Ever/);
+    return { ok: true, json: async () => [{ lat: '-33.87833', lon: '151.19748', display_name: 'Ultimo' }, { lat: '', lon: '', display_name: 'invalid' }] };
+  });
+  const result = await service.coordinates({}, lookupAddress);
+  assert.equal(result.results.length, 1);
+  assert.equal(result.results[0].lat, -33.87833);
+  assert.equal(result.cached, false);
+  assert.equal(writes.at(-1).busyUntil.toMillis(), 0);
+});
+test('venue coordinates return cached matches without external requests', async () => {
+  const { service } = geocodeFixture(() => assert.fail('must use cache'), { cached: { expiresAt: { toMillis: () => 2000 }, results: [] } });
+  assert.deepEqual(await service.coordinates({}, lookupAddress), { results: [], cached: true });
+});
+test('venue coordinates deny non-admins and concurrent requests', async () => {
+  for (const [options, code] of [[{ admin: false }, 'permission-denied'], [{ busy: true }, 'resource-exhausted']]) {
+    const { service } = geocodeFixture(() => assert.fail('must not fetch'), options);
+    await assert.rejects(service.coordinates({}, lookupAddress), (e) => e.code === code);
+  }
+});
+test('venue coordinates report outages, timeout and malformed results clearly and unlock for retry', async () => {
+  for (const fetcher of [async () => { throw new TypeError('fetch failed'); }, async () => ({ ok: false }), async () => ({ ok: true, json: async () => ({ error: 'unavailable' }) })]) {
+    const { service, writes } = geocodeFixture(fetcher);
+    await assert.rejects(service.coordinates({}, lookupAddress), (e) => e.code === 'unavailable' && /coordinates manually/.test(e.message));
+    assert.equal(writes.at(-1).busyUntil.toMillis(), 0);
+  }
+});
