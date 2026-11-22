@@ -23,7 +23,11 @@ export class AdminManagementService {
     await this.console.requireAdmin(who);
     const key = id(d.venueId, "venueId"),
       operation = d.operation;
-    if (!["preview", "delete", "restore"].includes(operation as string))
+    if (
+      !["preview", "preview-purge", "purge", "delete", "restore"].includes(
+        operation as string,
+      )
+    )
       fail(
         "invalid-argument",
         "invalid-operation",
@@ -63,14 +67,15 @@ export class AdminManagementService {
         name: v.name,
         revision: v.revision ?? 0,
       };
-      if (operation === "preview") return summary;
+      if (operation === "preview" || operation === "preview-purge")
+        return summary;
       if (d.revision !== (v.revision ?? 0))
         fail(
           "aborted",
           "stale-venue",
           "Venue changed. Reload before continuing",
         );
-      if (operation === "delete") {
+      if (operation === "delete" || operation === "purge") {
         if (d.confirmation !== v.name)
           fail(
             "invalid-argument",
@@ -83,7 +88,7 @@ export class AdminManagementService {
             "venue-in-use",
             `This venue is used by ${summary.programs} programs and ${summary.sessions} sessions. Reassign those records first; historical records are never removed.`,
           );
-        if (v.deletedAt)
+        if (v.deletedAt && operation !== "purge")
           fail(
             "failed-precondition",
             "venue-deleted",
@@ -92,6 +97,18 @@ export class AdminManagementService {
       } else if (!v.deletedAt)
         fail("failed-precondition", "not-deleted", "This venue is not deleted");
       const at = this.service.stamp();
+      if (operation === "purge") {
+        tx.delete(ref);
+        for (const collection of ["venueOperations", "venueOperational"])
+          tx.delete(db.doc(`${collection}/${key}`));
+        tx.create(db.collection("catalogueAudits").doc(), {
+          kind: "venue-permanent-delete",
+          venueId: key,
+          actorUid: who.uid,
+          createdAt: at,
+        });
+        return { venueId: key, deleted: true, permanent: true };
+      }
       const changes =
         operation === "delete"
           ? { deletedAt: at, deletedBy: who.uid }
@@ -128,7 +145,11 @@ export class AdminManagementService {
     await this.console.requireAdmin(who);
     const programId = id(d.programId, "programId"),
       operation = d.operation;
-    if (!["preview", "delete", "restore"].includes(operation as string))
+    if (
+      !["preview", "preview-purge", "purge", "delete", "restore"].includes(
+        operation as string,
+      )
+    )
       fail(
         "invalid-argument",
         "invalid-operation",
@@ -210,7 +231,11 @@ export class AdminManagementService {
         });
         return { programId, restoredSessions: restoring.length };
       }
-      if (p!.deletedAt)
+      if (
+        p!.deletedAt &&
+        operation !== "purge" &&
+        operation !== "preview-purge"
+      )
         fail(
           "failed-precondition",
           "already-deleted",
@@ -264,8 +289,14 @@ export class AdminManagementService {
         futureGenerated: future.length,
         retainedSessions: sessions.size - future.length,
         sessionCount: sessions.size,
+        permanentAllowed: !blocked && sessions.size <= 100,
+        permanentReason:
+          sessions.size > 100
+            ? "More than 100 linked sessions need a reviewed deletion batch. Archive instead."
+            : null,
       };
-      if (operation === "preview") return preview;
+      if (operation === "preview" || operation === "preview-purge")
+        return preview;
       if (d.confirmation !== p!.name)
         fail(
           "invalid-argument",
@@ -281,6 +312,30 @@ export class AdminManagementService {
           "This program has registrations or attendance history. Archive it instead.",
           preview,
         );
+      if (operation === "purge") {
+        if (sessions.size > 100)
+          fail(
+            "resource-exhausted",
+            "purge-too-large",
+            preview.permanentReason!,
+          );
+        for (const e of sessions.docs) {
+          tx.delete(e.ref);
+          tx.delete(db.doc(`sessionOperations/${e.id}`));
+          tx.delete(db.doc(`eventSecrets/${e.id}`));
+        }
+        tx.delete(ref);
+        for (const collection of ["programOperations", "programOperational"])
+          tx.delete(db.doc(`${collection}/${programId}`));
+        tx.create(db.collection("catalogueAudits").doc(), {
+          kind: "program-permanent-delete",
+          programId,
+          actorUid: who.uid,
+          createdAt: this.service.stamp(),
+          deletedSessionIds: ids,
+        });
+        return { ...preview, deleted: true, permanent: true };
+      }
       const at = this.service.stamp(),
         batchId = randomUUID(),
         futureIds = new Set(future.map((e) => e.id));

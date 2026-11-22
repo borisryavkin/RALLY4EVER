@@ -416,3 +416,16 @@ Apple Transporter confirmed delivery (with one warning) at 4:34 pm Australia/Syd
 
 Google Play accepted build 27, saved as the only artifact in Closed testing Alpha draft. Old bundles were removed from this draft only and remain in the artifact library. Rollout is blocked by Dashboard setup, full description, financial-features declaration, Foreground Service declaration and health declaration. Open testing remains unavailable until production access. No production rollout or backend/Hosting deployment was performed.
 
+
+
+## Build 28 — anonymous +1
+
+Version `1.0.3+28` includes the native **Skip details — count me as +1** option, explicitly accepted optional forms, and a persisted per-session retry token. Normal iOS export and real staging JSON configs were used. Existing identifiers and signing keys were retained. Both bundle signatures/version numbers and embedded `rally4ever-3adaf` were verified; the anonymous control is present in the IPA AOT library.
+
+Copies and checksums: `~/Downloads/Rally4Ever-1.0.3-28-external-testing/`. IPA 39,307,976 bytes; AAB 80,308,591 bytes. Android package `org.raly4ever`, versionCode 28; iOS bundle `org.rally4ever`, build 28.
+
+Apple's Xcode upload CLI confirmed **Upload succeeded / EXPORT SUCCEEDED** at 4:56 pm Australia/Sydney on 22 November 2026. Existing Xcode account/signing was used, without an API key or new credentials. The normal external-capable upload options used `destination: upload`, `manageAppVersionAndBuildNumber: false`, and `testFlightInternalTestingOnly: false`. Apple reported missing vendor framework dSYMs (including gRPC) as warnings; the app package upload succeeded.
+
+Google accepted build 28 and saved it as the only artifact in the Closed testing Alpha draft. Build 27 was removed only from the draft and remains in the artifact library. No production release was created. Apple's existing build-25 beta-review gate and Play's full-description/dashboard/financial-features/foreground-service/health declarations still block external distribution.
+
+The hosted anonymous check-in flow is already deployed and does not require the native app update. The native option requires build 28; build 27 cannot gain a new UI control from a backend deployment alone.

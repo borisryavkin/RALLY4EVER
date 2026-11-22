@@ -85,7 +85,7 @@ test("program sport filter combines search and status, keeps count and survives 
   await page.getByLabel("Status", { exact: true }).selectOption("draft");
   await expect(page.getByText("1 of 63 programs")).toBeVisible();
 });
-test("program soft-delete requires exact name, offers restore and keeps deleted records hidden", async ({
+test("program permanent delete requires exact name and keeps no deleted backlog", async ({
   page,
 }) => {
   await open(page, "Programs");
@@ -95,9 +95,7 @@ test("program soft-delete requires exact name, offers restore and keeps deleted 
     .click();
   const dialog = page.getByRole("dialog");
   await expect(
-    dialog.getByText(
-      /soft-delete this program and 8 future generated sessions/,
-    ),
+    dialog.getByText(/permanently deletes this program and all 10/),
   ).toBeVisible();
   await expect(
     dialog.getByRole("button", { name: "Delete program", exact: true }),
@@ -110,12 +108,16 @@ test("program soft-delete requires exact name, offers restore and keeps deleted 
     .getByRole("button", { name: "Delete program", exact: true })
     .click();
   await expect(dialog).not.toBeVisible();
-  await expect(page.getByText("62 of 63 programs")).toBeVisible();
-  await page.getByLabel("Show deleted").check();
-  await page.getByRole("button", { name: "Restore", exact: true }).click();
-  await expect(
-    page.getByText("Program and linked sessions restored"),
-  ).toBeVisible();
+  await expect(page.getByText("62 of 62 programs")).toBeVisible();
+  await expect(page.getByLabel("Show deleted", { exact: true })).toHaveCount(0);
+  expect(
+    await page.evaluate(() =>
+      window.__calls.some(
+        (c) =>
+          c.name === "adminProgramDeletion" && c.data.operation === "purge",
+      ),
+    ),
+  ).toBe(true);
 });
 test("program with attendance offers Archive instead of Delete", async ({
   page,
@@ -293,7 +295,7 @@ test("person CSV export fetches all history pages instead of exporting just visi
   expect(requests[1].data.cursor).toBe("history-next");
 });
 
-test("venues offer confirmed deletion, hide deleted records and restore", async ({
+test("venues offer confirmed permanent deletion without a deleted backlog", async ({
   page,
 }) => {
   await open(page, "VenueList");
@@ -316,12 +318,15 @@ test("venues offer confirmed deletion, hide deleted records and restore", async 
   await expect(
     page.getByRole("button", { name: "Edit / upload photo" }),
   ).toHaveCount(0);
-  await page.getByLabel("Show deleted venues").check();
-  await page.getByRole("button", { name: "Restore", exact: true }).click();
-  await expect(
-    page.getByRole("button", { name: "Edit / upload photo" }),
-  ).toBeVisible();
-  await shot(page, "after-venue-delete-restore");
+  await expect(page.getByLabel("Show deleted venues")).toHaveCount(0);
+  expect(
+    await page.evaluate(() =>
+      window.__calls.some(
+        (c) => c.name === "adminVenueDeletion" && c.data.operation === "purge",
+      ),
+    ),
+  ).toBe(true);
+  await shot(page, "after-venue-permanent-delete");
 });
 test("venue deletion explains linked records and prevents deletion", async ({
   page,
@@ -361,11 +366,9 @@ test("program spreadsheet details preserve source columns and repeatable private
     .fill("Coordinator");
   await page.getByRole("button", { name: "Save program", exact: true }).click();
   await expect(
-    page
-      .locator(".editor")
-      .filter({
-        has: page.getByRole("button", { name: "Save program", exact: true }),
-      }),
+    page.locator(".editor").filter({
+      has: page.getByRole("button", { name: "Save program", exact: true }),
+    }),
   ).toHaveCount(0);
   const payload = await page.evaluate(
     () => window.__calls.filter((c) => c.name === "saveProgram").at(-1).data,

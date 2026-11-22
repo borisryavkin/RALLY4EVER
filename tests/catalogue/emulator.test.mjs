@@ -565,3 +565,30 @@ test('anonymous +1 preserves QR, location, time, form and rate-limit guards',asy
  await rejects(()=>noApp.begin({...data,email:'do-not-store@example.test'},'guard-7'),'unknown-field');
  for(let i=0;i<10;i++)await noApp.begin(data,'limited');await rejects(()=>noApp.begin(data,'limited'),'rate-limit');
 });
+
+test('permanent program deletion removes unused sessions, private details and QR secrets without tombstones',async()=>{
+ await deletionFixture();const m=management(),before=(await db.collection('users').get()).docs.map(d=>d.data());
+ const sessions=(await db.collection('events').where('programId','==','program-one').get()).docs;
+ for(const e of sessions){await db.doc(`sessionOperations/${e.id}`).set({privateNote:'remove'});await db.doc(`eventSecrets/${e.id}`).set({secret:'remove'});}
+ for(const c of ['programOperations','programOperational'])await db.doc(`${c}/program-one`).set({privateNote:'remove'});
+ const result=await m.programDeletion(admin,{...deletionRequest,operation:'purge'});assert.equal(result.permanent,true);
+ assert.equal((await db.doc('programs/program-one').get()).exists,false);
+ for(const c of ['programOperations','programOperational'])assert.equal((await db.doc(`${c}/program-one`).get()).exists,false);
+ for(const e of sessions)for(const c of ['events','sessionOperations','eventSecrets'])assert.equal((await db.doc(`${c}/${e.id}`).get()).exists,false);
+ assert.deepEqual((await db.collection('users').get()).docs.map(d=>d.data()),before);
+ const audit=(await db.collection('catalogueAudits').where('kind','==','program-permanent-delete').get()).docs[0].data();assert.equal(audit.before,undefined);assert.equal(audit.after,undefined);assert.equal(audit.deletedSessionIds.length,sessions.length);
+});
+test('permanent deletion is admin-only and refuses any existing attendance history',async()=>{
+ await deletionFixture();const data={...deletionRequest,operation:'purge'};
+ await rejects(()=>management().programDeletion(who('participant-1'),data),'admin-claim-required');
+ await db.doc('checkins/history').set({eventId:'g-program-one-future',uid:'anonymous-visitor',status:'pending'});
+ await rejects(()=>management().programDeletion(admin,data),'program-has-attendance');assert.equal((await db.doc('programs/program-one').get()).exists,true);assert.equal((await db.doc('checkins/history').get()).exists,true);
+});
+test('permanent venue deletion removes its private details and cannot delete a linked venue',async()=>{
+ const m=management();await db.doc('venues/unused').set({name:'Unused venue',revision:0});
+ await db.doc('venueOperational/unused').set({contact:'remove'});
+ await rejects(()=>m.venueDeletion(who('participant-1'),{venueId:'unused',operation:'purge',revision:0,confirmation:'Unused venue'}),'admin-claim-required');
+ const r=await m.venueDeletion(admin,{venueId:'unused',operation:'purge',revision:0,confirmation:'Unused venue'});assert.equal(r.permanent,true);assert.equal((await db.doc('venues/unused').get()).exists,false);assert.equal((await db.doc('venueOperational/unused').get()).exists,false);
+ await createProgram();const p=(await db.doc('programs/program-one').get()).data();const {venueId}=require('./lib/admin_console');const key=venueId(p.venue);await db.doc(`venues/${key}`).set({...p.venue,revision:0});
+ await rejects(()=>m.venueDeletion(admin,{venueId:key,operation:'purge',revision:0,confirmation:p.venue.name}),'venue-in-use');assert.equal((await db.doc(`venues/${key}`).get()).exists,true);
+});

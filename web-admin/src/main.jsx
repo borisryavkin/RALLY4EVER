@@ -1175,14 +1175,16 @@ function Programs({ data, users, action, busy, api = call }) {
             { value: "pickleball", label: "Pickleball" },
           ]}
         />
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={filters.deleted}
-            onChange={(e) => update("deleted", e.target.checked)}
-          />
-          Show deleted
-        </label>
+        {data.programs.some((p) => p.deletedAt) && (
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={filters.deleted}
+              onChange={(e) => update("deleted", e.target.checked)}
+            />
+            Show deleted
+          </label>
+        )}
       </div>
       {edit && (
         <ProgramEditor
@@ -1260,22 +1262,27 @@ function Programs({ data, users, action, busy, api = call }) {
                 <td>{p.revision ?? 0}</td>
                 <td className="row-actions">
                   {p.deletedAt ? (
-                    <button
-                      disabled={busy}
-                      onClick={() =>
-                        action(
-                          () =>
-                            api("adminProgramDeletion", {
-                              programId: p.id,
-                              revision: p.revision,
-                              operation: "restore",
-                            }),
-                          "Program and linked sessions restored",
-                        )
-                      }
-                    >
-                      Restore
-                    </button>
+                    <>
+                      <button
+                        disabled={busy}
+                        onClick={() =>
+                          action(
+                            () =>
+                              api("adminProgramDeletion", {
+                                programId: p.id,
+                                revision: p.revision,
+                                operation: "restore",
+                              }),
+                            "Program and linked sessions restored",
+                          )
+                        }
+                      >
+                        Restore
+                      </button>
+                      <button disabled={busy} onClick={() => setDeleting(p)}>
+                        Delete permanently
+                      </button>
+                    </>
                   ) : (
                     <>
                       <button onClick={() => setEdit(p)}>Edit</button>
@@ -1350,7 +1357,10 @@ function ProgramDeleteDialog({ row, busy, api, action, onClose, onArchive }) {
     const dialog = ref.current;
     dialog.showModal();
     let live = true;
-    api("adminProgramDeletion", { operation: "preview", programId: row.id })
+    api("adminProgramDeletion", {
+      operation: "preview-purge",
+      programId: row.id,
+    })
       .then((p) => {
         if (live) setPreview(p);
       })
@@ -1386,18 +1396,20 @@ function ProgramDeleteDialog({ row, busy, api, action, onClose, onArchive }) {
       )}
       {preview && (
         <>
-          {preview.allowed ? (
+          {preview.allowed && preview.permanentAllowed !== false ? (
             <>
               <p>
-                This will soft-delete this program and {preview.futureGenerated}{" "}
-                future generated sessions. {preview.retainedSessions} older or
-                manually created sessions will be retained and hidden. All
-                affected items disappear from participant and coach lists.
+                This permanently deletes this program and all{" "}
+                {preview.sessionCount} linked sessions, including older and
+                manually created sessions, only if none has registrations or
+                attendance history.
               </p>
               <p>
-                You can use Show deleted → Restore to undo this. No profiles,
-                accounts, forms, registrations or attendance records will be
-                deleted. This does not permanently purge data.
+                This cannot be undone. No deleted copy is kept in the catalogue.
+                Associated private program/session details and QR secrets are
+                also removed. Profiles, accounts, forms and attendance data are
+                never deleted. A minimal audit entry records who deleted the IDs
+                and when.
               </p>
               <Field
                 label="Type the program name to confirm"
@@ -1409,8 +1421,8 @@ function ProgramDeleteDialog({ row, busy, api, action, onClose, onArchive }) {
           ) : (
             <div className="notice" role="status">
               <p>
-                This program has registration or attendance history and cannot
-                be deleted.
+                {preview.permanentReason ??
+                  "This program has registration or attendance history and cannot be deleted."}
               </p>
               <p>
                 {preview.countsAreMinimum ? "At least " : ""}
@@ -1436,7 +1448,7 @@ function ProgramDeleteDialog({ row, busy, api, action, onClose, onArchive }) {
         </div>
       )}
       <div className="dialog-actions">
-        {preview?.allowed ? (
+        {preview?.allowed && preview.permanentAllowed !== false ? (
           <Button
             className="danger"
             disabled={busy || confirmation !== row.name}
@@ -1447,9 +1459,9 @@ function ProgramDeleteDialog({ row, busy, api, action, onClose, onArchive }) {
                     programId: row.id,
                     revision: preview.revision ?? row.revision,
                     confirmation,
-                    operation: "delete",
+                    operation: "purge",
                   }),
-                "Program soft-deleted; use Show deleted to restore",
+                "Program and unused linked sessions permanently deleted",
                 (e) => {
                   setError(errorText(e));
                   if (e.details?.reason === "program-has-attendance")
@@ -2050,7 +2062,7 @@ function VenueDeleteDialog({ row, api, action, busy, onClose }) {
     const dialog = ref.current;
     dialog.showModal();
     let live = true;
-    api("adminVenueDeletion", { venueId: row.id, operation: "preview" })
+    api("adminVenueDeletion", { venueId: row.id, operation: "preview-purge" })
       .then((p) => {
         if (live) setPreview(p);
       })
@@ -2074,9 +2086,11 @@ function VenueDeleteDialog({ row, api, action, busy, onClose }) {
     >
       <h2>Delete {row.name}?</h2>
       <p>
-        This hides the venue from active venue lists. You can restore it using
-        Show deleted venues. Photos, programs, sessions and attendance are never
-        deleted.
+        This permanently removes the venue and its private venue details. This
+        cannot be undone and no deleted copy is kept in the catalogue. Programs,
+        sessions, profiles and attendance are never deleted by this action. A
+        venue still used by any program or session cannot be deleted. A minimal
+        audit entry records the deletion.
       </p>
       {!preview && !error && <p>Checking linked records…</p>}
       {preview && (
@@ -2113,11 +2127,11 @@ function VenueDeleteDialog({ row, api, action, busy, onClose }) {
                   venueId: row.id,
                   revision: preview.revision,
                   confirmation,
-                  operation: "delete",
+                  operation: "purge",
                 });
                 onClose();
               },
-              "Venue deleted. Use Show deleted venues to restore it.",
+              "Venue permanently deleted",
               (e) => setError(errorText(e)),
             )
           }
@@ -2185,14 +2199,16 @@ function Venues({ data, action, busy, api = call }) {
           <Plus size={17} /> New venue
         </Button>
       </div>
-      <label className="check">
-        <input
-          type="checkbox"
-          checked={showDeleted}
-          onChange={(e) => setShowDeleted(e.target.checked)}
-        />{" "}
-        Show deleted venues
-      </label>
+      {data.venues.some((v) => v.deletedAt) && (
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={showDeleted}
+            onChange={(e) => setShowDeleted(e.target.checked)}
+          />{" "}
+          Show deleted venues
+        </label>
+      )}
       {deleting && (
         <VenueDeleteDialog
           row={deleting}
@@ -2251,21 +2267,30 @@ function Venues({ data, action, busy, api = call }) {
                 <td>{v.revision ?? 0}</td>
                 <td>
                   {v.deletedAt ? (
-                    <Button
-                      secondary
-                      disabled={busy}
-                      onClick={() =>
-                        action(() =>
-                          api("adminVenueDeletion", {
-                            venueId: v.id,
-                            revision: v.revision,
-                            operation: "restore",
-                          }),
-                        )
-                      }
-                    >
-                      Restore
-                    </Button>
+                    <>
+                      <Button
+                        secondary
+                        disabled={busy}
+                        onClick={() =>
+                          action(() =>
+                            api("adminVenueDeletion", {
+                              venueId: v.id,
+                              revision: v.revision,
+                              operation: "restore",
+                            }),
+                          )
+                        }
+                      >
+                        Restore
+                      </Button>
+                      <Button
+                        secondary
+                        disabled={busy}
+                        onClick={() => setDeleting(v)}
+                      >
+                        Delete permanently
+                      </Button>
+                    </>
                   ) : (
                     <>
                       <Button secondary onClick={() => setEdit(v)}>

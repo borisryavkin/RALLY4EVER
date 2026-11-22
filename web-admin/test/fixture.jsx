@@ -170,7 +170,14 @@ function Fixture() {
         ],
       };
     if (name === "adminProgramDeletion") {
-      if (d.operation === "preview")
+      if (d.operation === "purge") {
+        setData((old) => ({
+          ...old,
+          programs: old.programs.filter((p) => p.id !== d.programId),
+        }));
+        return { permanent: true };
+      }
+      if (["preview", "preview-purge"].includes(d.operation))
         return {
           allowed: !params.get("blocked"),
           blocked: !!params.get("blocked"),
@@ -198,7 +205,14 @@ function Fixture() {
       return {};
     }
     if (name === "adminVenueDeletion") {
-      if (d.operation === "preview")
+      if (d.operation === "purge") {
+        setData((old) => ({
+          ...old,
+          venues: old.venues.filter((v) => v.id !== d.venueId),
+        }));
+        return { permanent: true };
+      }
+      if (["preview", "preview-purge"].includes(d.operation))
         return {
           allowed: !params.get("venueBlocked"),
           programs: params.get("venueBlocked") ? 1 : 0,
