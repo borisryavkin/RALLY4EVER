@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:latlong2/latlong.dart';
 
 import 'repository.dart';
@@ -58,7 +59,8 @@ List<List<Record>> groupSessionsByProgram(
   final order = <String>[];
   final groups = <String, List<Record>>{};
   for (final e in sessions) {
-    final key = (e['programId'] as String?) ?? 'standalone:${e['id'] ?? e['eventId']}';
+    final key =
+        (e['programId'] as String?) ?? 'standalone:${e['id'] ?? e['eventId']}';
     final group = groups.putIfAbsent(key, () {
       order.add(key);
       return [];
@@ -119,12 +121,20 @@ class ProgramCard extends StatelessWidget {
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                   ),
-                  Icon(
-                    program['sport'] == 'pickleball'
-                        ? Icons.sports
-                        : Icons.sports_tennis,
-                    color: coral,
-                  ),
+                  if ('${program['sport']}'.trim().toLowerCase() ==
+                      'pickleball')
+                    SvgPicture.asset(
+                      'assets/brand/pickleball.svg',
+                      width: 24,
+                      height: 24,
+                      colorFilter: const ColorFilter.mode(
+                        coral,
+                        BlendMode.srcIn,
+                      ),
+                      semanticsLabel: 'Pickleball',
+                    )
+                  else
+                    const Icon(Icons.sports_tennis, color: coral),
                 ],
               ),
               const SizedBox(height: 6),

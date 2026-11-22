@@ -115,6 +115,7 @@ flutter:
   assets:
     - assets/icon/icon.png
     - assets/brand/rally4ever_logo.svg
+    - assets/brand/pickleball.svg
     - assets/candid_photo.jpg.webp
     - assets/group.jpg.webp
     - assets/lmfo.jpg.webp
