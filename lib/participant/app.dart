@@ -1024,7 +1024,7 @@ class _ParticipantAppState extends State<ParticipantApp>
                 Text(
                   [
                     'Free social tennis and pickleball in 50+ places across Australia.',
-                    'No experience needed. Rackets and balls are provided. Just come along and have a hit.',
+                    'No experience needed. Racquets and balls are provided. Just come along and have a hit.',
                     'A regular, low-pressure way to get moving and meet people near you.',
                   ][step - 1],
                   style: TextStyle(

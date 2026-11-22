@@ -14,3 +14,7 @@ flutter run -d chrome --web-port 7357 --dart-define=USE_FIREBASE_EMULATORS=true
 ```
 
 Run `flutter analyze`, `flutter test`, `npm run test:functions`, `npm run test:all:emulator` and `npm run test:participant:e2e`. Use Node 24 and Java 21. Tests reset only disposable local demo data.
+
+## Language
+
+Use Australian English in user-facing copy (for example, racquets, colour, centre, organise and cancelled). Preserve approved legal form text verbatim and retain API identifiers and source-data names.

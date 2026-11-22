@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/participant/catalogue.dart';
+import 'package:rally4ever/participant/catalogue.dart';
 
 void main() {
-  testWidgets('program cards use the pickleball asset and keep tennis racket', (
+  testWidgets('program cards use the pickleball asset and keep tennis racquet', (
     tester,
   ) async {
     for (final sport in ['pickleball', 'tennis']) {

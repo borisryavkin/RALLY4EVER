@@ -117,7 +117,7 @@ class _WelcomeState extends State<Welcome> {
     ),
     (
       'Find your\npeople',
-      'No experience needed. Rackets and balls are provided. Just come along and have a hit.',
+      'No experience needed. Racquets and balls are provided. Just come along and have a hit.',
       navy,
     ),
     (
