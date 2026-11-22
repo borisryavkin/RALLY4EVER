@@ -429,3 +429,26 @@ Apple's Xcode upload CLI confirmed **Upload succeeded / EXPORT SUCCEEDED** at 4:
 Google accepted build 28 and saved it as the only artifact in the Closed testing Alpha draft. Build 27 was removed only from the draft and remains in the artifact library. No production release was created. Apple's existing build-25 beta-review gate and Play's full-description/dashboard/financial-features/foreground-service/health declarations still block external distribution.
 
 The hosted anonymous check-in flow is already deployed and does not require the native app update. The native option requires build 28; build 27 cannot gain a new UI control from a backend deployment alone.
+
+
+## Build 29 — three required agreement sections (22 November 2026)
+
+Version `1.0.3+29`, same existing iOS/Android identifiers and signing keys. Code of Conduct includes the unchanged Waive and Release; Data Collection and Photo Release are required. Profile now has one Sign forms entry. Existing valid receipts are preserved; no historical consent is fabricated.
+
+Build commands:
+```sh
+FLUTTER_BIN=/Users/borisryavkin/technical/flutter/flutter/bin/flutter JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./scripts/build-android-staging.sh --build-number 29
+FLUTTER_BIN=/Users/borisryavkin/technical/flutter/flutter/bin/flutter ./scripts/build-ios-staging.sh --build-number 29 --export-options normal
+```
+
+Backend deployment is limited to `rally4ever-3adaf`: attendance checkIn/addWalkIn/getNoAppForms/beginNoAppCheckIn/completeNoAppCheckIn plus Hosting checkin. No rules or legal document writes. Backup: ignored `backups/build29-three-forms/deployed/` (previous function settings, Hosting release, and all four legal documents). Earlier clients retain compatible document IDs but may display former optional labels; install build 29 for the correct three-section UI.
+
+
+Verification: Android versionCode 29, package `org.raly4ever`, existing upload certificate matched, bundletool and JAR signature valid, staging marker in all three architectures; iOS `org.rally4ever` 1.0.3 (29), codesign valid, staging marker and new signing screen present in AOT binary. Reports: `docs/verification/android29-bundle.json` and `ios29-bundle.json`. Copies and checksums: `~/Downloads/Rally4Ever-1.0.3-29-external-testing/`.
+
+Firebase deploy completed and all five functions are ACTIVE. Hosted check-in JS serves all three required agreement headings; legal document fields match the backups exactly. Unauthenticated checkIn/addWalkIn both return HTTP 401 UNAUTHENTICATED.
+
+Play accepted build 29 and saved it as the only bundle in the existing Closed testing Alpha draft. Rollout is blocked by five Play Console requirements: Dashboard completion, full description, financial features declaration, foreground service declaration, and health declaration. No production release was created or changed.
+
+
+Apple upload succeeded through `xcodebuild -exportArchive` using the existing Xcode account. App Store Connect visibly lists 1.0.3 (29), **Processing**, created 22 Nov 2026 5:30 pm Australia/Sydney. Normal external-capable export used (not internal-only). Vendor framework dSYM warnings were non-blocking. Existing external build 25 remains Waiting for Review; the original rally4ever group was untouched. Upload log: `/tmp/r4e-build29-xcode-upload.log`.

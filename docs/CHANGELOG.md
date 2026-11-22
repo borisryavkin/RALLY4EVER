@@ -499,3 +499,8 @@ Re-verification pass under a new staged task spec. The underlying fix (and the r
 - Backend enforcement now includes data collection and photo release. This change is local until deployed; existing installed builds will need a new app build for the three-section layout. Older clients retain their original document IDs, but their former optional labels do not describe the new required policy.
 - No Firebase data, profiles or Auth users were changed. No release build, upload or deployment was performed for this change.
 - Verification: Flutter analyze clean; full Flutter suite 236 passed, 1 intentional skip; 4 focused agreement tests passed; 74 backend emulator/rules tests and 16 backend unit tests passed; web helper/browser tests passed and check-in web build succeeded. Updated and visually inspected Profile and agreement screenshot goldens.
+
+## 2026-11-22 — build 29 uploaded and signing policy deployed
+
+- Release-signed staging 1.0.3+29 prepared for both platforms and verified. Apple CLI upload succeeded; App Store Connect confirms Processing at 5:30 pm. Play accepted 29 and saved it as the only bundle in the existing Closed testing Alpha draft; five pre-existing app setup/declaration requirements block rollout.
+- Deployed the five affected attendance/no-app functions and check-in Hosting only to rally4ever-3adaf. Verified ACTIVE functions, hosted three-agreement UI, unchanged legal document fields, and HTTP 401 on unauthenticated checkIn/addWalkIn. No profiles/Auth users, legal documents, rules or production store tracks changed. Backups are ignored at backups/build29-three-forms/deployed/.

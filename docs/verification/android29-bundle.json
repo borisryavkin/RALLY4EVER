@@ -1,0 +1,18 @@
+{
+  "bundle": "build/app/outputs/bundle/stagingRelease/app-staging-release.aab",
+  "bytes": 80355963,
+  "sha256": "404f3624b31f1a7d2e14cefdc1f6d6288f2b4d30331193b39563f3be5771e629",
+  "package": "org.raly4ever",
+  "versionName": "1.0.3",
+  "versionCode": 29,
+  "projectId": "rally4ever-3adaf",
+  "verifiedArchitectures": [
+    "armeabi-v7a",
+    "arm64-v8a",
+    "x86_64"
+  ],
+  "uploadCertificateSha1": "11:51:C4:0F:AF:82:97:8B:80:1D:BF:D5:3F:1E:44:E7:EB:0F:AF:AD",
+  "uploadKeystoreMatches": true,
+  "bundletoolValid": true,
+  "jarSignatureVerified": true
+}
