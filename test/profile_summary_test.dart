@@ -63,15 +63,18 @@ void main() {
         expect(find.byType(AppBar), findsNothing);
         expect(find.byKey(const Key('profile-sign-forms')), findsOneWidget);
         await tester.scrollUntilVisible(
-          find.text('Preferences'),
+          find.text('Update safety details'),
           250,
           scrollable: find.byType(Scrollable).first,
         );
-        await tester.drag(find.byType(ListView).first, const Offset(0, -200));
-        await tester.pumpAndSettle();
-        await tester.tap(find.text('Preferences'));
-        await tester.pumpAndSettle();
         expect(find.text('Update safety details'), findsOneWidget);
+        expect(find.byType(ExpansionTile), findsNothing);
+        await tester.scrollUntilVisible(
+          find.text('Sign-in methods'),
+          150,
+          scrollable: find.byType(Scrollable).first,
+        );
+        expect(find.text('Sign-in methods'), findsOneWidget);
         expect(tester.takeException(), isNull);
       },
     );

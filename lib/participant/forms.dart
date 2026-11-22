@@ -1035,7 +1035,12 @@ class _ProfileStepState extends State<ProfileStep> {
           '25–34',
           '35–49',
           '50–64',
-          '65+',
+          '65-79',
+          '80-94',
+          '95+',
+          // Preserve the saved broad band on existing profiles without guessing
+          // which narrower age range the person belongs to.
+          if (about['ageRange'] == '65+') '65+',
         ]),
         const SizedBox(height: 16),
         Panel(

@@ -2191,32 +2191,43 @@ class _ParticipantAppState extends State<ParticipantApp>
         },
       ),
       const SizedBox(height: 18),
-      ExpansionTile(
-        title: const Text('Preferences'),
-        children: [
-          OutlinedButton(
-            onPressed: () {
-              detailsReturn = 'profile';
-              go('details');
-            },
-            child: const Text('Update safety details'),
-          ),
-          ExpansionTile(
-            title: const Text('Sign-in methods'),
-            children: [SignInMethodsPanel(repository: repo)],
-          ),
-          TextButton(
-            onPressed: () => action(repo.refreshAccess),
-            child: const Text('Refresh roles & access'),
-          ),
-          TextButton(
-            onPressed: () => action(() async {
-              await repo.signOut();
-              go('signin');
-            }),
-            child: const Text('Sign out'),
-          ),
-        ],
+      const Text(
+        'PREFERENCES',
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          color: slate,
+        ),
+      ),
+      const SizedBox(height: 12),
+      OutlinedButton(
+        onPressed: () {
+          detailsReturn = 'profile';
+          go('details');
+        },
+        child: const Text('Update safety details'),
+      ),
+      const SizedBox(height: 20),
+      const Text(
+        'Sign-in methods',
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+          color: navy,
+        ),
+      ),
+      const SizedBox(height: 8),
+      SignInMethodsPanel(repository: repo),
+      TextButton(
+        onPressed: () => action(repo.refreshAccess),
+        child: const Text('Refresh roles & access'),
+      ),
+      TextButton(
+        onPressed: () => action(() async {
+          await repo.signOut();
+          go('signin');
+        }),
+        child: const Text('Sign out'),
       ),
     ],
   );

@@ -135,13 +135,6 @@ void main() {
       await tester.tap(find.text('Me'));
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
-        find.text('Preferences'),
-        250,
-        scrollable: find.byType(Scrollable).first,
-      );
-      await tester.tap(find.text('Preferences'));
-      await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(
         find.text('Update safety details'),
         250,
         scrollable: find.byType(Scrollable).first,

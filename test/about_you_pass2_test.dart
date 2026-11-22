@@ -257,4 +257,39 @@ void main() {
       }
     }
   });
+  testWidgets(
+    'all expanded age bands are shown and save the existing ageRange field',
+    (tester) async {
+      for (final age in ['35–49', '50–64', '65-79', '80-94', '95+']) {
+        await tester.pumpWidget(const SizedBox());
+        Map<String, dynamic>? saved;
+        await show(
+          tester,
+          1,
+          size: const Size(393, 1600),
+          save: (payload) async {
+            saved = payload;
+          },
+        );
+        for (final label in [
+          'Under 18',
+          '18–24',
+          '25–34',
+          '35–49',
+          '50–64',
+          '65-79',
+          '80-94',
+          '95+',
+        ]) {
+          expect(find.widgetWithText(ChoiceChip, label), findsOneWidget);
+        }
+        expect(find.widgetWithText(ChoiceChip, '65+'), findsNothing);
+        await tester.tap(find.widgetWithText(ChoiceChip, age));
+        await tester.tap(find.byKey(const Key('profile-next')));
+        await tester.pumpAndSettle();
+        expect((saved!['about'] as Map)['ageRange'], age);
+        expect(saved!.keys.toSet(), {'firstName', 'postcode', 'about'});
+      }
+    },
+  );
 }
