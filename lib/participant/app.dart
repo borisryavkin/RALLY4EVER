@@ -2436,7 +2436,7 @@ class _ParticipantAppState extends State<ParticipantApp>
       return frame(
         context,
         title: 'Program',
-        back: () => go('programs'),
+        back: () => go('home'),
         children: [const Text('This program is unavailable.')],
       );
     }
@@ -2451,7 +2451,7 @@ class _ParticipantAppState extends State<ParticipantApp>
     return frame(
       context,
       title: 'Your regular rally',
-      back: () => go('programs'),
+      back: () => go('home'),
       children: [
         CataloguePhoto(record: p, repository: repo),
         const SizedBox(height: 18),

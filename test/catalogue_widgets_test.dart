@@ -164,6 +164,32 @@ void main() {
       );
     },
   );
+  testWidgets('program Back returns to Play instead of Explore programs', (
+    tester,
+  ) async {
+    final repo = FakeParticipantRepository()
+      ..catalogueReady = true
+      ..programs = [program()];
+    await tester.pumpWidget(
+      ParticipantApp(
+        repository: repo,
+        initialPage: 'programs',
+        cameraEnabled: false,
+        mapTilesEnabled: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('View program & dates').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Back'));
+    await tester.pumpAndSettle();
+    expect(find.text('Explore programs'), findsNothing);
+    expect(
+      tester.widget<NavigationBar>(find.byType(NavigationBar)).selectedIndex,
+      0,
+    );
+    expect(find.text('Play near you'), findsOneWidget);
+  });
   testWidgets(
     'catalogue filters published programs and hides archived entries',
     (tester) async {
