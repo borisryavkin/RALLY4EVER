@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' show min;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -55,6 +56,7 @@ class _ParticipantAppState extends State<ParticipantApp>
   Future<void> Function()? _lastFailedAction;
   String locationSearch = '';
   bool areaChosen = false;
+  bool allAustralia = false;
   bool _locationRequestedThisSession = false;
   DateTime? _lastLocationFetch;
   bool busy = false, agreed = false, pendingSubmission = false;
@@ -1215,8 +1217,18 @@ class _ParticipantAppState extends State<ParticipantApp>
     centre: selectedMapPoint,
     sport: sport,
     programs: repo.programs,
+    radiusKm: allAustralia ? double.infinity : nearbyRadiusKm,
+  );
+  List<Record> get undatedPrograms => undatedProgramRecords(
+    repo.programs,
+    repo.events,
+    now: repo.now(),
+    centre: selectedMapPoint,
+    sport: sport,
+    radiusKm: allAustralia ? double.infinity : nearbyRadiusKm,
   );
   bool nearSelectedArea(Record record) {
+    if (allAustralia) return true;
     final point = selectedMapPoint, target = venuePoint(record);
     if (point != null && target != null) {
       return const Distance().as(LengthUnit.Kilometer, point, target) <= 50;
@@ -2492,6 +2504,7 @@ class _ParticipantAppState extends State<ParticipantApp>
     setState(() {
       area = label;
       areaChosen = true;
+      allAustralia = false;
     });
     go('home');
   }
@@ -2640,6 +2653,7 @@ class _ParticipantAppState extends State<ParticipantApp>
   // manual choice, or the home-postcode fallback (only ever surfaced once
   // location is denied/off/timed out -- never silently preferred over GPS).
   String get areaLabel {
+    if (allAustralia) return 'All Australia';
     if (areaChosen) return 'Near $area';
     if (repo.locationStatus == 'granted') {
       return 'Near ${repo.nearbyLabel ?? 'you'}';
@@ -2670,6 +2684,11 @@ class _ParticipantAppState extends State<ParticipantApp>
   Widget locationBarActions() => Row(
     mainAxisSize: MainAxisSize.min,
     children: [
+      if (allAustralia)
+        TextButton(
+          onPressed: () => setState(() => allAustralia = false),
+          child: const Text('Nearby'),
+        ),
       if (areaChosen ||
           repo.locationStatus == 'denied' ||
           repo.locationStatus == 'servicesOff' ||
@@ -2730,19 +2749,48 @@ class _ParticipantAppState extends State<ParticipantApp>
       Positioned.fill(
         child: FlutterMap(
           key: ValueKey(
-            '$area|${selectedMapPoint?.latitude}|${selectedMapPoint?.longitude}',
+            '$area|$allAustralia|${nearbySessions.length}|${undatedPrograms.length}|${selectedMapPoint?.latitude}|${selectedMapPoint?.longitude}',
           ),
           mapController: mapController,
           options: MapOptions(
+            minZoom: 3,
+            onMapReady: () => WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (!mounted || page != 'map') return;
+              final points = [
+                mapCenter,
+                ...nearbySessions.map((e) => venuePoint(e)!),
+                ...undatedPrograms.map((p) => venuePoint(p)!),
+              ];
+              if (points.length > 1) {
+                mapController.fitCamera(
+                  CameraFit.bounds(
+                    bounds: LatLngBounds.fromPoints(points),
+                    padding: EdgeInsets.fromLTRB(
+                      40,
+                      min(180, MediaQuery.sizeOf(context).height * .18),
+                      40,
+                      min(300, MediaQuery.sizeOf(context).height * .25),
+                    ),
+                    maxZoom: 14,
+                  ),
+                );
+              }
+            }),
             initialCenter: mapCenter,
-            initialCameraFit: nearbySessions.isEmpty
+            initialCameraFit: nearbySessions.isEmpty && undatedPrograms.isEmpty
                 ? null
                 : CameraFit.bounds(
                     bounds: LatLngBounds.fromPoints([
                       mapCenter,
                       ...nearbySessions.map((e) => venuePoint(e)!),
+                      ...undatedPrograms.map((p) => venuePoint(p)!),
                     ]),
-                    padding: const EdgeInsets.fromLTRB(40, 120, 40, 230),
+                    padding: EdgeInsets.fromLTRB(
+                      40,
+                      min(180, MediaQuery.sizeOf(context).height * .18),
+                      40,
+                      min(300, MediaQuery.sizeOf(context).height * .25),
+                    ),
                     maxZoom: 14,
                   ),
             initialZoom: selectedMapPoint == null ? 4 : 12,
@@ -2767,6 +2815,22 @@ class _ParticipantAppState extends State<ParticipantApp>
                       icon: Icon(
                         Icons.location_on,
                         color: _closedForDisplay(e) ? slate : coral,
+                        size: 38,
+                      ),
+                    ),
+                  ),
+                for (final p in undatedPrograms)
+                  Marker(
+                    point: venuePoint(p)!,
+                    width: 50,
+                    height: 50,
+                    child: IconButton(
+                      key: Key('program-marker-${p['id']}'),
+                      tooltip: '${p['name']} — dates coming soon',
+                      onPressed: () => selectProgram(p),
+                      icon: const Icon(
+                        Icons.location_on_outlined,
+                        color: navy,
                         size: 38,
                       ),
                     ),
@@ -2804,27 +2868,38 @@ class _ParticipantAppState extends State<ParticipantApp>
         right: 20,
         top: 20,
         child: Panel(
-          child: Row(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.search, size: 18),
-              const SizedBox(width: 8),
-              Expanded(child: Text(areaLabel)),
-              locationBarActions(),
-              IconButton(
-                key: const Key('centre-on-me'),
-                tooltip: 'Centre on me',
-                icon: const Icon(Icons.my_location),
-                onPressed: () async {
-                  await repo.requestBrowseLocation();
-                  if (mounted && repo.deviceLocation != null) {
-                    setState(() => areaChosen = false);
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted && page == 'map') {
-                        mapController.move(mapCenter, 14);
+              Row(
+                children: [
+                  const Icon(Icons.search, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(areaLabel)),
+                  IconButton(
+                    key: const Key('centre-on-me'),
+                    tooltip: 'Centre on me',
+                    icon: const Icon(Icons.my_location),
+                    onPressed: () async {
+                      await repo.requestBrowseLocation();
+                      if (mounted && repo.deviceLocation != null) {
+                        setState(() {
+                          areaChosen = false;
+                          allAustralia = false;
+                        });
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          if (mounted && page == 'map') {
+                            mapController.move(mapCenter, 14);
+                          }
+                        });
                       }
-                    });
-                  }
-                },
+                    },
+                  ),
+                ],
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: locationBarActions(),
               ),
             ],
           ),
@@ -2834,24 +2909,50 @@ class _ParticipantAppState extends State<ParticipantApp>
         left: 20,
         right: 20,
         bottom: 24,
-        child: Panel(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '${nearbySessions.length} sessions nearby',
-                style: Theme.of(context).textTheme.titleLarge,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(context).height * .38,
+          ),
+          child: SingleChildScrollView(
+            child: Panel(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    '${nearbySessions.length} sessions ${allAustralia ? 'across Australia' : 'nearby'}',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    allAustralia
+                        ? 'Showing published locations across Australia.'
+                        : 'Within 50 km of the search centre.',
+                  ),
+                  if (undatedPrograms.isNotEmpty)
+                    Text(
+                      '${undatedPrograms.length} ${undatedPrograms.length == 1 ? 'program awaiting dates' : 'programs awaiting dates'}. Outlined markers show programs, not bookable sessions.',
+                    ),
+                  Wrap(
+                    spacing: 12,
+                    children: [
+                      TextButton(
+                        onPressed: () => go('home'),
+                        child: const Text('List view'),
+                      ),
+                      TextButton(
+                        key: const Key('map-browse-scope'),
+                        onPressed: () =>
+                            setState(() => allAustralia = !allAustralia),
+                        child: Text(
+                          allAustralia ? 'Show nearby' : 'All Australia',
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              Text(
-                'Tap a marker to see its session. Within 50 km of the search centre.',
-              ),
-              TextButton(
-                onPressed: () => go('home'),
-                child: const Text('List view'),
-              ),
-            ],
+            ),
           ),
         ),
       ),

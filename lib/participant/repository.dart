@@ -722,7 +722,7 @@ class FirebaseParticipantRepository extends ParticipantRepository {
       final rows = await backend.firestore
           .collection('programs')
           .where('status', isEqualTo: 'active')
-          .get();
+          .get(const GetOptions(source: Source.server));
       programs = rows.docs.map((d) => {...d.data(), 'id': d.id}).toList();
     } catch (error) {
       catalogueError = error.toString();

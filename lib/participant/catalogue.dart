@@ -185,6 +185,35 @@ class ProgramBrowser extends StatefulWidget {
 
 class _ProgramBrowserState extends State<ProgramBrowser> {
   String search = '', sport = 'All', state = 'All';
+  bool refreshing = false;
+  String? refreshMessage;
+
+  Future<void> refreshPrograms() async {
+    if (refreshing) return;
+    setState(() {
+      refreshing = true;
+      refreshMessage = null;
+    });
+    try {
+      await widget.repository.refreshCatalogue();
+      if (mounted) {
+        setState(
+          () => refreshMessage = widget.repository.catalogueError == null
+              ? 'Programs are up to date.'
+              : 'Could not refresh programs. Check your connection and try again.',
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(
+          () => refreshMessage = 'Could not refresh programs. Check your connection and try again.',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => refreshing = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final repo = widget.repository;
@@ -203,6 +232,23 @@ class _ProgramBrowserState extends State<ProgramBrowser> {
           'Find your people, wherever you play.',
           style: TextStyle(color: slate),
         ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            key: const Key('refresh-programs'),
+            onPressed: refreshing ? null : refreshPrograms,
+            icon: refreshing
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.refresh),
+            label: Text(refreshing ? 'Refreshing…' : 'Refresh programs'),
+          ),
+        ),
+        if (refreshMessage != null)
+          Semantics(liveRegion: true, child: Text(refreshMessage!)),
         const SizedBox(height: 16),
         TextField(
           key: const Key('program-search'),
@@ -280,7 +326,7 @@ class _ProgramBrowserState extends State<ProgramBrowser> {
               children: [
                 const Text('Programs could not load. Please try again.'),
                 TextButton(
-                  onPressed: repo.refreshCatalogue,
+                  onPressed: refreshing ? null : refreshPrograms,
                   child: const Text('Try again'),
                 ),
               ],
@@ -398,3 +444,48 @@ List<Record> nearbySessionRecords(
 
 String sessionDistanceLabel(Record e, LatLng centre) =>
     '${const Distance().as(LengthUnit.Kilometer, centre, venuePoint(e)!).toStringAsFixed(1)} km';
+
+/// Published program locations remain discoverable before dated sessions exist.
+/// They are not bookable sessions and must not inflate the session count.
+List<Record> undatedProgramRecords(
+  Iterable<Record> programs,
+  Iterable<Record> events, {
+  required DateTime now,
+  LatLng? centre,
+  String sport = 'All',
+  double radiusKm = nearbyRadiusKm,
+}) {
+  final dated = events
+      .where(
+        (e) =>
+            e['status'] == 'published' &&
+            e['deletedAt'] == null &&
+            dateOf(e['endsAt']).isAfter(now),
+      )
+      .map((e) => e['programId'])
+      .toSet();
+  final distance = const Distance();
+  final rows = programs
+      .where(
+        (p) =>
+            p['status'] == 'active' &&
+            p['deletedAt'] == null &&
+            venuePoint(p) != null &&
+            !dated.contains(p['id']) &&
+            (sport == 'All' ||
+                '${p['sport']}'.toLowerCase() == sport.toLowerCase()) &&
+            (centre == null ||
+                distance.as(LengthUnit.Kilometer, centre, venuePoint(p)!) <=
+                    radiusKm),
+      )
+      .toList();
+  rows.sort(
+    (a, b) => centre == null
+        ? '${a['name']}'.compareTo('${b['name']}')
+        : distance(
+            centre,
+            venuePoint(a)!,
+          ).compareTo(distance(centre, venuePoint(b)!)),
+  );
+  return rows;
+}

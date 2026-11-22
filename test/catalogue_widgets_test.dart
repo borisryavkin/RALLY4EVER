@@ -233,26 +233,29 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
-  testWidgets('session map does not count unscheduled programs as sessions', (
-    tester,
-  ) async {
-    final repo = FakeParticipantRepository()
-      ..catalogueReady = true
-      ..programs = [program()]
-      ..events = [];
-    await tester.pumpWidget(
-      ParticipantApp(
-        repository: repo,
-        initialPage: 'map',
-        cameraEnabled: false,
-        mapTilesEnabled: false,
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('0 sessions nearby'), findsOneWidget);
-    expect(find.byTooltip('Bondi community tennis'), findsNothing);
-    await tester.pumpWidget(const SizedBox.shrink());
-  });
+  testWidgets(
+    'map shows unscheduled programs separately without counting them as sessions',
+    (tester) async {
+      final repo = FakeParticipantRepository()
+        ..catalogueReady = true
+        ..programs = [program()]
+        ..events = [];
+      await tester.pumpWidget(
+        ParticipantApp(
+          repository: repo,
+          initialPage: 'map',
+          cameraEnabled: false,
+          mapTilesEnabled: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('0 sessions nearby'), findsOneWidget);
+      expect(find.byTooltip('Bondi community tennis'), findsNothing);
+      expect(find.byKey(const Key('program-marker-bondi')), findsOneWidget);
+      expect(find.textContaining('1 program awaiting dates'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
   testWidgets(
     'catalogue error is clear and does not masquerade as zero programs',
     (tester) async {
@@ -410,7 +413,10 @@ void main() {
         findsOneWidget,
       );
       expect(find.text('Program changed. Reload before saving'), findsNothing);
-      expect(find.text('Bad state: Program changed. Reload before saving'), findsNothing);
+      expect(
+        find.text('Bad state: Program changed. Reload before saving'),
+        findsNothing,
+      );
       // Both the original attempt and the automatic retry carried the
       // admin's typed edit -- it was never cleared or reloaded away.
       expect(repo.savedPayloads, hasLength(2));
