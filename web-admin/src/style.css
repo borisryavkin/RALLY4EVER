@@ -719,3 +719,35 @@ summary {
 }
 
 .photo-empty .photo-brand { height: 48px; width: 64px; filter: brightness(0) invert(1); }
+
+/* Local admin workflow improvements; retain the existing navy console. */
+.field-error { color: #ffb7b7; font-size: .875rem; line-height: 1.5; }
+.field [aria-invalid="true"] { border-color: #ffb7b7; outline-color: #ffb7b7; }
+.field:has(input[readonly]) input { opacity: .78; }
+.save-error { margin: 24px 0 14px; }
+.pager,.quick-dates,.dialog-actions { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin:20px 0; }
+.admin-dialog { background:#001751; color:#f2eeeb; border:1px solid #4d5b80; border-radius:20px; width:min(680px,calc(100vw - 32px)); padding:28px; max-height:90dvh; overflow:auto; box-shadow:0 24px 80px #0008; }
+.admin-dialog::backdrop { background:#00102acc; }
+.admin-dialog h2 { font-size:1.6rem; }
+.admin-dialog p { line-height:1.65; margin:16px 0; }
+.danger-text { color:#ffb7b7; }
+button.danger { background:#ffb7b7; color:#001751; }
+.attendance-picker,.person-attendance,.session-attendance { padding:24px 0; border-top:1px solid #4d5b8066; }
+.attendance-picker h2,.person-attendance h2,.session-attendance h2 { margin:0 0 20px; font-size:1.45rem; }
+.attendance-picker .filters { grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); }
+.session-results ul,.person-matches { list-style:none; padding:0; margin:0; }
+.session-results h3 { margin:22px 0 9px; color:#a8b3d2; font-size:.9rem; }
+.session-results ul { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.session-result { display:flex; justify-content:space-between; text-align:left; gap:18px; width:100%; height:100%; padding:16px; background:#092354; color:#f2eeeb; border:1px solid #4d5b8066; border-radius:12px; }
+.session-result[aria-pressed="true"] { background:#19366a; border-color:#ffb7b7; }
+.session-result small,.session-result time,.person-matches small { display:block; color:#b5bed6; margin-top:6px; line-height:1.5; }
+.session-counts { min-width:120px; max-width:150px; font-size:.85rem; line-height:1.5; color:#ffb7b7; align-self:center; }
+.person-matches { display:flex; flex-wrap:wrap; gap:10px; margin:14px 0; }
+.person-matches button { text-align:left; }
+.geocode-controls { display:grid; gap:10px; align-content:start; }
+.geocode-controls a { color:#c0c9dd; font-size:.8rem; }
+.geocode-controls ul { padding-left:16px; }
+.status.deleted { color:#ffb7b7; background:#ffb7b71a; }
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible { outline:2px solid #ffb7b7; outline-offset:3px; }
+@media(max-width:900px) { .session-results ul { grid-template-columns:1fr; } .session-result { flex-wrap:wrap; } }
+@media(prefers-reduced-motion:reduce) { * { scroll-behavior:auto!important; } }

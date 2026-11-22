@@ -1,3 +1,15 @@
+import { Attendance } from "./attendance.jsx";
+import { Field, Select, Button, Status } from "./controls.jsx";
+import {
+  adminError,
+  programInput,
+  programErrors,
+  errorField,
+  venueCode,
+  programFilters,
+  programsFiltered,
+  setProgramQuery,
+} from "./admin_helpers.mjs";
 import React, { useState, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import {
@@ -22,8 +34,18 @@ import {
   UploadSimple,
   ShieldCheck,
 } from "@phosphor-icons/react";
-import { resolvePhoto, photoDimensions, displaySessionTime } from './helpers.mjs';
-import { auth, call, photoBytes, uploadVenuePhoto, uploadPhoto } from "./firebase";
+import {
+  resolvePhoto,
+  photoDimensions,
+  displaySessionTime,
+} from "./helpers.mjs";
+import {
+  auth,
+  call,
+  photoBytes,
+  uploadVenuePhoto,
+  uploadPhoto,
+} from "./firebase";
 import {
   fields,
   at,
@@ -43,58 +65,7 @@ const pages = [
   ["Users", Users],
   ["Attendance", ClipboardText],
 ];
-const errorText = (e) =>
-  e?.details?.reason
-    ? `${e.message} (${e.details.reason})`
-    : (e.message ?? String(e));
-function Field({ label, children, ...props }) {
-  return (
-    <label className="field">
-      <span>{label}</span>
-      {children ?? <input {...props} />}
-    </label>
-  );
-}
-function Select({ label, value, onChange, options, multiple = false }) {
-  return (
-    <Field label={label}>
-      <select
-        multiple={multiple}
-        value={value}
-        onChange={(e) =>
-          onChange(
-            multiple
-              ? [...e.target.selectedOptions].map((o) => o.value)
-              : e.target.value,
-          )
-        }
-      >
-        {options.map((o) => (
-          <option
-            key={typeof o === "string" ? o : o.value}
-            value={typeof o === "string" ? o : o.value}
-          >
-            {typeof o === "string" ? o : o.label}
-          </option>
-        ))}
-      </select>
-    </Field>
-  );
-}
-function Button({ children, secondary = false, ...p }) {
-  return (
-    <button className={secondary ? "secondary" : ""} {...p}>
-      {children}
-    </button>
-  );
-}
-function Status({ value }) {
-  return (
-    <span className={"status " + value}>
-      {value === "active" ? "published" : value}
-    </span>
-  );
-}
+const errorText = adminError;
 function Photo({ url, alt = "" }) {
   const [src, setSrc] = useState("");
   useEffect(() => {
@@ -269,7 +240,13 @@ function Login() {
 function App() {
   const [user, setUser] = useState(undefined),
     [access, setAccess] = useState(false),
-    [page, setPage] = useState("Sessions"),
+    [page, setPage] = useState(() =>
+      pages.some(
+        ([p]) => p === new URLSearchParams(location.search).get("page"),
+      )
+        ? new URLSearchParams(location.search).get("page")
+        : "Sessions",
+    ),
     [data, setData] = useState(null),
     [users, setUsers] = useState([]),
     [error, setError] = useState(""),
@@ -289,7 +266,7 @@ function App() {
     [],
   );
   async function refresh() {
-    setData(await call("adminCatalogue"));
+    setData(await call("adminCatalogue", { includeDeleted: true }));
     let all = [],
       cursor;
     do {
@@ -299,7 +276,7 @@ function App() {
     } while (cursor && all.length < 1000);
     setUsers(all);
   }
-  async function action(fn, message = "Saved") {
+  async function action(fn, message = "Saved", onError) {
     setBusy(true);
     setError("");
     setNotice("");
@@ -310,6 +287,7 @@ function App() {
       return true;
     } catch (e) {
       setError(errorText(e));
+      onError?.(e);
       if (e.code === "functions/permission-denied") {
         setData(null);
         setAccess(false);
@@ -348,6 +326,9 @@ function App() {
               aria-current={page === p ? "page" : undefined}
               onClick={() => {
                 setPage(p);
+                const q = new URLSearchParams(location.search);
+                q.set("page", p);
+                history.replaceState(null, "", location.pathname + "?" + q);
                 setError("");
                 setNotice("");
               }}
@@ -656,12 +637,13 @@ function Sessions({ data, users, action, busy }) {
                       {k === "status" ? (
                         <Status value={r.status} />
                       ) : k === "photoUrl" ? (
-                        <Photo url={resolvePhoto(r,data.venues)} alt={r.venue?.name} />
+                        <Photo
+                          url={resolvePhoto(r, data.venues)}
+                          alt={r.venue?.name}
+                        />
                       ) : k === "startsAt" || k === "endsAt" ? (
                         <>
-                          <time>
-                            {displaySessionTime(r[k], r.timezone)}
-                          </time>
+                          <time>{displaySessionTime(r[k], r.timezone)}</time>
                           <small>{r.timezone}</small>
                         </>
                       ) : typeof at(r, k) === "boolean" ? (
@@ -770,47 +752,57 @@ function Empty({ text }) {
     </div>
   );
 }
-function VenueFields({ value, onChange, venues = [] }) {
+function VenueFields({
+  value,
+  onChange,
+  venues = [],
+  selectable = false,
+  errors = {},
+}) {
   const set = (k, v) => onChange({ ...value, [k]: v });
   return (
     <>
-      <Select
-        label="Use a venue"
-        value={value.id ?? ""}
-        onChange={(id) => {
-          const v = venues.find((v) => v.id === id);
-          if (v)
-            onChange(
-              Object.fromEntries(
-                [
-                  "id",
-                  "code",
-                  "name",
-                  "address",
-                  "suburb",
-                  "postcode",
-                  "state",
-                  "lat",
-                  "lng",
-                  "photoUrl",
-                ]
-                  .filter((k) => v[k] !== undefined)
-                  .map((k) => [k, v[k]]),
-              ),
-            );
-        }}
-        options={[
-          { value: "", label: "Custom venue" },
-          ...venues.map((v) => ({
-            value: v.id,
-            label: `${v.code} · ${v.name}`,
-          })),
-        ]}
-      />
+      {selectable && (
+        <Select
+          label="Use a venue"
+          value={value.id ?? ""}
+          onChange={(id) => {
+            const v = venues.find((v) => v.id === id);
+            if (v)
+              onChange(
+                Object.fromEntries(
+                  [
+                    "id",
+                    "code",
+                    "name",
+                    "address",
+                    "suburb",
+                    "postcode",
+                    "state",
+                    "lat",
+                    "lng",
+                    "photoUrl",
+                  ]
+                    .filter((k) => v[k] !== undefined)
+                    .map((k) => [k, v[k]]),
+                ),
+              );
+          }}
+          options={[
+            { value: "", label: "Custom venue" },
+            ...venues.map((v) => ({
+              value: v.id,
+              label: `${v.code} · ${v.name}`,
+            })),
+          ]}
+        />
+      )}
       {["name", "address", "suburb", "postcode"].map((k) => (
         <Field
           key={k}
           label={"Venue " + k}
+          name={"venue." + k}
+          error={errors["venue." + k]}
           value={value[k] ?? ""}
           onChange={(e) => set(k, e.target.value)}
           required={["name", "suburb"].includes(k)}
@@ -818,6 +810,7 @@ function VenueFields({ value, onChange, venues = [] }) {
       ))}
       <Select
         label="State"
+        error={errors["venue.state"]}
         value={value.state ?? ""}
         onChange={(v) => set("state", v)}
         options={[
@@ -836,6 +829,8 @@ function VenueFields({ value, onChange, venues = [] }) {
         <Field
           key={k}
           label={k === "lat" ? "Latitude" : "Longitude"}
+          name={"venue." + k}
+          error={errors["venue." + k]}
           type="number"
           step="any"
           min={k === "lat" ? -90 : -180}
@@ -872,7 +867,8 @@ function StaffSelect({ users, value, onChange }) {
 }
 function SessionEditor({ row, data, users, busy, onSave, onClose }) {
   const [v, setV] = useState({ ...blankSession(), ...row }),
-    [err, setErr] = useState(""), [photoBusy,setPhotoBusy]=useState(false);
+    [err, setErr] = useState(""),
+    [_photoBusy, _setPhotoBusy] = useState(false);
   const set = (k, val) => setV({ ...v, [k]: val });
   async function submit(e) {
     e.preventDefault();
@@ -1037,9 +1033,7 @@ function SessionEditor({ row, data, users, busy, onSave, onClose }) {
         />
         <VenueFields
           value={v.venue}
-          onChange={(venue) =>
-            setV({ ...v, venue })
-          }
+          onChange={(venue) => setV({ ...v, venue })}
           venues={data.venues}
         />
         <Field
@@ -1082,68 +1076,58 @@ function SessionEditor({ row, data, users, busy, onSave, onClose }) {
     </form>
   );
 }
-const programFields = [
-  "name",
-  "sport",
-  "status",
-  "venue",
-  "timezone",
-  "scheduleText",
-  "coachUids",
-  "coachNames",
-  "notes",
-  "photoUrl",
-  "capacity",
-  "registrationStatus",
-];
-const programInput = (p) =>
-  Object.fromEntries(
-    programFields.map((k) => [
-      k,
-      p[k] ??
-        {
-          coachUids: [],
-          coachNames: [],
-          capacity: null,
-          photoUrl: "",
-          notes: "",
-          registrationStatus: "open",
-        }[k] ??
-        "",
-    ]),
-  );
-function Programs({ data, users, action, busy }) {
+function Programs({ data, users, action, busy, api = call }) {
   const [edit, setEdit] = useState(null),
     [generate, setGenerate] = useState(null),
-    [search, setSearch] = useState(""),
-    [status, setStatus] = useState("");
-  const rows = data.programs.filter(
-    (p) =>
-      (!status || p.status === status) &&
-      p.name.toLowerCase().includes(search.toLowerCase()),
-  );
-  async function save(p, patch = {}) {
-    return action(() =>
-      call("saveProgram", {
-        programId: p.id,
-        revision: p.revision,
-        program: programInput({ ...p, ...patch }),
-      }),
+    [deleting, setDeleting] = useState(null),
+    [filters, setFilters] = useState(() => programFilters(location.search)),
+    [offset, setOffset] = useState(0);
+  const rows = programsFiltered(data.programs, filters),
+    visible = rows.slice(offset, offset + 20);
+  const update = (key, value) => {
+    const next = { ...filters, [key]: value };
+    setFilters(next);
+    setOffset(0);
+    setProgramQuery(next);
+  };
+  useEffect(() => {
+    const pop = () => {
+      setFilters(programFilters(location.search));
+      setOffset(0);
+    };
+    window.addEventListener("popstate", pop);
+    return () => window.removeEventListener("popstate", pop);
+  }, []);
+  async function save(p, patch = {}, onError) {
+    return action(
+      () =>
+        api("saveProgram", {
+          programId: p.id,
+          revision: p.revision ?? 0,
+          program: programInput({ ...p, ...patch }),
+        }),
+      "Program saved",
+      onError,
     );
   }
   return (
     <>
       <div className="section-line">
-        <p>{rows.length} programs</p>
+        <p>
+          {rows.length} of {data.programs.length} programs
+        </p>
         <Button
           onClick={() =>
             setEdit({
               ...programInput({
                 ...blankSession(),
+                sport: "",
                 status: "draft",
                 scheduleText: "",
               }),
-              id: undefined,
+              id: crypto.randomUUID(),
+              isNew: true,
+              revision: 0,
             })
           }
         >
@@ -1153,31 +1137,54 @@ function Programs({ data, users, action, busy }) {
       <div className="filters">
         <Field
           label="Search programs"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+          value={filters.search}
+          onChange={(e) => update("search", e.target.value)}
         />
         <Select
           label="Status"
-          value={status}
-          onChange={setStatus}
+          value={filters.status}
+          onChange={(x) => update("status", x)}
           options={[
             { value: "", label: "All statuses" },
-            { value: "active", label: "published" },
+            { value: "active", label: "Published" },
             "draft",
             "archived",
           ]}
         />
+        <Select
+          label="Sport"
+          value={filters.sport}
+          onChange={(x) => update("sport", x)}
+          options={[
+            { value: "", label: "All sports" },
+            { value: "tennis", label: "Tennis" },
+            { value: "pickleball", label: "Pickleball" },
+          ]}
+        />
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={filters.deleted}
+            onChange={(e) => update("deleted", e.target.checked)}
+          />
+          Show deleted
+        </label>
       </div>
       {edit && (
         <ProgramEditor
-          key={edit.id ?? "new"}
+          key={edit.id}
           row={edit}
           data={data}
           users={users}
           busy={busy}
           onClose={() => setEdit(null)}
           onSave={async (p) => {
-            if (await save(p)) setEdit(null);
+            let error;
+            const ok = await save(p, {}, (e) => {
+              error = e;
+            });
+            if (ok) setEdit(null);
+            return { ok, error };
           }}
         />
       )}
@@ -1190,6 +1197,18 @@ function Programs({ data, users, action, busy }) {
           busy={busy}
           action={action}
           onClose={() => setGenerate(null)}
+        />
+      )}
+      {deleting && (
+        <ProgramDeleteDialog
+          row={deleting}
+          busy={busy}
+          api={api}
+          action={action}
+          onArchive={async () => {
+            if (await save(deleting, { status: "archived" })) setDeleting(null);
+          }}
+          onClose={() => setDeleting(null)}
         />
       )}
       <div className="table-wrap">
@@ -1206,10 +1225,13 @@ function Programs({ data, users, action, busy }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((p) => (
+            {visible.map((p) => (
               <tr key={p.id}>
                 <td>
-                  <Photo url={resolvePhoto(p,data.venues)} alt={p.venue?.name} />
+                  <Photo
+                    url={resolvePhoto(p, data.venues)}
+                    alt={p.venue?.name}
+                  />
                   <strong>{p.name}</strong>
                   <small>
                     {p.venue?.name} · {p.venue?.suburb}
@@ -1217,35 +1239,63 @@ function Programs({ data, users, action, busy }) {
                 </td>
                 <td>{p.sport}</td>
                 <td>
-                  <Status value={p.status} />
+                  <Status value={p.deletedAt ? "deleted" : p.status} />
                 </td>
                 <td>{p.scheduleText}</td>
                 <td>{p.coachNames?.join(", ")}</td>
                 <td>{p.revision ?? 0}</td>
                 <td className="row-actions">
-                  <button onClick={() => setEdit(p)}>Edit</button>
-                  <button
-                    disabled={busy}
-                    onClick={() =>
-                      save(p, {
-                        status: p.status === "active" ? "draft" : "active",
-                      })
-                    }
-                  >
-                    {p.status === "active" ? "Unpublish" : "Publish"}
-                  </button>
-                  <button
-                    disabled={busy || p.status === "archived"}
-                    onClick={() => save(p, { status: "archived" })}
-                  >
-                    Archive
-                  </button>
-                  <button
-                    disabled={p.status !== "active"}
-                    onClick={() => setGenerate(p)}
-                  >
-                    Generate sessions
-                  </button>
+                  {p.deletedAt ? (
+                    <button
+                      disabled={busy}
+                      onClick={() =>
+                        action(
+                          () =>
+                            api("adminProgramDeletion", {
+                              programId: p.id,
+                              revision: p.revision,
+                              operation: "restore",
+                            }),
+                          "Program and linked sessions restored",
+                        )
+                      }
+                    >
+                      Restore
+                    </button>
+                  ) : (
+                    <>
+                      <button onClick={() => setEdit(p)}>Edit</button>
+                      <button
+                        disabled={busy}
+                        onClick={() =>
+                          save(p, {
+                            status: p.status === "active" ? "draft" : "active",
+                          })
+                        }
+                      >
+                        {p.status === "active" ? "Unpublish" : "Publish"}
+                      </button>
+                      <button
+                        disabled={busy || p.status === "archived"}
+                        onClick={() => save(p, { status: "archived" })}
+                      >
+                        Archive
+                      </button>
+                      <button
+                        disabled={busy || p.status !== "active"}
+                        onClick={() => setGenerate(p)}
+                      >
+                        Generate sessions
+                      </button>
+                      <button
+                        className="danger-text"
+                        disabled={busy}
+                        onClick={() => setDeleting(p)}
+                      >
+                        Delete
+                      </button>
+                    </>
+                  )}
                 </td>
               </tr>
             ))}
@@ -1253,52 +1303,274 @@ function Programs({ data, users, action, busy }) {
         </table>
         {!rows.length && <Empty text="No matching programs." />}
       </div>
+      {rows.length > 20 && (
+        <div className="pager">
+          <Button
+            secondary
+            disabled={offset === 0}
+            onClick={() => setOffset(Math.max(0, offset - 20))}
+          >
+            Previous programs
+          </Button>
+          <span>
+            {offset + 1}–{Math.min(offset + 20, rows.length)} of {rows.length}
+          </span>
+          <Button
+            secondary
+            disabled={offset + 20 >= rows.length}
+            onClick={() => setOffset(offset + 20)}
+          >
+            Next programs
+          </Button>
+        </div>
+      )}
     </>
+  );
+}
+function ProgramDeleteDialog({ row, busy, api, action, onClose, onArchive }) {
+  const ref = useRef(null),
+    [preview, setPreview] = useState(null),
+    [confirmation, setConfirmation] = useState(""),
+    [error, setError] = useState("");
+  useEffect(() => {
+    const dialog = ref.current;
+    dialog.showModal();
+    let live = true;
+    api("adminProgramDeletion", { operation: "preview", programId: row.id })
+      .then((p) => {
+        if (live) setPreview(p);
+      })
+      .catch((e) => {
+        if (live) setError(errorText(e));
+      });
+    return () => {
+      live = false;
+      dialog.close();
+    };
+  }, [row.id, api]);
+  return (
+    <dialog
+      ref={ref}
+      className="admin-dialog"
+      onCancel={(e) => {
+        e.preventDefault();
+        if (!busy) onClose();
+      }}
+      aria-labelledby="delete-program-title"
+    >
+      <div className="section-line">
+        <h2 id="delete-program-title">Delete program</h2>
+        <Button type="button" secondary disabled={busy} onClick={onClose}>
+          Close
+        </Button>
+      </div>
+      <p>
+        <strong>{row.name}</strong>
+      </p>
+      {!preview && !error && (
+        <p role="status">Checking every linked session and its history…</p>
+      )}
+      {preview && (
+        <>
+          {preview.allowed ? (
+            <>
+              <p>
+                This will soft-delete this program and {preview.futureGenerated}{" "}
+                future generated sessions. {preview.retainedSessions} older or
+                manually created sessions will be retained and hidden. All
+                affected items disappear from participant and coach lists.
+              </p>
+              <p>
+                You can use Show deleted → Restore to undo this. No profiles,
+                accounts, forms, registrations or attendance records will be
+                deleted. This does not permanently purge data.
+              </p>
+              <Field
+                label="Type the program name to confirm"
+                value={confirmation}
+                onChange={(e) => setConfirmation(e.target.value)}
+                autoFocus
+              />
+            </>
+          ) : (
+            <div className="notice" role="status">
+              <p>
+                This program has registration or attendance history and cannot
+                be deleted.
+              </p>
+              <p>
+                {preview.countsAreMinimum ? "At least " : ""}
+                {preview.registrations} registrations · {preview.checkins}{" "}
+                check-ins · {preview.attendance} attendance records ·{" "}
+                {preview.feedback} feedback records
+                {preview.countMetadata
+                  ? " · existing booking/attendance counts"
+                  : ""}
+                .
+              </p>
+              <p>
+                Archive keeps the history and removes the program from new
+                bookings.
+              </p>
+            </div>
+          )}
+        </>
+      )}
+      {error && (
+        <div className="notice error" role="alert">
+          {error}
+        </div>
+      )}
+      <div className="dialog-actions">
+        {preview?.allowed ? (
+          <Button
+            className="danger"
+            disabled={busy || confirmation !== row.name}
+            onClick={async () => {
+              const ok = await action(
+                () =>
+                  api("adminProgramDeletion", {
+                    programId: row.id,
+                    revision: preview.revision ?? row.revision,
+                    confirmation,
+                    operation: "delete",
+                  }),
+                "Program soft-deleted; use Show deleted to restore",
+                (e) => {
+                  setError(errorText(e));
+                  if (e.details?.reason === "program-has-attendance")
+                    setPreview({ ...preview, ...e.details, allowed: false });
+                },
+              );
+              if (ok) onClose();
+            }}
+          >
+            {busy ? "Deleting…" : "Delete program"}
+          </Button>
+        ) : (
+          preview && (
+            <Button disabled={busy} onClick={onArchive}>
+              Archive instead
+            </Button>
+          )
+        )}
+      </div>
+    </dialog>
   );
 }
 function ProgramEditor({ row, data, users, busy, onSave, onClose }) {
   const [v, setV] = useState(row),
-    set = (k, x) => setV({ ...v, [k]: x });
+    [errors, setErrors] = useState({}),
+    [problem, setProblem] = useState(""),
+    [saving, setSaving] = useState(false);
+  const form = useRef(null),
+    savingLock = useRef(false);
+  const set = (k, x) => {
+    setV((old) => ({ ...old, [k]: x }));
+    setErrors((old) => ({ ...old, [k]: null }));
+  };
+  const focusError = () =>
+    requestAnimationFrame(() => {
+      const target =
+        form.current?.querySelector('[aria-invalid="true"]') ??
+        form.current?.querySelector(".save-error");
+      target?.scrollIntoView({ block: "center", behavior: "smooth" });
+      target?.focus();
+    });
+  async function submit(e) {
+    e.preventDefault();
+    if (savingLock.current || busy) return;
+    const validation = programErrors(v);
+    setErrors(validation);
+    if (Object.keys(validation).length) {
+      setProblem("Please check the highlighted fields.");
+      focusError();
+      return;
+    }
+    savingLock.current = true;
+    setSaving(true);
+    setProblem("");
+    try {
+      const result = await onSave({ ...v, ...programInput(v) });
+      if (result?.ok === false) {
+        const message = errorText(result.error);
+        setProblem(message);
+        const field = errorField(result.error);
+        if (field) setErrors({ [field]: message });
+        focusError();
+      }
+    } catch (e) {
+      setProblem(errorText(e));
+      const field = errorField(e);
+      if (field) setErrors({ [field]: errorText(e) });
+      focusError();
+    } finally {
+      savingLock.current = false;
+      setSaving(false);
+    }
+  }
+  const suggested = /pickle\s?ball/i.test(v.name)
+    ? "pickleball"
+    : /tennis/i.test(v.name)
+      ? "tennis"
+      : null;
   return (
-    <form
-      className="editor"
-      onSubmit={(e) => {
-        e.preventDefault();
-        onSave(v);
-      }}
-    >
+    <form ref={form} className="editor" noValidate onSubmit={submit}>
       <div className="section-line">
-        <h2>{row.id ? "Edit program" : "Create program"}</h2>
-        <button type="button" className="text-button" onClick={onClose}>
+        <h2>{!row.id || row.isNew ? "Create program" : "Edit program"}</h2>
+        <button
+          type="button"
+          className="text-button"
+          disabled={saving}
+          onClick={onClose}
+        >
           Close
         </button>
       </div>
       <div className="form-grid">
         <Field
           label="Name"
+          name="name"
           value={v.name}
+          error={errors.name}
           onChange={(e) => set("name", e.target.value)}
           required
         />
-        <Select
-          label="Sport"
-          value={v.sport}
-          onChange={(x) => set("sport", x)}
-          options={["tennis", "pickleball"]}
-        />
+        <div>
+          <Select
+            label="Sport"
+            name="sport"
+            value={v.sport}
+            error={errors.sport}
+            onChange={(x) => set("sport", x)}
+            required
+            options={[
+              { value: "", label: "Choose sport" },
+              { value: "tennis", label: "Tennis" },
+              { value: "pickleball", label: "Pickleball" },
+            ]}
+          />
+          {!v.sport && suggested && (
+            <small className="muted">
+              Suggested from the name: {suggested}. Choose above to confirm.
+            </small>
+          )}
+        </div>
         <Select
           label="Status"
           value={v.status}
           onChange={(x) => set("status", x)}
           options={[
             "draft",
-            { value: "active", label: "published" },
+            { value: "active", label: "Published" },
             "archived",
           ]}
         />
         <Field
           label="Schedule text"
+          name="scheduleText"
           value={v.scheduleText}
+          error={errors.scheduleText}
           onChange={(e) => set("scheduleText", e.target.value)}
           required
         />
@@ -1307,46 +1579,72 @@ function ProgramEditor({ row, data, users, busy, onSave, onClose }) {
           value={v.timezone}
           onChange={(x) => set("timezone", x)}
           options={[...new Set([v.timezone, ...zones])]}
+          error={errors.timezone}
         />
-        <Field
-          label="Capacity (blank = unlimited)"
-          type="number"
-          min="1"
-          max="5000"
-          value={v.capacity ?? ""}
-          onChange={(e) =>
-            set("capacity", e.target.value ? Number(e.target.value) : null)
-          }
-        />
+        <div>
+          <Field
+            label="Capacity"
+            name="capacity"
+            type="number"
+            min="1"
+            max="5000"
+            placeholder="Unlimited"
+            value={v.capacity ?? ""}
+            error={errors.capacity}
+            onChange={(e) => set("capacity", e.target.value)}
+          />
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={v.capacity == null || v.capacity === ""}
+              onChange={(e) => set("capacity", e.target.checked ? null : 20)}
+            />
+            Unlimited
+          </label>
+        </div>
         <Select
           label="Registration"
           value={v.registrationStatus}
           onChange={(x) => set("registrationStatus", x)}
           options={["open", "full", "closed"]}
         />
-        <StaffSelect
-          users={users}
-          value={v.coachUids}
-          onChange={(uids) =>
-            setV({
-              ...v,
-              coachUids: uids,
-              coachNames: uids.map(
-                (id) => users.find((u) => u.uid === id)?.firstName ?? "Coach",
-              ),
-            })
-          }
-        />
+        <div>
+          <StaffSelect
+            users={users}
+            value={v.coachUids}
+            onChange={(uids) =>
+              setV({
+                ...v,
+                coachUids: uids,
+                coachNames: uids.map(
+                  (id) => users.find((u) => u.uid === id)?.firstName ?? "Coach",
+                ),
+              })
+            }
+          />
+          {errors.coachUids && (
+            <small className="field-error">{errors.coachUids}</small>
+          )}
+        </div>
         <VenueFields
           value={v.venue}
-          onChange={(venue) =>
-            setV({ ...v, venue })
-          }
+          onChange={(venue) => {
+            setV({ ...v, venue });
+            setErrors((old) =>
+              Object.fromEntries(
+                Object.entries(old).filter(([k]) => !k.startsWith("venue.")),
+              ),
+            );
+          }}
           venues={data.venues}
+          selectable
+          errors={errors}
         />
         <Field
           label="Photo URL"
+          name="photoUrl"
           value={v.photoUrl}
+          error={errors.photoUrl}
           onChange={(e) => set("photoUrl", e.target.value)}
         />
         <Field label="Notes">
@@ -1356,7 +1654,19 @@ function ProgramEditor({ row, data, users, busy, onSave, onClose }) {
           />
         </Field>
       </div>
-      <Button disabled={busy}>Save program</Button>
+      {problem && (
+        <div className="notice error save-error" role="alert" tabIndex={-1}>
+          <strong>{problem}</strong>
+          {Object.entries(errors)
+            .filter(([, m]) => m && m !== problem)
+            .map(([k, m]) => (
+              <div key={k}>{m}</div>
+            ))}
+        </div>
+      )}
+      <Button disabled={busy || saving} aria-busy={saving}>
+        {saving ? "Saving…" : "Save program"}
+      </Button>
     </form>
   );
 }
@@ -1526,7 +1836,7 @@ async function compressCrop(file, settings = {}) {
         settings.y ?? 0.5,
       ),
       canvas = document.createElement("canvas");
-    const dimensions = photoDimensions(c.w,c.h);
+    const dimensions = photoDimensions(c.w, c.h);
     canvas.width = dimensions.width;
     canvas.height = dimensions.height;
     const ctx = canvas.getContext("2d");
@@ -1541,10 +1851,123 @@ async function compressCrop(file, settings = {}) {
     image.close();
   }
 }
-function RecordPhotoEditor({kind,record,venues=[],busy,onSaved,onBusy=()=>{}}) {
- const [file,setFile]=useState(null),[blob,setBlob]=useState(null),[working,setWorking]=useState(false),[progress,setProgress]=useState(0),[error,setError]=useState('');const picker=useRef(null);
- async function save(mode){setWorking(true);onBusy(true);setError('');setProgress(0);try{const photoUrl=mode==='override'?await uploadPhoto(kind,record.id,blob,setProgress):'';const result=await call('adminSetPhoto',{kind,id:record.id,revision:record.revision??0,photoUrl,mode});onSaved({photoUrl,photoMode:mode,revision:result.revision??(record.revision??0)+1});setFile(null);setBlob(null);}catch(e){setError(errorText(e));}finally{setWorking(false);onBusy(false);}}
- return <section className="editor"><h3>Photo</h3><div className="dropzone" onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();if(!working)setFile(e.dataTransfer.files[0]);}}><Photo url={resolvePhoto(record,venues)} alt={record.name}/><Button type="button" secondary disabled={working||busy} onClick={()=>picker.current.click()}>Change photo</Button><input type="file" ref={picker} hidden accept="image/jpeg,image/png,image/webp" onChange={e=>setFile(e.target.files[0])}/><p>Drop a photo here or choose a file.</p></div>{file&&<CropPhoto file={file} onReady={setBlob}/>}<div className="actions">{file&&<Button type="button" disabled={!blob||working||busy} onClick={()=>save('override')}>Replace / Upload photo</Button>}{kind==='session'&&<Button type="button" secondary disabled={working||busy} onClick={()=>save('venue')}>Use venue photo</Button>}<Button type="button" secondary disabled={working||busy} onClick={()=>save('none')}>Remove photo</Button></div>{working&&<><progress max="1" value={progress}/><p>{progress<1?'Uploading '+Math.round(progress*100)+'%':'Saving photo…'}</p></>}{error&&<p role="alert">{error}</p>}</section>;
+function _RecordPhotoEditor({
+  kind,
+  record,
+  venues = [],
+  busy,
+  onSaved,
+  onBusy = () => {},
+}) {
+  const [file, setFile] = useState(null),
+    [blob, setBlob] = useState(null),
+    [working, setWorking] = useState(false),
+    [progress, setProgress] = useState(0),
+    [error, setError] = useState("");
+  const picker = useRef(null);
+  async function save(mode) {
+    setWorking(true);
+    onBusy(true);
+    setError("");
+    setProgress(0);
+    try {
+      const photoUrl =
+        mode === "override"
+          ? await uploadPhoto(kind, record.id, blob, setProgress)
+          : "";
+      const result = await call("adminSetPhoto", {
+        kind,
+        id: record.id,
+        revision: record.revision ?? 0,
+        photoUrl,
+        mode,
+      });
+      onSaved({
+        photoUrl,
+        photoMode: mode,
+        revision: result.revision ?? (record.revision ?? 0) + 1,
+      });
+      setFile(null);
+      setBlob(null);
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setWorking(false);
+      onBusy(false);
+    }
+  }
+  return (
+    <section className="editor">
+      <h3>Photo</h3>
+      <div
+        className="dropzone"
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={(e) => {
+          e.preventDefault();
+          if (!working) setFile(e.dataTransfer.files[0]);
+        }}
+      >
+        <Photo url={resolvePhoto(record, venues)} alt={record.name} />
+        <Button
+          type="button"
+          secondary
+          disabled={working || busy}
+          onClick={() => picker.current.click()}
+        >
+          Change photo
+        </Button>
+        <input
+          type="file"
+          ref={picker}
+          hidden
+          accept="image/jpeg,image/png,image/webp"
+          onChange={(e) => setFile(e.target.files[0])}
+        />
+        <p>Drop a photo here or choose a file.</p>
+      </div>
+      {file && <CropPhoto file={file} onReady={setBlob} />}
+      <div className="actions">
+        {file && (
+          <Button
+            type="button"
+            disabled={!blob || working || busy}
+            onClick={() => save("override")}
+          >
+            Replace / Upload photo
+          </Button>
+        )}
+        {kind === "session" && (
+          <Button
+            type="button"
+            secondary
+            disabled={working || busy}
+            onClick={() => save("venue")}
+          >
+            Use venue photo
+          </Button>
+        )}
+        <Button
+          type="button"
+          secondary
+          disabled={working || busy}
+          onClick={() => save("none")}
+        >
+          Remove photo
+        </Button>
+      </div>
+      {working && (
+        <>
+          <progress max="1" value={progress} />
+          <p>
+            {progress < 1
+              ? "Uploading " + Math.round(progress * 100) + "%"
+              : "Saving photo…"}
+          </p>
+        </>
+      )}
+      {error && <p role="alert">{error}</p>}
+    </section>
+  );
 }
 function CropPhoto({ file, onReady }) {
   const [zoom, setZoom] = useState(1),
@@ -1659,6 +2082,7 @@ function Venues({ data, action, busy }) {
         <VenueEditor
           key={edit.id ?? "new"}
           row={edit}
+          venues={data.venues}
           action={action}
           busy={busy}
           onClose={() => setEdit(null)}
@@ -1803,29 +2227,93 @@ const venueInput = (v) =>
       "lng",
       "photoUrl",
       "isDemo",
-    ].map((k) => [k, v[k] ?? { isDemo: false, lat: null, lng: null }[k] ?? ""]),
+    ].map((k) => [
+      k,
+      ["lat", "lng"].includes(k)
+        ? v[k] == null || v[k] === ""
+          ? null
+          : Number(v[k])
+        : k === "isDemo"
+          ? !!v[k]
+          : (v[k] ?? ""),
+    ]),
   );
-function VenueEditor({ row, action, busy, onClose }) {
+function VenueEditor({ row, action, busy, onClose, venues = [], api = call }) {
   const [v, setV] = useState(row),
     [file, setFile] = useState(null),
-    [blob, setBlob] = useState(null), [progress,setProgress] = useState(null);
-  const picker = useRef(null);
+    [blob, setBlob] = useState(null),
+    [progress, setProgress] = useState(null);
+  const picker = useRef(null),
+    saveLock = useRef(false),
+    stableId = useRef(row.id ?? crypto.randomUUID());
+  const [manualCode, setManualCode] = useState(false),
+    [geoBusy, setGeoBusy] = useState(false),
+    [geoResults, setGeoResults] = useState([]),
+    [problem, setProblem] = useState("");
+  const code =
+    row.id || manualCode ? v.code : venueCode(v.name, v.state, venues);
+  async function geocode() {
+    if (geoBusy) return;
+    setGeoBusy(true);
+    setProblem("");
+    try {
+      const r = await api("adminFindCoordinates", {
+        address: v.address,
+        suburb: v.suburb,
+        postcode: v.postcode,
+        state: v.state,
+      });
+      setGeoResults(r.results);
+      if (r.results.length === 1)
+        setV((old) => ({
+          ...old,
+          lat: r.results[0].lat,
+          lng: r.results[0].lng,
+        }));
+      if (!r.results.length)
+        setProblem(
+          "No matching address found. Check the address or enter coordinates manually.",
+        );
+    } catch (e) {
+      setProblem(errorText(e));
+    } finally {
+      setGeoBusy(false);
+    }
+  }
+
   return (
     <form
       className="editor"
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault();
-        action(async () => {
-          const id = v.id ?? crypto.randomUUID();
-          let photoUrl = v.photoUrl ?? "";
-          if (blob) photoUrl = await uploadVenuePhoto(id, blob,setProgress);
-          await call("adminSaveVenue", {
-            venueId: id,
-            revision: v.revision ?? 0,
-            venue: venueInput({ ...v, photoUrl }),
-          });
-          onClose();
-        }, "Venue saved; linked photos updated");
+        if (saveLock.current || busy) return;
+        saveLock.current = true;
+        setProblem("");
+        try {
+          await action(
+            async () => {
+              const id = stableId.current;
+              let photoUrl = v.photoUrl ?? "";
+              if (blob)
+                photoUrl = await uploadVenuePhoto(id, blob, setProgress);
+              const venue = venueInput({
+                ...v,
+                code: row.id || manualCode ? code : "",
+                photoUrl,
+              });
+              await api("adminSaveVenue", {
+                venueId: id,
+                revision: v.revision ?? 0,
+                venue,
+              });
+              onClose();
+            },
+            "Venue saved; linked photos updated",
+            (e) => setProblem(errorText(e)),
+          );
+        } finally {
+          saveLock.current = false;
+        }
       }}
     >
       <div className="section-line">
@@ -1835,14 +2323,74 @@ function VenueEditor({ row, action, busy, onClose }) {
         </button>
       </div>
       <div className="form-grid">
-        <Field
-          label="Venue code (unique; used for bulk photos)"
-          value={v.code}
-          pattern="[A-Za-z0-9-]+"
-          required
-          onChange={(e) => setV({ ...v, code: e.target.value })}
+        <div>
+          <Field
+            label="Venue code (unique; used for bulk photos)"
+            value={code ?? ""}
+            readOnly={!manualCode}
+            pattern="[A-Za-z0-9-]+"
+            required
+            onChange={(e) => setV({ ...v, code: e.target.value })}
+          />
+          <button
+            type="button"
+            className="text-button"
+            onClick={() => {
+              setV({ ...v, code });
+              setManualCode(true);
+            }}
+          >
+            Edit venue code
+          </button>
+          <small className="muted">
+            Generated from the venue name and state; a number is added if
+            needed.
+          </small>
+        </div>
+        <VenueFields
+          value={v}
+          onChange={(x) => setV({ ...v, ...x })}
+          selectable={false}
         />
-        <VenueFields value={v} onChange={(x) => setV({ ...v, ...x })} />
+        <div className="geocode-controls">
+          <Button
+            type="button"
+            secondary
+            disabled={
+              geoBusy || !v.address?.trim() || !v.suburb?.trim() || !v.state
+            }
+            onClick={geocode}
+          >
+            {geoBusy ? "Finding coordinates…" : "Find coordinates from address"}
+          </Button>
+          <small className="muted">
+            One lookup at a time. Review the match and correct coordinates if
+            needed. Venue addresses only—do not submit personal or confidential
+            addresses.
+          </small>
+          <a
+            href="https://www.openstreetmap.org/copyright"
+            target="_blank"
+            rel="noreferrer"
+          >
+            © OpenStreetMap contributors
+          </a>
+          {geoResults.length > 0 && (
+            <ul>
+              {geoResults.map((r, i) => (
+                <li key={i}>
+                  <button
+                    type="button"
+                    className="text-button"
+                    onClick={() => setV({ ...v, lat: r.lat, lng: r.lng })}
+                  >
+                    {r.label} · {r.lat}, {r.lng}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
         <label className="check">
           <input
             type="checkbox"
@@ -1877,19 +2425,37 @@ function VenueEditor({ row, action, busy, onClose }) {
         />
       </div>
       {file && <CropPhoto file={file} onReady={setBlob} />}
-      {progress!==null && <progress value={progress} max="1" aria-label="Photo upload progress" />}
-      <Button type="button" secondary disabled={busy} onClick={()=>{setFile(null);setBlob(null);setV({...v,photoUrl:''});}}>Remove photo</Button>
+      {progress !== null && (
+        <progress value={progress} max="1" aria-label="Photo upload progress" />
+      )}
+      <Button
+        type="button"
+        secondary
+        disabled={busy}
+        onClick={() => {
+          setFile(null);
+          setBlob(null);
+          setV({ ...v, photoUrl: "" });
+        }}
+      >
+        Remove photo
+      </Button>
       <p className="muted">
         Revision {v.revision ?? 0}. Photos update linked programs and sessions.
         Started sessions keep their original coordinates.
       </p>
+      {problem && (
+        <div className="notice error save-error" role="alert">
+          {problem}
+        </div>
+      )}
       <Button disabled={busy || (!!file && !blob)}>
         Save venue{blob ? " and photo" : ""}
       </Button>
     </form>
   );
 }
-function UserList({ users, setUsers, action, busy }) {
+function UserList({ users, setUsers: _setUsers, action, busy }) {
   const [query, setQuery] = useState(""),
     [cursor, setCursor] = useState(null),
     [result, setResult] = useState(null);
@@ -2004,181 +2570,6 @@ function UserRow({ user: u, busy, onSave }) {
     </tr>
   );
 }
-function Attendance({ data, action, busy }) {
-  const [id, setId] = useState(""),
-    [roster, setRoster] = useState(null),
-    [filter, setFilter] = useState("all");
-  const rows = (roster?.roster ?? []).filter(
-    (r) =>
-      filter === "all" ||
-      (filter === "counted-in" && r.countedIn) ||
-      (filter === "checked-in" && r.checkinStatus) ||
-      (filter === "walk-ins" && r.walkIn),
-  );
-  return (
-    <>
-      <div className="filters">
-        <Select
-          label="Session"
-          value={id}
-          onChange={(x) => {
-            setId(x);
-            setRoster(null);
-            if (x)
-              action(
-                async () =>
-                  setRoster(await call("getEventConsole", { eventId: x })),
-                "Roster loaded",
-              );
-          }}
-          options={[
-            { value: "", label: "Choose a session" },
-            ...data.events.map((e) => ({
-              value: e.id,
-              label:
-                e.name +
-                " · " +
-                localTime(e.startsAt, e.timezone).replace("T", " "),
-            })),
-          ]}
-        />
-        <Select
-          label="Show"
-          value={filter}
-          onChange={setFilter}
-          options={["all", "counted-in", "checked-in", "walk-ins"]}
-        />
-        <Button
-          secondary
-          disabled={!roster}
-          onClick={() =>
-            download(
-              "attendance-" + id + ".csv",
-              csv(
-                rows.map((r) => ({
-                  uid: r.uid,
-                  name: r.firstName ?? r.name,
-                  email: r.emailLower ?? r.email,
-                  countedIn: r.countedIn,
-                  checkedIn: !!r.checkinStatus,
-                  status: r.checkinStatus,
-                  walkIn: r.walkIn,
-                  scannedAt: r.scannedAt,
-                  distanceM: r.distanceM,
-                })),
-                [
-                  "uid",
-                  "name",
-                  "email",
-                  "countedIn",
-                  "checkedIn",
-                  "status",
-                  "walkIn",
-                  "scannedAt",
-                  "distanceM",
-                ],
-              ),
-            )
-          }
-        >
-          <DownloadSimple size={17} /> Export CSV
-        </Button>
-      </div>
-      {roster ? (
-        <>
-          <p>{rows.length} people · intent and attendance are separate</p>
-          {roster.limited && (
-            <div className="notice">
-              This large roster reached the 500-record safety limit. Request a
-              complete server export before reporting totals.
-            </div>
-          )}
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Name / email</th>
-                  <th>Counted in</th>
-                  <th>Check-in</th>
-                  <th>Walk-in</th>
-                  <th>Scanned at</th>
-                  <th>Distance</th>
-                  <th>Decision</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.uid}>
-                    <td>
-                      <strong>{r.firstName ?? r.name ?? "Member"}</strong>
-                      <small>{r.emailLower ?? r.email ?? r.uid}</small>
-                    </td>
-                    <td>{r.countedIn ? "Yes" : "No"}</td>
-                    <td>
-                      {r.checkinStatus ? (
-                        <Status value={r.checkinStatus} />
-                      ) : (
-                        "Not scanned"
-                      )}
-                    </td>
-                    <td>{r.walkIn ? "Yes" : "No"}</td>
-                    <td>
-                      {r.scannedAt
-                        ? new Date(r.scannedAt).toLocaleString("en-AU", {
-                            timeZone:
-                              roster.event?.timezone ?? "Australia/Sydney",
-                          })
-                        : "—"}
-                    </td>
-                    <td>
-                      {r.distanceM != null
-                        ? Math.round(r.distanceM) + " m"
-                        : "—"}
-                    </td>
-                    <td>
-                      {r.checkinStatus === "pending" && (
-                        <div className="row-actions">
-                          {["confirmed", "rejected"].map((status) => (
-                            <button
-                              key={status}
-                              disabled={busy}
-                              onClick={() =>
-                                action(async () => {
-                                  await call("coachDecision", {
-                                    eventId: id,
-                                    uid: r.uid,
-                                    decision:
-                                      status === "confirmed"
-                                        ? "confirm"
-                                        : "reject",
-                                  });
-                                  setRoster(
-                                    await call("getEventConsole", {
-                                      eventId: id,
-                                    }),
-                                  );
-                                }, "Attendance " + status)
-                              }
-                            >
-                              {status === "confirmed" ? "Confirm" : "Reject"}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {!rows.length && (
-              <Empty text="No attendance records in this view." />
-            )}
-          </div>
-        </>
-      ) : (
-        <Empty text="Choose a session to view its intent and attendance records." />
-      )}
-    </>
-  );
-}
-createRoot(document.getElementById("root")).render(<App />);
+const rootElement = document.getElementById("root");
+if (rootElement) createRoot(rootElement).render(<App />);
+export { Programs, ProgramEditor, VenueEditor, Attendance };
