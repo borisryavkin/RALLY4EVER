@@ -464,3 +464,17 @@ test("session offers every spreadsheet status and operational cancellation does 
   expect(payload.operations.fields.status).toBe("Cancelled");
   expect(payload.changes.status).toBe("published");
 });
+
+test('international venue can be saved without selecting an Australian state', async ({ page }) => {
+  await open(page, 'Venues');
+  await page.getByLabel('Venue name', { exact: true }).fill('Wimbledon Park');
+  await page.getByLabel('Venue suburb').fill('London');
+  await page.getByLabel('Country', { exact: true }).fill('United Kingdom');
+  await expect(page.getByLabel('State / region (optional)')).toHaveValue('');
+  await expect(page.getByRole('combobox', { name: 'State', exact: true })).toHaveCount(0);
+  await page.getByLabel('Venue address').fill('Home Park Road');
+  await expect(page.getByRole('button', {name: 'Find coordinates from address', exact: true})).toBeEnabled();
+  await page.getByRole('button', { name: 'Save venue', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => window.__calls.find(c => c.name === 'adminSaveVenue')?.data.venue.country)).toBe('United Kingdom');
+  expect(await page.evaluate(() => window.__calls.find(c => c.name === 'adminSaveVenue').data.venue.state)).toBe('');
+});

@@ -142,3 +142,11 @@ test("program sport search status and deleted filters combine and round trip URL
   assert.equal(programsFiltered(rows, f).length, 1);
   assert.equal(f.deleted, true);
 });
+
+test('international program venue accepts blank region and preserves country', () => {
+  const international = { ...p, venue: { ...p.venue, country: 'United Kingdom', state: '', suburb: 'London' } };
+  assert.equal(programErrors(international)['venue.state'], undefined);
+  assert.equal(programInput(international).venue.country, 'United Kingdom');
+  assert.equal(programInput(international).venue.state, '');
+  assert.equal(programErrors({ ...international, venue: { ...international.venue, country: 'Australia' } })['venue.state'], 'Choose a state.');
+});

@@ -443,6 +443,7 @@ const blankVenue = {
   suburb: "",
   postcode: "",
   state: "NSW",
+  country: "Australia",
   lat: null,
   lng: null,
 };
@@ -791,6 +792,7 @@ function VenueFields({
                     "suburb",
                     "postcode",
                     "state",
+                    "country",
                     "lat",
                     "lng",
                     "photoUrl",
@@ -822,7 +824,17 @@ function VenueFields({
           required={["name", "suburb"].includes(k)}
         />
       ))}
-      <Select
+      <Field
+        label="Country"
+        value={value.country ?? "Australia"}
+        required
+        onChange={(e) => onChange({ ...value, country: e.target.value,
+          state: ["australia", "au", "aus"].includes(e.target.value.trim().toLowerCase()) ? value.state : "" })}
+      />
+      {!["australia", "au", "aus"].includes((value.country ?? "Australia").trim().toLowerCase()) ? (
+        <Field label="State / region (optional)" value={value.state ?? ""}
+          onChange={(e) => set("state", e.target.value)} />
+      ) : <Select
         label="State"
         error={errors["venue.state"]}
         value={value.state ?? ""}
@@ -838,7 +850,7 @@ function VenueFields({
           "VIC",
           "WA",
         ]}
-      />
+      />}
       {["lat", "lng"].map((k) => (
         <Field
           key={k}
@@ -2426,6 +2438,7 @@ const venueInput = (v) =>
       "suburb",
       "postcode",
       "state",
+      "country",
       "lat",
       "lng",
       "photoUrl",
@@ -2438,7 +2451,7 @@ const venueInput = (v) =>
           : Number(v[k])
         : k === "isDemo"
           ? !!v[k]
-          : (v[k] ?? ""),
+          : (v[k] ?? (k === "country" ? "Australia" : "")),
     ]),
   );
 function VenueEditor({ row, action, busy, onClose, venues = [], api = call }) {
@@ -2466,6 +2479,7 @@ function VenueEditor({ row, action, busy, onClose, venues = [], api = call }) {
         suburb: v.suburb?.trim() ?? "",
         postcode: v.postcode?.trim() ?? "",
         state: v.state?.trim() ?? "",
+        country: v.country?.trim() || "Australia",
       });
       setGeoResults(r.results);
       if (r.results.length === 1)
@@ -2561,7 +2575,7 @@ function VenueEditor({ row, action, busy, onClose, venues = [], api = call }) {
             type="button"
             secondary
             disabled={
-              geoBusy || !v.address?.trim() || !v.suburb?.trim() || !v.state
+              geoBusy || !v.address?.trim() || !v.suburb?.trim() || !(v.country ?? "Australia").trim()
             }
             onClick={geocode}
           >

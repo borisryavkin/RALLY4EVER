@@ -522,14 +522,16 @@ export class AdminManagementService {
     };
   }
   async coordinates(who: Identity, value: unknown) {
-    const d = input(value, ["address", "suburb", "postcode", "state"]);
+    const d = input(value, ["address", "suburb", "postcode", "state", "country"]);
     await this.console.requireAdmin(who);
+    const country = text(d.country ?? "Australia", "country", 100),
+      australia = ["australia", "au", "aus"].includes(country.toLowerCase());
     const address = [
         text(d.address, "street address", 300, 3),
         text(d.suburb, "suburb", 100, 1),
-        text(d.state, "state", 10, 2),
+        text(d.state ?? "", "state", 100, australia ? 2 : 0),
         text(d.postcode ?? "", "postcode", 10, 0),
-        "Australia",
+        country,
       ]
         .filter(Boolean)
         .join(", "),
@@ -568,7 +570,7 @@ export class AdminManagementService {
       url.search = new URLSearchParams({
         q: address,
         format: "jsonv2",
-        countrycodes: "au",
+        ...(australia ? {countrycodes: "au"} : {}),
         limit: "5",
       }).toString();
       const response = await this.fetcher(url, {

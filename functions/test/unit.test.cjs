@@ -392,3 +392,23 @@ test('venue coordinates report outages, timeout and malformed results clearly an
     assert.equal(writes.at(-1).busyUntil.toMillis(), 0);
   }
 });
+
+test('international venues allow blank or local region while Australian venues still require a state', () => {
+  const { validateVenue } = require('../lib/catalogue');
+  const venue = { name: 'Wimbledon Park', address: 'Home Park Road', suburb: 'London', postcode: 'SW19', country: 'United Kingdom', state: '', lat: 51.435, lng: -0.203 };
+  assert.equal(validateVenue(venue).state, '');
+  assert.equal(validateVenue({ ...venue, state: 'Greater London' }).state, 'Greater London');
+  assert.equal(validateVenue(venue).country, 'United Kingdom');
+  assert.throws(() => validateVenue({ ...venue, country: 'Australia' }), /state/);
+  assert.throws(() => validateVenue({ ...venue, country: undefined }), /state/);
+  assert.equal(validateVenue({ ...venue, country: undefined, state: 'NSW' }).state, 'NSW');
+});
+test('international coordinate lookup does not force Australia or require an Australian state', async () => {
+  const { service } = geocodeFixture(async (url) => {
+    assert.equal(url.searchParams.has('countrycodes'), false);
+    assert.match(url.searchParams.get('q'), /United Kingdom$/);
+    assert.doesNotMatch(url.searchParams.get('q'), /Australia/);
+    return { ok: true, json: async () => [] };
+  });
+  assert.deepEqual((await service.coordinates({}, { address: 'Home Park Road', suburb: 'London', state: '', country: 'United Kingdom' })).results, []);
+});

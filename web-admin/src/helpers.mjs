@@ -115,8 +115,8 @@ export function matchUploads(files, venues) {
                 ? "Use JPEG, PNG or WebP"
                 : file.size > 20 * 1024 * 1024
                   ? "Maximum source size is 20 MB"
-                  : !found[0].state || !found[0].suburb
-                    ? "Complete venue state and suburb in the editor first"
+                  : (!found[0].state && ["australia", "au", "aus"].includes((found[0].country ?? "Australia").trim().toLowerCase())) || !found[0].suburb
+                    ? "Complete the required venue state and suburb in the editor first"
                     : "",
     };
   });

@@ -26,10 +26,12 @@ function photo(value: unknown): string {
   return result;
 }
 export function validateVenue(value: unknown) {
-  const v = input(value, ["name", "address", "suburb", "postcode", "state", "lat", "lng", "id", "code", "photoUrl"]);
+  const v = input(value, ["name", "address", "suburb", "postcode", "state", "country", "lat", "lng", "id", "code", "photoUrl"]);
+  const country = text(v.country ?? "Australia", "country", 100);
+  const australia = ["australia", "au", "aus"].includes(country.toLowerCase());
   if ((v.lat == null) !== (v.lng == null)) fail("invalid-argument","invalid-location","Supply both latitude and longitude");
-  return {...(v.id?{id:id(v.id,'venueId')}:{}),...(v.code?{code:id(v.code,'venue code')}:{}),...(v.photoUrl?{photoUrl:photo(v.photoUrl)}:{}),name:text(v.name,"venue name",200), address:text(v.address??"","address",500,0), suburb:text(v.suburb,"suburb",100),
-    postcode:text(v.postcode??"","postcode",10,0),state:choice(v.state,STATES,"state"),lat:v.lat==null?null:coordinate(v.lat,"lat"),lng:v.lng==null?null:coordinate(v.lng,"lng")};
+  return {...(v.country ? {country} : {}),...(v.id?{id:id(v.id,'venueId')}:{}),...(v.code?{code:id(v.code,'venue code')}:{}),...(v.photoUrl?{photoUrl:photo(v.photoUrl)}:{}),name:text(v.name,"venue name",200), address:text(v.address??"","address",500,0), suburb:text(v.suburb,"suburb",100),
+    postcode:text(v.postcode??"","postcode",10,0),state:australia?choice(v.state,STATES,"state"):text(v.state??"","state or region",100,0),lat:v.lat==null?null:coordinate(v.lat,"lat"),lng:v.lng==null?null:coordinate(v.lng,"lng")};
 }
 export function validateProgram(value: unknown) {
   const d = input(value, ["name", "sport", "status", "venue", "timezone", "scheduleText", "coachUids", "coachNames", "notes", "photoUrl", "capacity", "registrationStatus"]);

@@ -43,6 +43,7 @@ export function programErrors(p) {
   if (!p.venue?.name?.trim()) e["venue.name"] = "Enter a venue name.";
   if (!p.venue?.suburb?.trim()) e["venue.suburb"] = "Enter a suburb.";
   if (
+    ["australia", "au", "aus"].includes((p.venue?.country ?? "Australia").trim().toLowerCase()) &&
     !["ACT", "NSW", "NT", "QLD", "SA", "TAS", "VIC", "WA"].includes(
       p.venue?.state,
     )

@@ -366,6 +366,7 @@ export class AdminConsoleService {
       "suburb",
       "postcode",
       "state",
+      "country",
       "lat",
       "lng",
       "photoUrl",
@@ -374,7 +375,7 @@ export class AdminConsoleService {
     const key = d.venueId ? id(d.venueId, "venueId") : randomUUID(),
       base = validateVenue(
         Object.fromEntries(
-          ["name", "address", "suburb", "postcode", "state", "lat", "lng"].map(
+          ["name", "address", "suburb", "postcode", "state", "country", "lat", "lng"].map(
             (k) => [k, v[k]],
           ),
         ),
