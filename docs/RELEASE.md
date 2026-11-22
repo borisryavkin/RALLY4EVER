@@ -467,3 +467,25 @@ Android verified: `org.raly4ever`, versionCode 30, current upload keystore certi
 
 
 Uploads completed: Apple Xcode CLI reported EXPORT SUCCEEDED; App Store Connect visibly lists 1.0.3 (30), Processing, created 22 Nov 2026 6:15 pm Australia/Sydney. Normal external-capable export, existing Apple signing. Vendor dSYM warnings non-blocking. iOS verification report: docs/verification/ios30-bundle.json. Play accepted 30 and saved it as the only bundle in the Closed testing Alpha draft (29 retained in artifact library). Five unchanged Play setup requirements block rollout: Dashboard completion, full description, financial features, foreground service declaration, health declaration. No production tracks changed. Apple external build 25 remains pending review; original rally4ever group untouched.
+
+## 1.0.3 (32) — program refresh and map locations
+
+Source: `3700453` on `fix/tester-feedback-batch`. Includes a server-backed Refresh programs button, retry/loading feedback, preserved catalogue filters, published program markers awaiting dated sessions, and All Australia map browsing. No synthetic sessions are created. Map camera padding adapts to small screens. Preferences and expanded age ranges from build 31 remain included.
+
+Validation: Flutter analyze clean; 246 Flutter tests passed, one intentional skip. Reviewed and updated catalogue/map screenshot baselines. Android bundletool/JAR signatures and existing upload certificate match; staging project present in all three ABIs. iOS codesign, bundle/version, non-exempt encryption flag and staging/refresh AOT markers verified. Reports: `docs/verification/android32-bundle.json`, `docs/verification/ios32-bundle.json`.
+
+```sh
+FLUTTER_BIN=/Users/borisryavkin/technical/flutter/flutter/bin/flutter \
+JAVA_HOME='/Applications/Android Studio.app/Contents/jbr/Contents/Home' \
+./scripts/build-android-staging.sh --build-number 32
+python3 scripts/verify-android-bundle.py --bundletool /tmp/r4e-bundletool.jar \
+  --version-name 1.0.3 --version-code 32
+FLUTTER_BIN=/Users/borisryavkin/technical/flutter/flutter/bin/flutter \
+./scripts/build-ios-staging.sh --build-number 32 --export-options normal
+```
+
+Copies: `~/Downloads/Rally4Ever-1.0.3-32-external-testing/`. Android package remains `org.raly4ever`; iOS remains `org.rally4ever`. No production release or new signing keys. Uploading a tester build cannot force an installation on a tester's phone.
+
+Google Play accepted versionCode 32 and saved it as the sole bundle in the existing Closed testing draft, named `32 - Program refresh and map`. Version 31 was removed from the draft only; its artifact remains in the library. Rollout is blocked by five account/listing requirements: Dashboard completion, full description, financial features declaration, foreground services declaration, and health declaration. No declarations were guessed or submitted.
+
+Apple upload succeeded on 22 Nov 2026 at 20:49 Sydney time using the existing Xcode account and automatic signing. App Store Connect visibly lists **Version 1.0.3, Build (32), Processing**, created 20:49. Normal/external-capable export used (`testFlightInternalTestingOnly=false` for upload). Existing external groups were not modified while processing. Vendor-framework dSYM warnings were non-blocking; the uploader reported `Upload succeeded` and `EXPORT SUCCEEDED`. Android draft and Apple receipt were verified in their store consoles; neither is a production release.

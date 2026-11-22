@@ -1,0 +1,12 @@
+{
+  "bundleId": "org.rally4ever",
+  "version": "1.0.3",
+  "build": "32",
+  "project": "rally4ever-3adaf",
+  "refreshProgramsPresent": true,
+  "programMapScopePresent": true,
+  "codesignValid": true,
+  "nonExemptEncryption": false,
+  "bytes": 39329668,
+  "sha256": "97e450757e5ae711eda70368479cfed7045ad785a4d7c29e1aedf5432e76a087"
+}
