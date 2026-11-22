@@ -149,7 +149,7 @@ void main() {
 
   group('check-in: confirmation card', () {
     testWidgets(
-      'a valid session code shows "Is this your session?" with session details, Yes/Scan again',
+      'a valid session code shows "You\'re checking in" with session details, Continue/Scan again',
       (tester) async {
         setTallView(tester);
         final repo = NoAppSessionRepo();
@@ -170,10 +170,14 @@ void main() {
         await tester.tap(find.byKey(const Key('noapp-use-code')));
         await tester.pumpAndSettle();
 
-        expect(find.text('Is this your session?'), findsOneWidget);
+        expect(find.text("You're checking in"), findsOneWidget);
         expect(find.text('Bondi Junction tennis'), findsOneWidget);
         expect(
           find.textContaining('Community courts, Bondi Junction'),
+          findsOneWidget,
+        );
+        expect(
+          find.widgetWithText(FilledButton, 'Continue'),
           findsOneWidget,
         );
         expect(find.byKey(const Key('confirm-session')), findsOneWidget);
@@ -181,7 +185,7 @@ void main() {
 
         await tester.tap(find.byKey(const Key('scan-again')));
         await tester.pumpAndSettle();
-        expect(find.text('Is this your session?'), findsNothing);
+        expect(find.text("You're checking in"), findsNothing);
         expect(find.byKey(const Key('toggle-paste-link')), findsOneWidget);
       },
     );

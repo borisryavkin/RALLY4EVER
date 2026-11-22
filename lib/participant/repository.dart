@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -237,6 +238,15 @@ abstract class ParticipantRepository extends ChangeNotifier {
     recentLocationSearches = [];
     notifyListeners();
   }
+  // Details from the last no-account check-in on this device (email,
+  // firstName, mobile, emergencyName, emergencyMobile), so a returning
+  // no-account participant doesn't have to retype everything. In-memory
+  // only in the base class; the real implementation persists on-device.
+  Map<String, String> lastNoAppCheckIn = {};
+  void saveNoAppCheckIn(Map<String, String> details) {
+    lastNoAppCheckIn = details;
+  }
+
   // Coarse, device-only position for "near you" browsing (Play list, Map).
   // Never written to Firestore, logs or analytics -- used only to build the
   // on-device query/sort. See requestBrowseLocation. One of: idle,
@@ -455,11 +465,25 @@ class FirebaseParticipantRepository extends ParticipantRepository {
           await _prefs.getBool('r4e_has_signed_in_before') ?? false;
       recentLocationSearches =
           await _prefs.getStringList('r4e_recent_location_searches') ?? [];
+      final storedNoAppCheckIn = await _prefs.getString(
+        'r4e_last_noapp_checkin',
+      );
+      if (storedNoAppCheckIn != null) {
+        lastNoAppCheckIn = Map<String, String>.from(
+          jsonDecode(storedNoAppCheckIn) as Map,
+        );
+      }
       notifyListeners();
     } catch (_) {
       // On-device storage is unavailable (sandboxed test runner, denied
       // permission): keep the safe in-memory defaults rather than crash.
     }
+  }
+
+  @override
+  void saveNoAppCheckIn(Map<String, String> details) {
+    super.saveNoAppCheckIn(details);
+    unawaited(_prefs.setString('r4e_last_noapp_checkin', jsonEncode(details)));
   }
 
   @override

@@ -745,6 +745,7 @@ class _ParticipantAppState extends State<ParticipantApp>
         context,
         maxWidth: 560,
         title: 'Scan the code',
+        showTitleIcon: false,
         back: () => go(repo.hasSignedInBefore ? 'signin' : 'entry'),
         children: [
           NoAppCheckInForm(

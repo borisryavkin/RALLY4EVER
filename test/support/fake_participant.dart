@@ -180,6 +180,9 @@ class FakeParticipantRepository extends ParticipantRepository {
   }
 
   String? checkInError;
+  // Simulates the backend rejecting a validly-formatted but expired/unknown
+  // session code when loading its agreements.
+  String? noAppFormsError;
   Record? simulatedLocation;
   final calls = <String>[];
   @override
@@ -360,7 +363,20 @@ class FakeParticipantRepository extends ParticipantRepository {
         'cursor': null,
       };
     }
-    if (name == 'getNoAppForms') return {'forms': forms};
+    if (name == 'getNoAppForms') {
+      if (noAppFormsError != null) throw StateError(noAppFormsError!);
+      return {
+        'eventId': 'event-1',
+        'name': 'Weeknight Rally',
+        'venue': {'name': 'Waverley Park', 'suburb': 'Bondi Junction'},
+        'startsAt': now().toIso8601String(),
+        'endsAt': now().add(const Duration(hours: 1)).toIso8601String(),
+        'forms': forms,
+      };
+    }
+    if (name == 'beginNoAppCheckIn') {
+      return {'status': 'pending'};
+    }
     return {};
   }
 

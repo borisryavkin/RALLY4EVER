@@ -1597,7 +1597,6 @@ class _FeedbackFormState extends State<FeedbackForm> {
 }
 
 const _noAppSteps = [
-  (Icons.qr_code_scanner, 'Scan'),
   (Icons.person_outline, 'Your details'),
   (Icons.description_outlined, 'Agreements'),
   (Icons.check_circle_outline, 'Done'),
@@ -1640,6 +1639,16 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
   bool accepted = false, busy = false, pending = false, showPasteLink = false;
   MobileScannerController? scanner;
   @override
+  void initState() {
+    super.initState();
+    // Prefill from a previous no-account check-in on this device, so a
+    // returning participant doesn't have to retype everything.
+    for (final entry in widget.repository.lastNoAppCheckIn.entries) {
+      fields[entry.key]?.text = entry.value;
+    }
+  }
+
+  @override
   void dispose() {
     for (final c in fields.values) {
       c.dispose();
@@ -1669,7 +1678,14 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
     await scanner?.stop();
     try {
       final parsed = CheckInLink.parse(raw);
-      final pos = await widget.repository.location();
+      Record pos;
+      try {
+        pos = await widget.repository.location();
+      } catch (_) {
+        // No fix (denied, GPS off, approximate-only): never block scanning
+        // -- the coach confirms everyone in person regardless.
+        pos = const {};
+      }
       final info = await widget.repository.call('getNoAppForms', {
         'eventCode': parsed.eventCode,
         'secret': parsed.secret,
@@ -1749,7 +1765,7 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          StepBar(steps: _noAppSteps, current: 4),
+          StepBar(steps: _noAppSteps, current: 3),
           const SizedBox(height: 32),
           const Center(
             child: Icon(Icons.check_circle_outline, color: coral, size: 56),
@@ -1762,7 +1778,7 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
           ),
           const SizedBox(height: 12),
           const Text(
-            'Your coach will confirm you in person at the court. No need to do anything else.',
+            'Your coach will confirm you in person.',
             textAlign: TextAlign.center,
             style: TextStyle(color: slate),
           ),
@@ -1833,7 +1849,7 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       const Text(
-        'Ask your coach to show the session QR code.',
+        "Point your camera at the coach's QR code.",
         style: TextStyle(color: slate),
       ),
       const SizedBox(height: 16),
@@ -1853,7 +1869,9 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
       ClipRRect(
         borderRadius: BorderRadius.circular(24),
         child: SizedBox(
-          height: 260,
+          // As large as this themed (non full-bleed) page can sensibly
+          // give it, so the camera reads as the main event on screen.
+          height: (MediaQuery.sizeOf(context).height * 0.5).clamp(260, 480),
           child: Stack(
             fit: StackFit.expand,
             children: [
@@ -1889,7 +1907,7 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
         child: TextButton(
           key: const Key('toggle-paste-link'),
           onPressed: () => setState(() => showPasteLink = !showPasteLink),
-          child: const Text('Enter a code or link instead'),
+          child: const Text("Can't scan? Enter the code instead"),
         ),
       ),
       if (showPasteLink) ...[
@@ -1940,17 +1958,21 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
     final info = sessionInfo!;
     final start = DateTime.tryParse(info['startsAt'] as String? ?? '');
     final venue = info['venue'] as Map? ?? {};
+    final venueLabel = [
+      venue['name'],
+      venue['suburb'],
+    ].where((v) => v != null && '$v'.isNotEmpty).join(', ');
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        StepBar(steps: _noAppSteps, current: 1),
-        const SizedBox(height: 24),
+        const SizedBox(height: 8),
         Text(
-          'Is this your session?',
+          "You're checking in",
           style: Theme.of(context).textTheme.headlineMedium,
         ),
         const SizedBox(height: 20),
         Panel(
+          key: const Key('confirm-session-card'),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1962,7 +1984,15 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
                 ),
               ),
               const SizedBox(height: 10),
-              if (start != null)
+              Row(
+                children: [
+                  const Icon(Icons.place_outlined, size: 18, color: slate),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(venueLabel)),
+                ],
+              ),
+              if (start != null) ...[
+                const SizedBox(height: 6),
                 Row(
                   children: [
                     const Icon(Icons.schedule, size: 18, color: slate),
@@ -1970,14 +2000,7 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
                     Text(friendlyDateTime(start)),
                   ],
                 ),
-              const SizedBox(height: 6),
-              Row(
-                children: [
-                  const Icon(Icons.place_outlined, size: 18, color: slate),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text('${venue['name']}, ${venue['suburb']}')),
-                ],
-              ),
+              ],
             ],
           ),
         ),
@@ -1985,7 +2008,7 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
         FilledButton(
           key: const Key('confirm-session'),
           onPressed: () => setState(() => stage = 2),
-          child: const Text("Yes, that's it"),
+          child: const Text('Continue'),
         ),
         const SizedBox(height: 10),
         Center(
@@ -2004,7 +2027,7 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        StepBar(steps: _noAppSteps, current: 2),
+        StepBar(steps: _noAppSteps, current: 1),
         const SizedBox(height: 24),
         Text('Your details', style: Theme.of(context).textTheme.headlineMedium),
         const SizedBox(height: 20),
@@ -2087,7 +2110,7 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          StepBar(steps: _noAppSteps, current: 3),
+          StepBar(steps: _noAppSteps, current: 2),
           const SizedBox(height: 24),
           const Panel(
             color: pink,
@@ -2111,7 +2134,7 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        StepBar(steps: _noAppSteps, current: 3),
+        StepBar(steps: _noAppSteps, current: 2),
         const SizedBox(height: 10),
         Text(
           'Agreement ${agreementIndex + 1} of ${forms.length}',
@@ -2179,6 +2202,14 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
                         },
                       },
                     );
+                    widget.repository.saveNoAppCheckIn({
+                      'email': fields['email']!.text.trim(),
+                      'firstName': fields['firstName']!.text.trim(),
+                      'mobile': fields['mobile']!.text.trim(),
+                      'emergencyName': fields['emergencyName']!.text.trim(),
+                      'emergencyMobile': fields['emergencyMobile']!.text
+                          .trim(),
+                    });
                     if (mounted) {
                       setState(() {
                         if (result['requestId'] != null) {
