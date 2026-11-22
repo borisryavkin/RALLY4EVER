@@ -518,7 +518,9 @@ class _ParticipantAppState extends State<ParticipantApp>
                         margin: const EdgeInsets.only(bottom: 16),
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: pink,
+                          color: error == googleSignInFailedMessage
+                              ? cream
+                              : pink,
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Column(
@@ -536,6 +538,9 @@ class _ParticipantAppState extends State<ParticipantApp>
                                   children: [
                                     TextButton(
                                       key: const Key('google-signin-use-email'),
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: navy,
+                                      ),
                                       onPressed: busy
                                           ? null
                                           : () => go(
@@ -547,6 +552,9 @@ class _ParticipantAppState extends State<ParticipantApp>
                                     ),
                                     TextButton(
                                       key: const Key('google-signin-retry'),
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: navy,
+                                      ),
                                       onPressed: busy ? null : retryLastAction,
                                       child: const Text('Try again'),
                                     ),
@@ -734,10 +742,7 @@ class _ParticipantAppState extends State<ParticipantApp>
           const SizedBox(height: 32),
           const Icon(Icons.check_circle_outline, color: coral, size: 56),
           const SizedBox(height: 16),
-          Text(
-            "You're in",
-            style: Theme.of(context).textTheme.headlineLarge,
-          ),
+          Text("You're in", style: Theme.of(context).textTheme.headlineLarge),
           const SizedBox(height: 12),
           const Text(
             'No expectations. No judgement. Come as you are. Your next session is waiting.',
@@ -793,6 +798,7 @@ class _ParticipantAppState extends State<ParticipantApp>
       return frame(
         context,
         title: 'About you',
+        showTitleIcon: false,
         back: () => go('profile'),
         children: [
           if (!editingProfile) ...[
@@ -802,6 +808,7 @@ class _ParticipantAppState extends State<ParticipantApp>
           ProfileStep(
             key: ValueKey(page),
             step: step,
+            onHelp: () => go('help'),
             profile: repo.profile,
             contact: repo.contact,
             onSave: (changes) => action(() async {
@@ -1102,76 +1109,76 @@ class _ParticipantAppState extends State<ParticipantApp>
   Widget eventCard(BuildContext context, Record e, {bool highlight = false}) {
     final closed = _closedForDisplay(e);
     return Padding(
-        padding: const EdgeInsets.only(bottom: 14),
-        child: InkWell(
-          key: Key('event-${eid(e)}'),
-          onTap: () => select(e, 'session'),
-          borderRadius: BorderRadius.circular(18),
-          child: Panel(
-            color: closed
-                ? const Color(0xffe9e5e1)
-                : highlight
-                ? navy
-                : Colors.white,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                StatusPill(stateFor(e), muted: closed),
-                const SizedBox(height: 10),
-                Text(
-                  e['name'] as String,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: closed ? slate : (highlight ? Colors.white : navy),
-                  ),
+      padding: const EdgeInsets.only(bottom: 14),
+      child: InkWell(
+        key: Key('event-${eid(e)}'),
+        onTap: () => select(e, 'session'),
+        borderRadius: BorderRadius.circular(18),
+        child: Panel(
+          color: closed
+              ? const Color(0xffe9e5e1)
+              : highlight
+              ? navy
+              : Colors.white,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              StatusPill(stateFor(e), muted: closed),
+              const SizedBox(height: 10),
+              Text(
+                e['name'] as String,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  color: closed ? slate : (highlight ? Colors.white : navy),
                 ),
-                const SizedBox(height: 5),
-                Text(
-                  '${eventDate(e)} · ${timeOf(e['startsAt'], e)}',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: highlight ? Colors.white : slate,
-                  ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                '${eventDate(e)} · ${timeOf(e['startsAt'], e)}',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: highlight ? Colors.white : slate,
                 ),
-                Text(
-                  e['venue']['name'] as String,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: highlight ? Colors.white70 : slate,
-                  ),
+              ),
+              Text(
+                e['venue']['name'] as String,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: highlight ? Colors.white70 : slate,
                 ),
-                if (selectedMapPoint != null && venuePoint(e) != null)
+              ),
+              if (selectedMapPoint != null && venuePoint(e) != null)
+                Text(
+                  sessionDistanceLabel(e, selectedMapPoint!),
+                  key: Key('distance-${eid(e)}'),
+                ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Icon(
+                    repo.checkin(eid(e))?['status'] == 'confirmed'
+                        ? Icons.check_circle_outline
+                        : Icons.arrow_forward,
+                    size: 16,
+                    color: highlight ? pink : coral,
+                  ),
+                  const SizedBox(width: 6),
                   Text(
-                    sessionDistanceLabel(e, selectedMapPoint!),
-                    key: Key('distance-${eid(e)}'),
+                    repo.checkin(eid(e))?['status'] == 'confirmed'
+                        ? 'Attendance confirmed'
+                        : 'View session',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                      color: highlight ? Colors.white : coral,
+                    ),
                   ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Icon(
-                      repo.checkin(eid(e))?['status'] == 'confirmed'
-                          ? Icons.check_circle_outline
-                          : Icons.arrow_forward,
-                      size: 16,
-                      color: highlight ? pink : coral,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      repo.checkin(eid(e))?['status'] == 'confirmed'
-                          ? 'Attendance confirmed'
-                          : 'View session',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                        color: highlight ? Colors.white : coral,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
           ),
         ),
-      );
+      ),
+    );
   }
 
   List<Record> get nearbySessions => nearbySessionRecords(
@@ -1236,8 +1243,7 @@ class _ParticipantAppState extends State<ParticipantApp>
             padding: const EdgeInsets.only(bottom: 14),
             child: TextButton(
               key: Key('more-dates-$key'),
-              onPressed: () =>
-                  setState(() => _expandedProgramGroups.add(key)),
+              onPressed: () => setState(() => _expandedProgramGroups.add(key)),
               child: Text('${group.length - 3} more dates'),
             ),
           ),
@@ -1557,6 +1563,7 @@ class _ParticipantAppState extends State<ParticipantApp>
       return frame(
         context,
         title: 'Check in',
+        showTitleIcon: false,
         children: [const Text('Choose an upcoming session from Play.')],
         navigation: true,
       );
@@ -1566,16 +1573,20 @@ class _ParticipantAppState extends State<ParticipantApp>
     final opens = dateOf(e['startsAt']).subtract(const Duration(minutes: 10)),
         open = !repo.now().isBefore(opens),
         closed = repo.now().isAfter(dateOf(e['endsAt']));
-    final venueLat = e['venue']['lat'] as num?, venueLng = e['venue']['lng'] as num?;
+    final venueLat = e['venue']['lat'] as num?,
+        venueLng = e['venue']['lng'] as num?;
     // Treat exactly 0,0 ("null island") the same as missing -- it's never
     // a real venue location, only ever a placeholder for one that hasn't
     // been set yet.
     final venueKnown =
-        venueLat != null && venueLng != null && !(venueLat == 0 && venueLng == 0);
+        venueLat != null &&
+        venueLng != null &&
+        !(venueLat == 0 && venueLng == 0);
     return frame(
       context,
       dark: true,
       title: 'At the court',
+      showTitleIcon: false,
       back: () => go('home'),
       children: [
         const SizedBox(height: 34),
@@ -1708,6 +1719,7 @@ class _ParticipantAppState extends State<ParticipantApp>
       context,
       dark: true,
       title: 'Scan the coach’s QR',
+      showTitleIcon: false,
       back: () => go('checkin'),
       children: [
         const Text(
@@ -2713,12 +2725,14 @@ class _ParticipantAppState extends State<ParticipantApp>
           ListTile(
             title: Text('${p['venue']['suburb']} ${p['venue']['postcode']}'),
             subtitle: Text('${p['venue']['state']} · ${p['name']}'),
-            onTap: () =>
-                _chooseArea('${p['venue']['suburb']} ${p['venue']['postcode']}'),
+            onTap: () => _chooseArea(
+              '${p['venue']['suburb']} ${p['venue']['postcode']}',
+            ),
           ),
       ],
     );
   }
+
   LatLng? get selectedMapPoint {
     // The device's current position is the default search centre; a
     // manually chosen place (areaChosen) always overrides it.

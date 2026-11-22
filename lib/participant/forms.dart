@@ -6,10 +6,12 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:permission_handler/permission_handler.dart' show openAppSettings;
+import 'package:permission_handler/permission_handler.dart'
+    show openAppSettings;
 import 'package:url_launcher/url_launcher.dart';
 
 import 'repository.dart';
+import 'about_icons.dart';
 import 'legal_text.dart';
 import 'theme.dart';
 
@@ -292,7 +294,8 @@ class _AccountFormState extends State<AccountForm> {
     await widget.onAction(widget.repository.refreshVerification);
     if (mounted && awaitingVerification) {
       setState(
-        () => verifyHint = "We can't see it yet. Check your inbox and spam folder.",
+        () => verifyHint =
+            "We can't see it yet. Check your inbox and spam folder.",
       );
     }
   }
@@ -332,7 +335,10 @@ class _AccountFormState extends State<AccountForm> {
               color: Colors.white.withValues(alpha: .12),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Text(verifyHint!, style: const TextStyle(color: Colors.white)),
+            child: Text(
+              verifyHint!,
+              style: const TextStyle(color: Colors.white),
+            ),
           ),
         ],
         const SizedBox(height: 18),
@@ -354,7 +360,9 @@ class _AccountFormState extends State<AccountForm> {
           ),
           onPressed: widget.busy || resendCooldown > 0 ? null : _resend,
           child: Text(
-            resendCooldown > 0 ? 'Resend in ${resendCooldown}s' : 'Resend email',
+            resendCooldown > 0
+                ? 'Resend in ${resendCooldown}s'
+                : 'Resend email',
           ),
         ),
         const SizedBox(height: 14),
@@ -451,6 +459,8 @@ Widget _field(
   String name, {
   TextInputType? keyboard,
   ValueChanged<String>? onChanged,
+  String? helperText,
+  String? hint,
 }) => Padding(
   padding: const EdgeInsets.only(bottom: 8),
   child: Column(
@@ -470,7 +480,11 @@ Widget _field(
         controller: controller,
         keyboardType: keyboard,
         onChanged: onChanged,
-        decoration: InputDecoration(hintText: label),
+        decoration: InputDecoration(
+          hintText: hint ?? label,
+          helperText: helperText,
+          helperMaxLines: 3,
+        ),
       ),
     ],
   ),
@@ -671,12 +685,14 @@ class ProfileStep extends StatefulWidget {
     required this.contact,
     required this.onSave,
     required this.onSkip,
+    this.onHelp,
   });
   final int step;
   final Record profile;
   final Record contact;
   final Future<void> Function(Record) onSave;
   final VoidCallback onSkip;
+  final VoidCallback? onHelp;
   @override
   State<ProfileStep> createState() => _ProfileStepState();
 }
@@ -752,7 +768,7 @@ class _ProfileStepState extends State<ProfileStep> {
                 ),
               ),
             ),
-            if (why != null) WhyWeAsk(title: 'Why we ask', body: why),
+            if (why != null) WhyWeAsk(title: label, body: why),
           ],
         ),
         const SizedBox(height: 8),
@@ -806,7 +822,7 @@ class _ProfileStepState extends State<ProfileStep> {
                   ),
                 ),
               ),
-              if (why != null) WhyWeAsk(title: 'Why we ask', body: why),
+              if (why != null) WhyWeAsk(title: label, body: why),
             ],
           ),
           const SizedBox(height: 8),
@@ -889,34 +905,41 @@ class _ProfileStepState extends State<ProfileStep> {
     // Trimmed only here, not on every keystroke, so typing a multi-word
     // answer isn't fought by trimming trailing spaces mid-sentence.
     about['heardAboutOther'] = heardAboutOther.text.trim();
-    await widget.onSave(
-      widget.step == 1
-          ? {
-              'firstName': first.text.trim(),
-              'postcode': postcode.text.trim(),
-              'about': about,
-            }
-          : widget.step == 5
-          ? {'preferences': prefs}
-          : widget.step == 6
-          ? {
-              'mobile': mobile.text.trim().replaceAll(' ', '') == '+61'
-                  ? ''
-                  : normalizeAustralianMobile(mobile.text),
-              'emergencyContact': {
-                'name': emergencyName.text.trim(),
-                'mobile': emergencyMobile.text.trim().isEmpty
-                    ? ''
-                    : normalizeAustralianMobile(emergencyMobile.text),
-              },
-            }
-          : widget.step == 7
-          ? {
-              'photoBytes': removePhoto ? null : pickedPhotoBytes,
-              'photoSkip': pickedPhotoBytes == null && !removePhoto,
-            }
-          : {'about': about},
-    );
+    final Record? payload = switch (widget.step) {
+      1 => {
+        'firstName': first.text.trim(),
+        'postcode': postcode.text.trim(),
+        'about': about,
+      },
+      2 => {'about': about},
+      3 => {'about': about},
+      4 => {'about': about},
+      5 => {'preferences': prefs},
+      6 => {
+        'mobile': mobile.text.trim().replaceAll(' ', '') == '+61'
+            ? ''
+            : normalizeAustralianMobile(mobile.text),
+        'emergencyContact': {
+          'name': emergencyName.text.trim(),
+          'mobile': emergencyMobile.text.trim().isEmpty
+              ? ''
+              : normalizeAustralianMobile(emergencyMobile.text),
+        },
+      },
+      7 => {
+        'photoBytes': removePhoto ? null : pickedPhotoBytes,
+        'photoSkip': pickedPhotoBytes == null && !removePhoto,
+      },
+      _ => _unknownProfileStep(),
+    };
+    if (payload != null) await widget.onSave(payload);
+  }
+
+  Record? _unknownProfileStep() {
+    assert(() {
+      throw StateError('Unknown step');
+    }());
+    return null; // Release: never write an unknown step as an about payload.
   }
 
   @override
@@ -934,7 +957,9 @@ class _ProfileStepState extends State<ProfileStep> {
             ),
           ),
           const Spacer(),
-          if (widget.step > 1)
+          if (widget.step == 6)
+            const Text('Optional', style: TextStyle(fontSize: 13, color: slate))
+          else if (widget.step > 1)
             TextButton(
               onPressed: widget.onSkip,
               child: const Text('Skip this step'),
@@ -955,20 +980,47 @@ class _ProfileStepState extends State<ProfileStep> {
           'Help our research,\nwhen you’re ready',
           'How have you been\nfeeling lately?',
           'Your info, your call',
-          'In case we ever\nneed to reach you',
+          'Someone we can call, just in case',
           'Add a photo\n(optional)',
         ][widget.step - 1],
         style: Theme.of(context).textTheme.headlineMedium,
       ),
       const SizedBox(height: 10),
-      Text(
-        widget.step == 1
-            ? 'Just the basics to get you started.'
-            : 'Optional. Share what feels right for you.',
-      ),
+      if (widget.step != 6)
+        Text(
+          widget.step == 1
+              ? 'Just the basics to get you started.'
+              : widget.step == 4
+              ? 'Optional. Answer only what feels okay. You can skip this step.'
+              : 'Optional. Share what feels right for you.',
+        ),
       const SizedBox(height: 24),
+      if (widget.step == 4) ...[
+        Semantics(
+          button: widget.onHelp != null,
+          child: InkWell(
+            onTap: widget.onHelp,
+            borderRadius: BorderRadius.circular(18),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: 48),
+              child: const Panel(
+                child: AboutNoteRow(
+                  AboutIconKind.support,
+                  'Doing it tough? Support is always in the Help tab.',
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 20),
+      ],
       if (widget.step == 1) ...[
-        _field('Name', first, 'firstName'),
+        _field(
+          'Preferred name',
+          first,
+          'firstName',
+          helperText: 'What should we call you?',
+        ),
         const SizedBox(height: 12),
         _field(
           'Postcode',
@@ -1009,9 +1061,7 @@ class _ProfileStepState extends State<ProfileStep> {
           ['Woman', 'Man', 'Non-binary', 'Prefer not to say'],
           why:
               "It helps us see who we're reaching and make sure sessions "
-              "feel welcoming for everyone. It's optional, it's grouped "
-              "with other people's answers, and it's never shown to other "
-              'members.',
+              "feel welcoming for everyone. It's optional and used to improve programs and meet reporting obligations. Other participants can't see your answers. Identifying information isn't shared outside RALLY4EVER without your express permission.",
         ),
         multiChoices(
           'Cultural background',
@@ -1021,8 +1071,7 @@ class _ProfileStepState extends State<ProfileStep> {
           why:
               'It helps us make sure our programs are open to people from '
               'every community, and show funders who we reach. '
-              "It's optional, grouped with other people's answers, and "
-              'never shown to other members.',
+              "It's optional and used to improve programs and meet reporting obligations. Other participants can't see your answers. Identifying information isn't shared outside RALLY4EVER without your express permission.",
         ),
       ],
       if (widget.step == 3) ...[
@@ -1083,6 +1132,21 @@ class _ProfileStepState extends State<ProfileStep> {
         ),
       ],
       if (widget.step == 5) ...[
+        const AboutNoteRow(
+          AboutIconKind.lock,
+          'Your identifying information stays within RALLY4EVER unless you give express permission to share it.',
+        ),
+        const SizedBox(height: 12),
+        const AboutNoteRow(
+          AboutIconKind.clock,
+          'Reports can use grouped numbers, like “60% of members are students”.',
+        ),
+        const SizedBox(height: 12),
+        const AboutNoteRow(
+          AboutIconKind.pencil,
+          'Change these choices in Profile. Contact our team to request deletion of your data.',
+        ),
+        const SizedBox(height: 24),
         for (final item in [
           (
             'useInReports',
@@ -1123,31 +1187,62 @@ class _ProfileStepState extends State<ProfileStep> {
               ),
             ),
           ),
-        const Text(
-          'You can change these choices in your profile.',
-          style: TextStyle(fontSize: 12),
-        ),
       ],
       if (widget.step == 6) ...[
         const Text(
-          'Optional. Not shared with other participants; visible only to you, '
-          'admins, and a coach for a session you attend.',
-          style: TextStyle(fontSize: 12),
+          'Most sessions are just a good time. If you ever feel unwell or get hurt, this tells your coach who to ring.',
+          style: TextStyle(fontSize: 15, height: 1.5),
         ),
         const SizedBox(height: 16),
+        const Panel(
+          child: AboutNoteRow(
+            AboutIconKind.lock,
+            'Private. Only you, admins and coaches linked to your sessions can see it. Never other participants.',
+          ),
+        ),
+        const SizedBox(height: 24),
+        const Text(
+          'YOUR EMERGENCY CONTACT',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.2,
+            color: slate,
+          ),
+        ),
+        const SizedBox(height: 12),
+        _field(
+          'Their name',
+          emergencyName,
+          'emergencyName',
+          hint: 'e.g. Sam, my sister',
+        ),
+        const SizedBox(height: 12),
+        _field(
+          'Their mobile',
+          emergencyMobile,
+          'emergencyMobile',
+          keyboard: TextInputType.phone,
+        ),
+        const Text(
+          "A friend or family member you trust. It's kind to let them know.",
+          style: TextStyle(fontSize: 13, color: slate, height: 1.5),
+        ),
+        const SizedBox(height: 24),
+        const Text(
+          'YOUR MOBILE',
+          style: TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 1.2,
+            color: slate,
+          ),
+        ),
+        const SizedBox(height: 12),
         _field(
           'Mobile number',
           mobile,
           'mobile',
-          keyboard: TextInputType.phone,
-        ),
-        const SizedBox(height: 12),
-        _field('Emergency contact name', emergencyName, 'emergencyName'),
-        const SizedBox(height: 12),
-        _field(
-          'Emergency contact number',
-          emergencyMobile,
-          'emergencyMobile',
           keyboard: TextInputType.phone,
         ),
       ],
@@ -1199,6 +1294,14 @@ class _ProfileStepState extends State<ProfileStep> {
         onPressed: save,
         child: Text(widget.step == 7 ? 'Save and find a program' : 'Next'),
       ),
+      if (widget.step == 6)
+        Center(
+          child: TextButton(
+            onPressed: widget.onSkip,
+            style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+            child: const Text('Skip for now'),
+          ),
+        ),
     ],
   );
 }
@@ -1219,21 +1322,23 @@ class WhyWeAsk extends StatelessWidget {
       borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
     ),
     builder: (context) => SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.headlineSmall),
-            const SizedBox(height: 16),
-            Text(body, style: const TextStyle(fontSize: 16, height: 1.5)),
-            const SizedBox(height: 24),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Got it'),
-            ),
-          ],
+      child: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(title, style: Theme.of(context).textTheme.headlineSmall),
+              const SizedBox(height: 16),
+              Text(body, style: const TextStyle(fontSize: 16, height: 1.5)),
+              const SizedBox(height: 24),
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Got it'),
+              ),
+            ],
+          ),
         ),
       ),
     ),
@@ -1250,7 +1355,7 @@ class WhyWeAsk extends StatelessWidget {
         foregroundColor: slate,
         minimumSize: const Size(48, 48),
       ),
-      icon: const Icon(Icons.help_outline, size: 18),
+      icon: const AboutIcon(AboutIconKind.question),
       label: const Text('Why we ask', style: TextStyle(fontSize: 13)),
     ),
   );
@@ -1851,7 +1956,10 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
             children: [
               Text(
                 '${info['name']}',
-                style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 18),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 18,
+                ),
               ),
               const SizedBox(height: 10),
               if (start != null)
@@ -2007,7 +2115,11 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
         const SizedBox(height: 10),
         Text(
           'Agreement ${agreementIndex + 1} of ${forms.length}',
-          style: const TextStyle(color: slate, fontSize: 12, fontWeight: FontWeight.w700),
+          style: const TextStyle(
+            color: slate,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+          ),
         ),
         const SizedBox(height: 14),
         if (error != null) Panel(color: pink, child: Text(error!)),
@@ -2018,7 +2130,10 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
             children: [
               Text(
                 '${f['title']}',
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 16,
+                ),
               ),
               const SizedBox(height: 8),
               LegalFormText(formText(f)),

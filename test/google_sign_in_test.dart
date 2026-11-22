@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:rally4ever/participant/app.dart';
 import 'package:rally4ever/participant/repository.dart';
+import 'package:rally4ever/participant/theme.dart';
 
 import 'support/fake_participant.dart';
 
@@ -30,22 +31,19 @@ void main() {
         .load();
   });
 
-  test(
-    'friendlyError never leaks a GoogleSignInException, including a misleading "canceled" one',
-    () {
-      final message = friendlyError(
-        const GoogleSignInException(
-          code: GoogleSignInExceptionCode.canceled,
-          description: 'Cancelled by user',
-          details: 16,
-        ),
-      );
-      expect(message, googleSignInFailedMessage);
-      expect(message, isNot(contains('GoogleSignInException')));
-      expect(message, isNot(contains('canceled')));
-      expect(message, isNot(contains('16')));
-    },
-  );
+  test('friendlyError never leaks a GoogleSignInException, including a misleading "canceled" one', () {
+    final message = friendlyError(
+      const GoogleSignInException(
+        code: GoogleSignInExceptionCode.canceled,
+        description: 'Cancelled by user',
+        details: 16,
+      ),
+    );
+    expect(message, googleSignInFailedMessage);
+    expect(message, isNot(contains('GoogleSignInException')));
+    expect(message, isNot(contains('canceled')));
+    expect(message, isNot(contains('16')));
+  });
 
   test('friendlyError maps every GoogleSignInException code the same way', () {
     for (final code in GoogleSignInExceptionCode.values) {
@@ -82,6 +80,14 @@ void main() {
       // Never the app's red-error styling -- the calm pink/navy banner.
       final text = tester.widget<Text>(find.text(googleSignInFailedMessage));
       expect(text.style?.color, isNot(Colors.red));
+      final banner = tester.widget<Container>(
+        find.byKey(const Key('error-banner')),
+      );
+      expect((banner.decoration as BoxDecoration).color, cream);
+      for (final key in ['google-signin-retry', 'google-signin-use-email']) {
+        final button = tester.widget<TextButton>(find.byKey(Key(key)));
+        expect(button.style?.foregroundColor?.resolve({}), navy);
+      }
 
       await tester.tap(find.byKey(const Key('google-signin-use-email')));
       await tester.pumpAndSettle();

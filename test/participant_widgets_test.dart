@@ -356,62 +356,59 @@ void main() {
       repo.dispose();
     },
   );
-  testWidgets(
-    'coach/admin still get their view button with the banner gone',
-    (tester) async {
-      final repo = FakeParticipantRepository();
-      repo.claimRole = 'coach';
-      repo.claimRoles = {'participant', 'coach'};
-      repo.profile['role'] = 'coach';
-      repo.profile['coachEnabled'] = true;
-      await show(tester, repo, 'home');
-      expect(
-        find.text(
-          'Ask your admin for coach access. Your participant profile is ready.',
-        ),
-        findsNothing,
-      );
-      expect(find.text('Coach view'), findsOneWidget);
-      await tester.pumpWidget(const SizedBox());
-      repo.dispose();
-    },
-  );
-  testWidgets(
-    'Admin view never appears on Play, even for an admin account',
-    (tester) async {
-      final repo = FakeParticipantRepository();
-      repo.claimRole = 'admin';
-      repo.claimRoles = {'participant', 'admin'};
-      repo.profile['role'] = 'admin';
-      await show(tester, repo, 'home');
-      expect(find.text('Play near you'), findsOneWidget);
-      expect(find.text('Admin view'), findsNothing);
-      expect(find.text('Admin'), findsNothing);
-      await tester.pumpWidget(const SizedBox());
-      repo.dispose();
-    },
-  );
-  testWidgets(
-    'Admin access is still reachable from Me for an admin account',
-    (tester) async {
-      final repo = FakeParticipantRepository();
-      repo.claimRole = 'admin';
-      repo.claimRoles = {'participant', 'admin'};
-      repo.profile['role'] = 'admin';
-      await show(tester, repo, 'profile');
-      expect(find.widgetWithText(FilledButton, 'Admin'), findsOneWidget);
-      await tester.pumpWidget(const SizedBox());
-      repo.dispose();
-    },
-  );
+  testWidgets('coach/admin still get their view button with the banner gone', (
+    tester,
+  ) async {
+    final repo = FakeParticipantRepository();
+    repo.claimRole = 'coach';
+    repo.claimRoles = {'participant', 'coach'};
+    repo.profile['role'] = 'coach';
+    repo.profile['coachEnabled'] = true;
+    await show(tester, repo, 'home');
+    expect(
+      find.text(
+        'Ask your admin for coach access. Your participant profile is ready.',
+      ),
+      findsNothing,
+    );
+    expect(find.text('Coach view'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    repo.dispose();
+  });
+  testWidgets('Admin view never appears on Play, even for an admin account', (
+    tester,
+  ) async {
+    final repo = FakeParticipantRepository();
+    repo.claimRole = 'admin';
+    repo.claimRoles = {'participant', 'admin'};
+    repo.profile['role'] = 'admin';
+    await show(tester, repo, 'home');
+    expect(find.text('Play near you'), findsOneWidget);
+    expect(find.text('Admin view'), findsNothing);
+    expect(find.text('Admin'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    repo.dispose();
+  });
+  testWidgets('Admin access is still reachable from Me for an admin account', (
+    tester,
+  ) async {
+    final repo = FakeParticipantRepository();
+    repo.claimRole = 'admin';
+    repo.claimRoles = {'participant', 'admin'};
+    repo.profile['role'] = 'admin';
+    await show(tester, repo, 'profile');
+    expect(find.widgetWithText(FilledButton, 'Admin'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    repo.dispose();
+  });
   testWidgets(
     'returning to the foreground refreshes role/access quietly, with no button press',
     (tester) async {
       final repo = FakeParticipantRepository();
       await show(tester, repo, 'home');
       expect(repo.calls.contains('refreshAccess'), false);
-      final state = tester.state(find.byType(ParticipantApp))
-          as WidgetsBindingObserver;
+      final state =
+          tester.state(find.byType(ParticipantApp)) as WidgetsBindingObserver;
       state.didChangeAppLifecycleState(AppLifecycleState.paused);
       state.didChangeAppLifecycleState(AppLifecycleState.resumed);
       await tester.pumpAndSettle();
@@ -552,6 +549,8 @@ void main() {
         find.byKey(const Key('emergencyMobile')),
         '0400 333 444',
       );
+      await tester.ensureVisible(find.byKey(const Key('profile-next')));
+      await tester.pumpAndSettle();
       await tester.tap(find.byKey(const Key('profile-next')));
       await tester.pumpAndSettle();
       expect(repo.calls.contains('saveContact'), true);
@@ -651,32 +650,34 @@ void main() {
     },
   );
   group('Play/Map location', () {
-    testWidgets('GPS granted: shows the reverse-geocoded suburb, no fallback buttons', (
-      tester,
-    ) async {
-      final repo = FakeParticipantRepository()
-        ..simulatedLocationResult = 'granted'
-        ..simulatedNearbyLabel = 'Epping';
-      await show(tester, repo, 'home');
-      expect(repo.calls.contains('requestBrowseLocation'), true);
-      expect(find.text('Near Epping'), findsOneWidget);
-      expect(find.text('Use my location'), findsNothing);
-      expect(find.text('Open settings'), findsNothing);
-      await tester.pumpWidget(const SizedBox());
-      repo.dispose();
-    });
-    testWidgets('services off: falls back to the home postcode with the fallback label and a retry button', (
-      tester,
-    ) async {
-      final repo = FakeParticipantRepository()
-        ..simulatedLocationResult = 'servicesOff';
-      repo.profile['postcode'] = '2121';
-      await show(tester, repo, 'home');
-      expect(find.text('Near 2121 (your home postcode)'), findsOneWidget);
-      expect(find.text('Use my location'), findsOneWidget);
-      await tester.pumpWidget(const SizedBox());
-      repo.dispose();
-    });
+    testWidgets(
+      'GPS granted: shows the reverse-geocoded suburb, no fallback buttons',
+      (tester) async {
+        final repo = FakeParticipantRepository()
+          ..simulatedLocationResult = 'granted'
+          ..simulatedNearbyLabel = 'Epping';
+        await show(tester, repo, 'home');
+        expect(repo.calls.contains('requestBrowseLocation'), true);
+        expect(find.text('Near Epping'), findsOneWidget);
+        expect(find.text('Use my location'), findsNothing);
+        expect(find.text('Open settings'), findsNothing);
+        await tester.pumpWidget(const SizedBox());
+        repo.dispose();
+      },
+    );
+    testWidgets(
+      'services off: falls back to the home postcode with the fallback label and a retry button',
+      (tester) async {
+        final repo = FakeParticipantRepository()
+          ..simulatedLocationResult = 'servicesOff';
+        repo.profile['postcode'] = '2121';
+        await show(tester, repo, 'home');
+        expect(find.text('Near 2121 (your home postcode)'), findsOneWidget);
+        expect(find.text('Use my location'), findsOneWidget);
+        await tester.pumpWidget(const SizedBox());
+        repo.dispose();
+      },
+    );
     testWidgets('permanently denied: offers Open settings instead of a retry', (
       tester,
     ) async {
@@ -688,71 +689,76 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       repo.dispose();
     });
-    testWidgets('no home postcode set: falls back to a plain "Near you", not a blank postcode', (
-      tester,
-    ) async {
-      final repo = FakeParticipantRepository()
-        ..simulatedLocationResult = 'denied';
-      repo.profile['postcode'] = '';
-      await show(tester, repo, 'home');
-      expect(find.text('Near you'), findsOneWidget);
-      await tester.pumpWidget(const SizedBox());
-      repo.dispose();
-    });
-    testWidgets('manual override via Change, then Use my location returns to GPS', (
-      tester,
-    ) async {
-      final repo = FakeParticipantRepository()
-        ..catalogueReady = true
-        ..programs = [
-          {
-            'id': 'p1',
-            'status': 'active',
-            'name': 'Chatswood tennis',
-            'sport': 'tennis',
-            'venue': {
-              'name': 'Chatswood Courts',
-              'suburb': 'Chatswood',
-              'postcode': '2067',
-              'state': 'NSW',
-              'lat': -33.7967,
-              'lng': 151.1807,
+    testWidgets(
+      'no home postcode set: falls back to a plain "Near you", not a blank postcode',
+      (tester) async {
+        final repo = FakeParticipantRepository()
+          ..simulatedLocationResult = 'denied';
+        repo.profile['postcode'] = '';
+        await show(tester, repo, 'home');
+        expect(find.text('Near you'), findsOneWidget);
+        await tester.pumpWidget(const SizedBox());
+        repo.dispose();
+      },
+    );
+    testWidgets(
+      'manual override via Change, then Use my location returns to GPS',
+      (tester) async {
+        final repo = FakeParticipantRepository()
+          ..catalogueReady = true
+          ..programs = [
+            {
+              'id': 'p1',
+              'status': 'active',
+              'name': 'Chatswood tennis',
+              'sport': 'tennis',
+              'venue': {
+                'name': 'Chatswood Courts',
+                'suburb': 'Chatswood',
+                'postcode': '2067',
+                'state': 'NSW',
+                'lat': -33.7967,
+                'lng': 151.1807,
+              },
             },
-          },
-        ]
-        ..simulatedLocationResult = 'granted'
-        ..simulatedNearbyLabel = 'Bondi Junction';
-      await show(tester, repo, 'home');
-      expect(find.text('Near Bondi Junction'), findsOneWidget);
-      await tester.tap(find.text('Change'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Chatswood 2067'));
-      await tester.pumpAndSettle();
-      expect(find.text('Near Chatswood 2067'), findsOneWidget);
-      expect(find.text('Use my location'), findsOneWidget);
-      await tester.tap(find.text('Use my location'));
-      await tester.pumpAndSettle();
-      expect(find.text('Near Bondi Junction'), findsOneWidget);
-      await tester.pumpWidget(const SizedBox());
-      repo.dispose();
-    });
+          ]
+          ..simulatedLocationResult = 'granted'
+          ..simulatedNearbyLabel = 'Bondi Junction';
+        await show(tester, repo, 'home');
+        expect(find.text('Near Bondi Junction'), findsOneWidget);
+        await tester.tap(find.text('Change'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Chatswood 2067'));
+        await tester.pumpAndSettle();
+        expect(find.text('Near Chatswood 2067'), findsOneWidget);
+        expect(find.text('Use my location'), findsOneWidget);
+        await tester.tap(find.text('Use my location'));
+        await tester.pumpAndSettle();
+        expect(find.text('Near Bondi Junction'), findsOneWidget);
+        await tester.pumpWidget(const SizedBox());
+        repo.dispose();
+      },
+    );
   });
   group('UserAvatar', () {
-    testWidgets('photo present: attempts to render the resolved photo, not the initial alone', (
-      tester,
-    ) async {
-      final repo = FakeParticipantRepository()
-        ..profile['photoUpdatedAt'] = DateTime(2026, 11, 19)
-        ..simulatedPhotoUrl = 'https://example.test/avatar.jpg';
-      await show(tester, repo, 'home');
-      expect(find.byType(CachedNetworkImage), findsOneWidget);
-      expect(
-        tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage)).imageUrl,
-        'https://example.test/avatar.jpg',
-      );
-      await tester.pumpWidget(const SizedBox());
-      repo.dispose();
-    });
+    testWidgets(
+      'photo present: attempts to render the resolved photo, not the initial alone',
+      (tester) async {
+        final repo = FakeParticipantRepository()
+          ..profile['photoUpdatedAt'] = DateTime(2026, 11, 19)
+          ..simulatedPhotoUrl = 'https://example.test/avatar.jpg';
+        await show(tester, repo, 'home');
+        expect(find.byType(CachedNetworkImage), findsOneWidget);
+        expect(
+          tester
+              .widget<CachedNetworkImage>(find.byType(CachedNetworkImage))
+              .imageUrl,
+          'https://example.test/avatar.jpg',
+        );
+        await tester.pumpWidget(const SizedBox());
+        repo.dispose();
+      },
+    );
     testWidgets('photo missing: shows the initial, no image widget at all', (
       tester,
     ) async {
@@ -763,38 +769,42 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       repo.dispose();
     });
-    testWidgets('photo load error: resolving the download URL throws, falls back to the initial', (
-      tester,
-    ) async {
-      final repo = FakeParticipantRepository()
-        ..profile['photoUpdatedAt'] = DateTime(2026, 11, 19)
-        ..simulatedPhotoUrlError = Exception('storage unavailable');
-      await show(tester, repo, 'home');
-      expect(find.byType(CachedNetworkImage), findsNothing);
-      expect(find.text('P'), findsOneWidget);
-      await tester.pumpWidget(const SizedBox());
-      repo.dispose();
-    });
-    testWidgets('photo changed live: a profile update alone (no rebuild/restart) swaps initial for photo', (
-      tester,
-    ) async {
-      final repo = FakeParticipantRepository();
-      await show(tester, repo, 'home');
-      expect(find.byType(CachedNetworkImage), findsNothing);
-      expect(find.text('P'), findsOneWidget);
+    testWidgets(
+      'photo load error: resolving the download URL throws, falls back to the initial',
+      (tester) async {
+        final repo = FakeParticipantRepository()
+          ..profile['photoUpdatedAt'] = DateTime(2026, 11, 19)
+          ..simulatedPhotoUrlError = Exception('storage unavailable');
+        await show(tester, repo, 'home');
+        expect(find.byType(CachedNetworkImage), findsNothing);
+        expect(find.text('P'), findsOneWidget);
+        await tester.pumpWidget(const SizedBox());
+        repo.dispose();
+      },
+    );
+    testWidgets(
+      'photo changed live: a profile update alone (no rebuild/restart) swaps initial for photo',
+      (tester) async {
+        final repo = FakeParticipantRepository();
+        await show(tester, repo, 'home');
+        expect(find.byType(CachedNetworkImage), findsNothing);
+        expect(find.text('P'), findsOneWidget);
 
-      repo.profile['photoUpdatedAt'] = DateTime(2026, 11, 19);
-      repo.simulatedPhotoUrl = 'https://example.test/new-avatar.jpg';
-      repo.notifyListeners();
-      await tester.pumpAndSettle();
+        repo.profile['photoUpdatedAt'] = DateTime(2026, 11, 19);
+        repo.simulatedPhotoUrl = 'https://example.test/new-avatar.jpg';
+        repo.notifyListeners();
+        await tester.pumpAndSettle();
 
-      expect(find.byType(CachedNetworkImage), findsOneWidget);
-      expect(
-        tester.widget<CachedNetworkImage>(find.byType(CachedNetworkImage)).imageUrl,
-        'https://example.test/new-avatar.jpg',
-      );
-      await tester.pumpWidget(const SizedBox());
-      repo.dispose();
-    });
+        expect(find.byType(CachedNetworkImage), findsOneWidget);
+        expect(
+          tester
+              .widget<CachedNetworkImage>(find.byType(CachedNetworkImage))
+              .imageUrl,
+          'https://example.test/new-avatar.jpg',
+        );
+        await tester.pumpWidget(const SizedBox());
+        repo.dispose();
+      },
+    );
   });
 }
