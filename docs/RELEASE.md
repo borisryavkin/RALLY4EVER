@@ -452,3 +452,18 @@ Play accepted build 29 and saved it as the only bundle in the existing Closed te
 
 
 Apple upload succeeded through `xcodebuild -exportArchive` using the existing Xcode account. App Store Connect visibly lists 1.0.3 (29), **Processing**, created 22 Nov 2026 5:30 pm Australia/Sydney. Normal external-capable export used (not internal-only). Vendor framework dSYM warnings were non-blocking. Existing external build 25 remains Waiting for Review; the original rally4ever group was untouched. Upload log: `/tmp/r4e-build29-xcode-upload.log`.
+
+
+## Build 30 — reference Profile layout (22 November 2026)
+
+Version `1.0.3+30`. Compact identity header, two attendance summaries, grouped current form receipts and session history, following Boris's supplied reference. Three required agreements and the five existing navigation tabs retained. Settings moved under Preferences; Admin and Coach tools remain available for their roles. No backend deployment/data migration required.
+
+```sh
+FLUTTER_BIN=/Users/borisryavkin/technical/flutter/flutter/bin/flutter JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home" ./scripts/build-android-staging.sh --build-number 30
+FLUTTER_BIN=/Users/borisryavkin/technical/flutter/flutter/bin/flutter ./scripts/build-ios-staging.sh --build-number 30 --export-options normal
+```
+
+Android verified: `org.raly4ever`, versionCode 30, current upload keystore certificate matched, bundletool/JAR validation successful, staging project and new Profile screen present in all three ABIs. Report: `docs/verification/android30-bundle.json`. Local copies: `~/Downloads/Rally4Ever-1.0.3-30-external-testing/`, including `profile-preview.png`. Flutter analysis clean; 240 tests passed, 1 intentional skip.
+
+
+Uploads completed: Apple Xcode CLI reported EXPORT SUCCEEDED; App Store Connect visibly lists 1.0.3 (30), Processing, created 22 Nov 2026 6:15 pm Australia/Sydney. Normal external-capable export, existing Apple signing. Vendor dSYM warnings non-blocking. iOS verification report: docs/verification/ios30-bundle.json. Play accepted 30 and saved it as the only bundle in the Closed testing Alpha draft (29 retained in artifact library). Five unchanged Play setup requirements block rollout: Dashboard completion, full description, financial features, foreground service declaration, health declaration. No production tracks changed. Apple external build 25 remains pending review; original rally4ever group untouched.
