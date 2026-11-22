@@ -383,3 +383,18 @@ Created separate TestFlight external group R4E Staging External (00913542-33dd-4
 Apple Transporter confirmed build 25 DELIVERED WITH WARNING on 22 Nov 2026 at 3:29 pm; app processing. One warning is reported; detail not yet verified. This is a successful upload, not external-test approval. Existing Beta Review sign-in information predates the Firebase email-based app and must be verified/replaced with a working dedicated test account before review. Never put review credentials in Git.
 
 Final observed distribution state: App Store Connect lists 1.0.3 (25) Processing; not yet available in the external build selector, so no Beta Review submission or external build assignment was possible. Owner-supplied tester added to R4E Staging External. Play has R4E Staging External email list selected for Alpha (one supplied tester), saved successfully, and Australia targeted; those two track setup tasks are complete. Remaining Google blockers: Dashboard setup, full description, financial-features, foreground-services and health declarations. No production release, public invite link or external rollout performed. Android emulator Medium_Phone_API_36.0 now runs staging DEBUG 1.0.3 (25) from current source, with automatic hot reload watcher active for lib/ and assets/.
+
+
+## Venue deletion follow-up — 22 November 2026
+
+Added reversible venue Delete/Restore with typed-name confirmation and server-side link checks. Blocks linked programs/sessions including archived history; never cascades or removes photos, attendance, profiles or Auth users. New callable adminVenueDeletion, plus updated adminCatalogue/adminSaveVenue/adminSaveSession/saveProgram deployed successfully to rally4ever-3adaf. Anonymous live probe returned 401 UNAUTHENTICATED. No rules/index changes. Local validation: 67 catalogue/rules emulator tests, 14 browser tests, 16 functions unit tests, 16 web helper tests; lint, TS and web build passed. Source commit 547c625 pushed. Backups: backups/venue-delete (ignored).
+
+Deployment commands used:
+```sh
+firebase deploy --project rally4ever-3adaf --only 'functions:attendance:adminVenueDeletion,functions:attendance:adminCatalogue,functions:attendance:adminSaveVenue,functions:attendance:adminSaveSession,functions:attendance:saveProgram'
+firebase deploy --project rally4ever-3adaf --only hosting:admin
+```
+
+Usage: refresh https://rally4ever-admin-3adaf.web.app → Venues → Delete → check linked-record counts → type the exact venue name → Delete venue. Show deleted venues → Restore reverses deletion. Linked venues must be reassigned before deletion; no historical records are removed. No mobile rebuild required.
+
+Hosting deployment completed; live HTML asset hashes match the verified local build.
