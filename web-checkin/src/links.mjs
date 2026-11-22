@@ -48,7 +48,11 @@ export function timestamp(iso, timezone) {
   }).format(new Date(iso));
 }
 export const versionMap = (forms) =>
-  Object.fromEntries(forms.map((f) => [f.id, f.version]));
+  Object.fromEntries(
+    forms.flatMap((f) =>
+      (f.sources ?? [f]).map((source) => [source.id, source.version]),
+    ),
+  );
 
 const memoryTokens = new Map();
 export function anonymousTokenFor(eventId, storage) {
@@ -74,4 +78,24 @@ export function anonymousTokenFor(eventId, storage) {
     /* Coach confirmation also guards headcount. */
   }
   return token;
+}
+
+export function agreementGroups(forms) {
+  return [
+    ["conduct", "Code of Conduct", ["conduct", "waiver"]],
+    ["data-collection", "Data Collection", ["data-collection"]],
+    ["photo-release", "Photo Release", ["photo-release"]],
+  ].map(([id, title, ids]) => {
+    const sources = ids.flatMap((key) => forms.filter((f) => f.id === key));
+    if (sources.length !== ids.length)
+      throw Error("A required agreement is missing. Please ask your coach.");
+    return {
+      ...sources[0],
+      id,
+      title,
+      body: sources.map((f) => f.body ?? f.content ?? "").join("\n\n"),
+      sources,
+      required: true,
+    };
+  });
 }

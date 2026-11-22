@@ -21,29 +21,26 @@ void main() {
   });
 
   for (final page in ['entry', 'signin', 'signup', 'noapp']) {
-    testWidgets(
-      '$page renders without overflow at 1.5x text scale',
-      (tester) async {
-        tester.view.physicalSize = const Size(390, 844);
-        tester.view.devicePixelRatio = 1;
-        tester.platformDispatcher.textScaleFactorTestValue = 1.5;
-        addTearDown(tester.view.resetPhysicalSize);
-        addTearDown(tester.view.resetDevicePixelRatio);
-        addTearDown(
-          tester.platformDispatcher.clearTextScaleFactorTestValue,
-        );
-        final repo = FakeParticipantRepository(authenticated: false);
-        await tester.pumpWidget(
-          ParticipantApp(
-            repository: repo,
-            initialPage: page,
-            cameraEnabled: false,
-          ),
-        );
-        await tester.pumpAndSettle();
-        expect(tester.takeException(), isNull);
-      },
-    );
+    testWidgets('$page renders without overflow at 1.5x text scale', (
+      tester,
+    ) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      tester.platformDispatcher.textScaleFactorTestValue = 1.5;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+      final repo = FakeParticipantRepository(authenticated: false);
+      await tester.pumpWidget(
+        ParticipantApp(
+          repository: repo,
+          initialPage: page,
+          cameraEnabled: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
   }
 
   testWidgets(
@@ -144,9 +141,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
 
-      await tester.tap(find.byKey(const Key('agreement-continue')));
-      await tester.pumpAndSettle();
-      expect(tester.takeException(), isNull);
+      for (final id in ['data-collection', 'photo-release']) {
+        await tester.tap(find.byKey(Key('agree-$id')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('agreement-continue')));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+      }
       expect(find.text("You're checked in"), findsOneWidget);
     },
   );

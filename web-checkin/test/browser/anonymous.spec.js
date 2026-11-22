@@ -20,7 +20,7 @@ test("anonymous +1 skips personal data, requires agreements, and reuses device/s
       () => window.calls.filter((c) => c.name === "beginNoAppCheckIn").length,
     ),
   ).toBe(0);
-  for (const id of ["conduct", "waiver"])
+  for (const id of ["Code of Conduct", "Data Collection", "Photo Release"])
     await page
       .getByRole("checkbox", {
         name: "I have read and agree to " + id + ".",
@@ -41,7 +41,7 @@ test("anonymous +1 skips personal data, requires agreements, and reuses device/s
   expect(payload.countOnly).toBe(true);
   expect(payload.email).toBeUndefined();
   expect(payload.firstName).toBeUndefined();
-  expect(Object.keys(payload.signedVersions)).toEqual(["conduct", "waiver"]);
+  expect(Object.keys(payload.signedVersions)).toEqual(["conduct", "waiver", "data-collection", "photo-release"]);
   expect(payload.anonymousToken).toMatch(/^[A-Za-z0-9_-]{43}$/);
   expect(
     await page.evaluate(() =>
@@ -59,7 +59,7 @@ test("expired QR gives a visible error and no success screen", async ({
   await page
     .getByRole("button", { name: "Skip details — count me as +1" })
     .click();
-  for (const id of ["conduct", "waiver"])
+  for (const id of ["Code of Conduct", "Data Collection", "Photo Release"])
     await page
       .getByRole("checkbox", {
         name: "I have read and agree to " + id + ".",

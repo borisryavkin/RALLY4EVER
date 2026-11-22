@@ -83,7 +83,7 @@ async function scan(extra = {}, who = "participant-1") {
   );
 }
 async function sign(uid) {
-  for (const formId of ["conduct", "waiver"])
+  for (const formId of ["conduct", "waiver", "data-collection", "photo-release"])
     await db
       .doc(`consents/${uid}_${formId}`)
       .set({ uid, formId, formType: formId, version: 1, signedAt: stamp() });
@@ -537,7 +537,7 @@ test("merge dry-run is admin-only, apply requires reviewed fresh plan and writes
     cancelledAt: null,
   });
   // Both already have identical form receipts: collisions must be reviewed, not silently discarded.
-  for (const form of ["conduct", "waiver"])
+  for (const form of ["conduct", "waiver", "data-collection", "photo-release"])
     await db.doc(`consents/participant-2_${form}`).delete();
   await error(
     () => call("mergeProfiles", data, "coach-1"),
@@ -926,7 +926,7 @@ async function noAppData(email = "member1@example.test") {
     firstName: "Court visitor",
     mobile: "0400000000",
     emergencyContact: { name: "Emergency Contact", mobile: "0400000001" },
-    signedVersions: { conduct: 1, waiver: 1 },
+    signedVersions: { conduct: 1, waiver: 1, "data-collection": 1, "photo-release": 1 },
   };
 }
 test("returning no-app attendee needs a one-time Firebase email link before attendance", async () => {
@@ -1199,7 +1199,7 @@ test('deferred guest flow uses both functions, normalizes email, never creates A
  await call('coachDecision',{eventId:'event-1',uid:key.uid,decision:'confirm'},'coach-1');assert.equal((await db.doc(result.checkinId?`checkins/${result.checkinId}`:'bad/bad').get()).data().status,'confirmed');
 });
 test('public session info identifies a session before location, but never exposes secret hashes/private fields',async()=>{
- const data=await noAppData('info@example.test');const info=await call('getNoAppForms',{eventCode:data.eventCode,secret:data.secret},null);assert.equal(info.name,(await db.doc('events/event-1').get()).data().name);assert.equal(info.forms.length,2);assert.equal(info.currentSecretHash,undefined);assert.equal(info.coachUids,undefined);
+ const data=await noAppData('info@example.test');const info=await call('getNoAppForms',{eventCode:data.eventCode,secret:data.secret},null);assert.equal(info.name,(await db.doc('events/event-1').get()).data().name);assert.equal(info.forms.length,4);assert.equal(info.currentSecretHash,undefined);assert.equal(info.coachUids,undefined);
  await error(()=>call('getNoAppForms',{eventCode:data.eventCode,secret:'arbitrary-barcode'},null),'invalid-secret','PERMISSION_DENIED');
 });
 test('public check-in enforces time, distance, email and request binding server-side',async()=>{

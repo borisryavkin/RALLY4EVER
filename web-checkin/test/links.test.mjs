@@ -7,3 +7,8 @@ test('anonymous retry token still works when browser storage access is denied',a
  try{Object.defineProperty(globalThis,'localStorage',{configurable:true,get(){throw Error('Storage denied');}});const token=anonymousTokenFor('storage-denied-session');assert.match(token,/^[A-Za-z0-9_-]{43}$/);assert.equal(anonymousTokenFor('storage-denied-session'),token);assert.notEqual(anonymousTokenFor('other-storage-denied-session'),token);}
  finally{if(previous)Object.defineProperty(globalThis,'localStorage',previous);else delete globalThis.localStorage;}
 });
+
+test('three mandatory groups preserve all four approved bodies and receipt versions',async()=>{
+ const {agreementGroups,versionMap}=await import('../src/links.mjs');const raw=['conduct','waiver','data-collection','photo-release'].map(id=>({id,body:id+' verbatim  \n',version:'2026-11-20'}));const groups=agreementGroups(raw);
+ assert.deepEqual(groups.map(f=>f.title),['Code of Conduct','Data Collection','Photo Release']);assert.ok(groups.every(f=>f.required));assert.equal(groups[0].body,'conduct verbatim  \n\n\nwaiver verbatim  \n');assert.equal(Object.keys(versionMap(groups)).length,4);assert.throws(()=>agreementGroups(raw.slice(0,3)),/missing/);
+});

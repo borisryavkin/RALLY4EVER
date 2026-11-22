@@ -16,13 +16,18 @@ class AnonymousRepo extends FakeParticipantRepository {
         'name': 'Community pickleball',
         'venue': {'name': 'Courts'},
         'forms': [
-          for (final id in ['conduct', 'waiver', 'photo-release'])
+          for (final id in [
+            'conduct',
+            'waiver',
+            'data-collection',
+            'photo-release',
+          ])
             {
               'id': id,
               'title': id,
               'body': 'Test agreement',
               'version': '2026-11-20',
-              'required': id != 'photo-release',
+              'required': true,
             },
         ],
       };
@@ -75,15 +80,12 @@ void main() {
             .onPressed,
         isNull,
       );
-      for (final id in ['conduct', 'waiver']) {
+      for (final id in ['conduct', 'data-collection', 'photo-release']) {
         await tester.tap(find.byKey(Key('agree-$id')));
         await tester.pump();
         await tester.tap(find.byKey(const Key('agreement-continue')));
         await tester.pumpAndSettle();
       }
-      // Optional photo release is displayed, but not recorded as accepted.
-      await tester.tap(find.byKey(const Key('agreement-continue')));
-      await tester.pumpAndSettle();
       expect(repo.submitted!['countOnly'], true);
       expect(repo.submitted!.containsKey('email'), false);
       expect(repo.submitted!.containsKey('firstName'), false);
@@ -92,6 +94,8 @@ void main() {
       expect(repo.submitted!['signedVersions'], {
         'conduct': '2026-11-20',
         'waiver': '2026-11-20',
+        'data-collection': '2026-11-20',
+        'photo-release': '2026-11-20',
       });
       final token = repo.submitted!['anonymousToken'];
       expect(token, matches(RegExp(r'^[A-Za-z0-9_-]{43}$')));

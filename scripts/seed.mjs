@@ -53,7 +53,7 @@ export async function seed() {
         Timestamp.fromMillis(now.toMillis() + offset + 3600000)));
     }
     for (const {id,...program} of demoPrograms()) await create(`programs/${id}`, {...program,createdAt:now,updatedAt:now,updatedBy:'emulator-seed'});
-    for (const formType of ['conduct', 'waiver']) {
+    for (const formType of ['conduct', 'waiver', 'data-collection', 'photo-release']) {
       await create(`forms/${formType}`, {formType, version: 1, title: `Demo ${formType}`, content: await readFile(new URL('../docs/forms/'+formType+'.txt',import.meta.url),'utf8'), publishedAt:Timestamp.fromMillis(0), updatedAt: now});
     }
     await create('rsvps/event-1_participant-1', {

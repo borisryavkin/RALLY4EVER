@@ -31,7 +31,9 @@ const validSessionLink =
 /// details step and agreements step can be driven without touching a real
 /// backend.
 class NoAppSessionRepo extends FakeParticipantRepository {
-  NoAppSessionRepo() : super(authenticated: false);
+  NoAppSessionRepo() : super(authenticated: false) {
+    addRequiredReleases();
+  }
   List<Record> agreementForms = [
     {
       'id': 'conduct',
@@ -48,6 +50,18 @@ class NoAppSessionRepo extends FakeParticipantRepository {
       'content': 'Play at a pace that feels right for you.',
     },
   ];
+  void addRequiredReleases() {
+    for (final id in ['data-collection', 'photo-release']) {
+      agreementForms.add({
+        'id': id,
+        'title': id,
+        'body': 'Test agreement.',
+        'required': true,
+        'version': 1,
+      });
+    }
+  }
+
   Record? beginResult;
   @override
   Future<Record> call(String name, Record data) async {
@@ -176,10 +190,7 @@ void main() {
           find.textContaining('Community courts, Bondi Junction'),
           findsOneWidget,
         );
-        expect(
-          find.widgetWithText(FilledButton, 'Continue'),
-          findsOneWidget,
-        );
+        expect(find.widgetWithText(FilledButton, 'Continue'), findsOneWidget);
         expect(find.byKey(const Key('confirm-session')), findsOneWidget);
         expect(find.byKey(const Key('scan-again')), findsOneWidget);
 
@@ -225,10 +236,7 @@ void main() {
         );
         expect(continueButton.onPressed, isNull);
         expect(find.byKey(const Key('missing-details')), findsOneWidget);
-        expect(
-          find.textContaining('Still needed:'),
-          findsOneWidget,
-        );
+        expect(find.textContaining('Still needed:'), findsOneWidget);
 
         await tester.enterText(
           find.byKey(const Key('noapp-email')),
@@ -238,7 +246,10 @@ void main() {
           find.byKey(const Key('noapp-firstName')),
           'Alex',
         );
-        await tester.enterText(find.byKey(const Key('noapp-mobile')), '0400000000');
+        await tester.enterText(
+          find.byKey(const Key('noapp-mobile')),
+          '0400000000',
+        );
         await tester.enterText(
           find.byKey(const Key('noapp-emergencyName')),
           'Sam',
@@ -259,7 +270,10 @@ void main() {
   });
 
   group('check-in: agreements shown one at a time', () {
-    Future<void> reachAgreements(WidgetTester tester, NoAppSessionRepo repo) async {
+    Future<void> reachAgreements(
+      WidgetTester tester,
+      NoAppSessionRepo repo,
+    ) async {
       setTallView(tester);
       await tester.pumpWidget(
         ParticipantApp(
@@ -284,7 +298,10 @@ void main() {
         'person@example.test',
       );
       await tester.enterText(find.byKey(const Key('noapp-firstName')), 'Alex');
-      await tester.enterText(find.byKey(const Key('noapp-mobile')), '0400000000');
+      await tester.enterText(
+        find.byKey(const Key('noapp-mobile')),
+        '0400000000',
+      );
       await tester.enterText(
         find.byKey(const Key('noapp-emergencyName')),
         'Sam',
@@ -304,8 +321,8 @@ void main() {
         final repo = NoAppSessionRepo()..beginResult = {'status': 'confirmed'};
         await reachAgreements(tester, repo);
 
-        expect(find.text('Agreement 1 of 2'), findsOneWidget);
-        expect(find.text('Code of conduct'), findsOneWidget);
+        expect(find.text('Agreement 1 of 3'), findsOneWidget);
+        expect(find.text('Code of Conduct'), findsOneWidget);
         var agreeContinue = tester.widget<FilledButton>(
           find.byKey(const Key('agreement-continue')),
         );
@@ -320,17 +337,17 @@ void main() {
         await tester.tap(find.byKey(const Key('agreement-continue')));
         await tester.pumpAndSettle();
 
-        expect(find.text('Agreement 2 of 2'), findsOneWidget);
-        expect(find.text('Liability waiver'), findsOneWidget);
-        // Not required -- Check in is already enabled without ticking it.
-        agreeContinue = tester.widget<FilledButton>(
-          find.byKey(const Key('agreement-continue')),
-        );
-        expect(agreeContinue.onPressed, isNotNull);
-        expect(find.text('Check in'), findsOneWidget);
-
-        await tester.tap(find.byKey(const Key('agreement-continue')));
-        await tester.pumpAndSettle();
+        for (final entry in [(2, 'data-collection'), (3, 'photo-release')]) {
+          expect(find.text('Agreement ${entry.$1} of 3'), findsOneWidget);
+          agreeContinue = tester.widget<FilledButton>(
+            find.byKey(const Key('agreement-continue')),
+          );
+          expect(agreeContinue.onPressed, isNull);
+          await tester.tap(find.byKey(Key('agree-${entry.$2}')));
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const Key('agreement-continue')));
+          await tester.pumpAndSettle();
+        }
 
         expect(find.text("You're checked in"), findsOneWidget);
       },

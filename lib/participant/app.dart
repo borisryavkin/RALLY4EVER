@@ -12,6 +12,7 @@ import '../shared/logo.dart';
 import '../shared_widgets.dart' as shared;
 import 'forms.dart';
 import 'legal_text.dart';
+import 'form_groups.dart';
 import 'access.dart';
 import 'catalogue.dart';
 import 'catalogue_admin.dart';
@@ -56,7 +57,6 @@ class _ParticipantAppState extends State<ParticipantApp>
   bool _locationRequestedThisSession = false;
   DateTime? _lastLocationFetch;
   bool busy = false, agreed = false, pendingSubmission = false;
-  final Set<String> optionalAgreements = {};
   int get tab => switch (page) {
     'map' => 1,
     'profile' ||
@@ -263,7 +263,6 @@ class _ParticipantAppState extends State<ParticipantApp>
       }
       error = null;
       agreed = false;
-      optionalAgreements.clear();
     });
   }
 
@@ -1831,73 +1830,49 @@ class _ParticipantAppState extends State<ParticipantApp>
   }
 
   Widget agreements(BuildContext context) {
-    if (event != null && repo.unavailableForms(event!).isNotEmpty) {
+    final target = scanned == null
+        ? <String, dynamic>{'requiredFormIds': <String>[]}
+        : event ?? <String, dynamic>{'requiredFormIds': <String>[]};
+    if (repo.unavailableForms(target).isNotEmpty) {
       return frame(
         context,
-        title: 'Quick agreements',
-        back: () => go(detailsReturn == 'profile' ? 'profile' : 'details'),
+        title: 'Sign forms',
+        back: () => go('profile'),
         children: [
           const Panel(
             color: pink,
             child: Text(
-              'A required agreement is missing or unpublished. Check-in is blocked. Please ask your coach for help.',
+              'A required agreement is missing or unpublished. Signing and check-in are blocked. Please ask your coach for help.',
             ),
           ),
         ],
       );
     }
-    final requiredMissing = event == null
-        ? repo.forms
-              .where(
-                (f) =>
-                    ['conduct', 'waiver'].contains(f['id']) &&
-                    repo.formPublished(f) &&
-                    !repo.signed(f),
-              )
-              .toList()
-        : repo.missingForms(event!);
-    final optionalMissing = repo.forms
-        .where(
-          (f) =>
-              ['photo-release', 'data-collection'].contains(f['id']) &&
-              repo.formPublished(f) &&
-              !repo.signed(f) &&
-              !requiredMissing.any((r) => r['id'] == f['id']),
-        )
+    final sources = repo.forms
+        .where((f) => requiredAgreementIds.contains(f['id']))
         .toList();
-    final missing = [...requiredMissing, ...optionalMissing];
-    if (missing.isEmpty) {
-      return frame(
-        context,
-        title: 'Quick agreements',
-        back: () => go('profile'),
-        children: [
-          const Panel(
-            child: Text(
-              'You’re up to date. We only ask again when a form changes.',
-            ),
-          ),
-        ],
-        bottom: FilledButton(
-          onPressed: () => go(scanned == null ? 'profile' : 'scan'),
-          child: const Text('Continue'),
-        ),
-      );
-    }
+    final groups = agreementGroups(sources);
+    final missing = sources.where((f) => !repo.signed(f)).toList();
     return frame(
       context,
-      title: 'Quick agreements',
+      title: 'Sign forms',
       back: () => go(detailsReturn == 'profile' ? 'profile' : 'details'),
       children: [
         Text(
-          'Before you play',
+          'Three required forms',
           style: Theme.of(context).textTheme.headlineMedium,
         ),
         const Text(
-          'Read each current form once. Your agreement stays with your profile.',
+          'Read Code of Conduct (including Waive and Release), Data Collection and Photo Release. All three are required.',
         ),
+        if (missing.isEmpty)
+          const Panel(
+            child: Text(
+              'All 3 forms are signed. We only ask again when a form changes.',
+            ),
+          ),
         const SizedBox(height: 20),
-        for (final form in missing) ...[
+        for (final form in groups) ...[
           Panel(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1910,60 +1885,49 @@ class _ParticipantAppState extends State<ParticipantApp>
                         style: const TextStyle(fontWeight: FontWeight.w700),
                       ),
                     ),
-                    StatusPill('v${form['version']}', dark: true),
+                    StatusPill(
+                      formSources(form).every(repo.signed)
+                          ? 'Signed'
+                          : 'Required',
+                      dark: true,
+                    ),
                   ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Version ${form['version']}',
+                  style: const TextStyle(fontSize: 11),
                 ),
                 const SizedBox(height: 12),
                 LegalFormText(formText(form)),
-                if (optionalMissing.contains(form))
-                  CheckboxListTile(
-                    title: const Text('Optional: I agree to this form'),
-                    value: optionalAgreements.contains(form['id']),
-                    onChanged: (value) => setState(() {
-                      if (value == true) {
-                        optionalAgreements.add(form['id'] as String);
-                      } else {
-                        optionalAgreements.remove(form['id']);
-                      }
-                    }),
-                  ),
               ],
             ),
           ),
           const SizedBox(height: 16),
         ],
-        if (requiredMissing.isNotEmpty)
+        if (missing.isNotEmpty)
           CheckboxListTile(
             key: const Key('accept-forms'),
             contentPadding: EdgeInsets.zero,
             value: agreed,
-            onChanged: (v) => setState(() => agreed = v ?? false),
-            title: const Text(
-              'I have read and agree to these forms.',
-              style: TextStyle(fontSize: 13),
-            ),
+            onChanged: busy ? null : (v) => setState(() => agreed = v ?? false),
+            title: const Text('I have read and agree to all 3 forms.'),
           ),
       ],
       bottom: FilledButton(
         key: const Key('sign-and-checkin'),
-        onPressed: (agreed || requiredMissing.isEmpty)
-            ? () => action(() async {
-                for (final f in missing.where(
-                  (f) =>
-                      requiredMissing.contains(f) ||
-                      optionalAgreements.contains(f['id']),
-                )) {
-                  await repo.signForm(f);
-                }
+        onPressed: busy || (missing.isNotEmpty && !agreed)
+            ? null
+            : () => action(() async {
+                await repo.signForms(missing);
                 if (scanned != null) {
                   go('scan');
                   nextAfterScan();
                 } else {
                   go('profile');
                 }
-              })
-            : null,
-        child: Text(scanned != null ? 'Agree and check in' : 'Save agreements'),
+              }),
+        child: Text(missing.isEmpty ? 'Done' : 'Sign all 3 forms'),
       ),
     );
   }
@@ -2250,12 +2214,6 @@ class _ParticipantAppState extends State<ParticipantApp>
           ),
         ],
       ),
-      OutlinedButton.icon(
-        key: const Key('go-to-account'),
-        onPressed: () => go('account'),
-        icon: const Icon(Icons.manage_accounts_outlined),
-        label: const Text('Account'),
-      ),
       const SizedBox(height: 22),
       Row(
         children: [
@@ -2294,41 +2252,19 @@ class _ParticipantAppState extends State<ParticipantApp>
       const SizedBox(height: 24),
       Text('Forms', style: Theme.of(context).textTheme.titleLarge),
       const SizedBox(height: 10),
-      for (final f in repo.forms)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: InkWell(
-            onTap: () {
-              detailsReturn = 'profile';
-              go('agreements');
-            },
-            child: Panel(
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          f['title'] as String,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        Text(
-                          'Version ${f['version']}',
-                          style: const TextStyle(fontSize: 11),
-                        ),
-                      ],
-                    ),
-                  ),
-                  StatusPill(
-                    repo.signed(f) ? 'Signed' : 'Needs signing',
-                    dark: !repo.signed(f),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+      const Text(
+        'Code of Conduct · Data Collection · Photo Release. All 3 are required.',
+      ),
+      const SizedBox(height: 10),
+      FilledButton.icon(
+        key: const Key('profile-sign-forms'),
+        onPressed: () {
+          detailsReturn = 'profile';
+          go('agreements');
+        },
+        icon: const Icon(Icons.draw_outlined),
+        label: const Text('Sign forms'),
+      ),
       const SizedBox(height: 16),
       Text('Your sessions', style: Theme.of(context).textTheme.titleLarge),
       const SizedBox(height: 10),
@@ -2386,6 +2322,10 @@ class _ParticipantAppState extends State<ParticipantApp>
           go('details');
         },
         child: const Text('Update safety details'),
+      ),
+      ExpansionTile(
+        title: const Text('Sign-in methods'),
+        children: [SignInMethodsPanel(repository: repo)],
       ),
       TextButton(
         onPressed: () => action(repo.refreshAccess),

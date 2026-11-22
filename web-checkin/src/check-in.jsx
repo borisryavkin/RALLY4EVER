@@ -5,6 +5,7 @@ import {
   timestamp,
   versionMap,
   anonymousTokenFor,
+  agreementGroups,
 } from "./links.mjs";
 export function CheckIn({ call }) {
   const submitting = useRef(false);
@@ -29,7 +30,7 @@ export function CheckIn({ call }) {
       })
         .then((s) => {
           if (active) {
-            setSession(s);
+            setSession({ ...s, forms: agreementGroups(s.forms) });
             setState(parsed.requestId && parsed.oobCode ? "verify" : "form");
           }
         })

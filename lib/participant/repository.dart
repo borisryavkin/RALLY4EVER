@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/emulator_backend.dart';
 import '../models/attendance_models.dart';
+import 'form_groups.dart';
 
 typedef Record = Map<String, dynamic>;
 
@@ -369,8 +370,7 @@ abstract class ParticipantRepository extends ChangeNotifier {
     (c) => c['formId'] == form['id'] && c['version'] == form['version'],
   );
   List<String> requiredFormIds(Record event) => {
-    'conduct',
-    'waiver',
+    ...requiredAgreementIds,
     ...((event['requiredFormIds'] as List?) ?? []).cast<String>(),
   }.toList();
   bool formPublished(Record form) =>
@@ -421,6 +421,12 @@ abstract class ParticipantRepository extends ChangeNotifier {
   ) => throw UnimplementedError();
   Future<Uint8List?> venuePhotoBytes(String url) async => null;
   Future<void> signForm(Record form) => throw UnimplementedError();
+  Future<void> signForms(List<Record> forms) async {
+    for (final form in forms.where((f) => !signed(f))) {
+      await signForm(form);
+    }
+  }
+
   Future<Record> call(String name, Record data) => throw UnimplementedError();
   Future<Record> location() async {
     if (!await Geolocator.isLocationServiceEnabled()) {
@@ -1092,6 +1098,34 @@ class FirebaseParticipantRepository extends ParticipantRepository {
     };
     await backend.firestore.doc('consents/${uid}_${form['id']}').set(receipt);
     consents = [...consents.where((c) => c['formId'] != form['id']), receipt];
+    notifyListeners();
+  }
+
+  @override
+  Future<void> signForms(List<Record> forms) async {
+    final missing = forms.where((f) => !signed(f)).toList();
+    if (missing.isEmpty) return;
+    final batch = backend.firestore.batch();
+    final receipts = <Record>[];
+    for (final form in missing) {
+      final receipt = <String, dynamic>{
+        'uid': uid,
+        'formId': form['id'],
+        'formType': form['formType'],
+        'version': form['version'],
+        'signedAt': FieldValue.serverTimestamp(),
+      };
+      batch.set(
+        backend.firestore.doc('consents/${uid}_${form['id']}'),
+        receipt,
+      );
+      receipts.add(receipt);
+    }
+    await batch.commit();
+    consents = [
+      ...consents.where((c) => !missing.any((f) => f['id'] == c['formId'])),
+      ...receipts,
+    ];
     notifyListeners();
   }
 

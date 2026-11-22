@@ -123,6 +123,19 @@ class FakeParticipantRepository extends ParticipantRepository {
         'content': 'Demo agreement for local testing. Play at a pace that feels right for you. Tell the coach about any injury or concern before joining in. Approved form wording will be supplied before release.',
       },
     ];
+    forms.addAll([
+      for (final id in ['data-collection', 'photo-release'])
+        {
+          'id': id,
+          'formType': id,
+          'title': id == 'data-collection'
+              ? 'Data Collection'
+              : 'Photo Release',
+          'body': 'Test fixture agreement.',
+          'version': 1,
+          'publishedAt': DateTime(2020),
+        },
+    ]);
     consents = [
       for (final form in forms)
         {'uid': uid, 'formId': form['id'], 'version': 1, 'signedAt': now},
@@ -320,6 +333,7 @@ class FakeParticipantRepository extends ParticipantRepository {
     if (locationError != null) throw StateError(locationError!);
     return simulatedLocation ?? {'lat': -33.8926, 'lng': 151.2511};
   }
+
   @override
   Future<Record> call(String name, Record data) async {
     calls.add(name);

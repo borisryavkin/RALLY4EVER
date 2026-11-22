@@ -13,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'repository.dart';
 import 'about_icons.dart';
 import 'legal_text.dart';
+import 'form_groups.dart';
 import 'theme.dart';
 
 /// Shown once on a device that's never signed in: the logo, a calm
@@ -601,7 +602,7 @@ class _ForgotPasswordFormState extends State<ForgotPasswordForm> {
       ),
       const SizedBox(height: 16),
       const Text(
-        'First used Google? Sign in with Google, then open Me → Account to add a password.',
+        'First used Google? Sign in with Google, then open Me → Sign-in methods to add a password.',
         style: TextStyle(fontSize: 12, color: slate),
       ),
     ],
@@ -1699,9 +1700,11 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
           link = parsed;
           position = pos;
           sessionInfo = info;
-          forms = (info['forms'] as List)
-              .map((f) => Map<String, dynamic>.from(f as Map))
-              .toList();
+          forms = agreementGroups(
+            (info['forms'] as List)
+                .map((f) => Map<String, dynamic>.from(f as Map))
+                .toList(),
+          );
           stage = 1;
         });
       }
@@ -2132,7 +2135,9 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
   }
 
   Widget _agreementsStage(BuildContext context) {
-    if (forms.isEmpty) {
+    if (!requiredAgreementIds.every(
+      (id) => forms.expand(formSources).any((f) => f['id'] == id),
+    )) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2209,9 +2214,13 @@ class _NoAppCheckInFormState extends State<NoAppCheckInForm> {
               ? null
               : () {
                   if (accepted) {
-                    signedVersions['${f['id']}'] = f['version'];
+                    for (final source in formSources(f)) {
+                      signedVersions['${source['id']}'] = source['version'];
+                    }
                   } else {
-                    signedVersions.remove('${f['id']}');
+                    for (final source in formSources(f)) {
+                      signedVersions.remove('${source['id']}');
+                    }
                   }
                   if (!last) {
                     setState(() {
