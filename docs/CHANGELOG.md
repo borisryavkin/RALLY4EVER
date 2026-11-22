@@ -472,3 +472,11 @@ Re-verification pass under a new staged task spec. The underlying fix (and the r
 - New adminVenueDeletion callable checks custom claim and protected admin profile, revision, and all linked programs/sessions (including archived/deleted history) in a transaction. Linked records block deletion; nothing is cascaded. Unused venues are soft deleted, with audit snapshots and Restore. Photos, attendance, profiles and Auth users are untouched. No hard purge.
 - Deleted venues are excluded from normal catalogue responses, program venue selection and bulk upload matching. Server saveVenue/saveProgram/adminSaveSession reject deleted venue references until Restore. Existing legacy venue linkage is retained.
 - Tests: 67 catalogue/emulator, 14 browser, 16 web helper and 16 functions unit tests passed; ESLint, TypeScript and production web build passed. Screenshots: docs/screenshots/admin-fixes/after-venue-delete-blocked.png and after-venue-delete-restore.png. No rules or index changes. Source backups: ignored backups/venue-delete.
+
+
+## 2026-11-22 — Consistent sign-in and Android Google configuration (build 26)
+- Signed-out first-time and returning devices now both open Welcome back; Create account retains the shared signup/verification/About you flow. Unified the brand back chevron and touch density with iOS; native account picker/keyboard remain OS controls.
+- Added cross-platform rendered signup parity tests and updated expected back-chevron golden images. Full Flutter tests 230 passed, one skipped; analyze clean.
+- Added ten verified Firebase certificate fingerprints for the existing debug/upload and downloaded Play signing certificates; refreshed ignored SDK config. No secrets/configs/keys committed or keys generated. Google interactive account selection remains a manual verification step.
+- Traced recent 400 errors to old deployed registerIdentity rejecting firstNameHint, and deployed its tested compatible implementation on staging. Existing verified-email/UID protections retained.
+- Set 1.0.3+26 for locally signed external-testing artifacts. No upload of build 26 authorized or performed.

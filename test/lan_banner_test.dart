@@ -29,6 +29,7 @@ void main() {
       await tester.pumpWidget(
         ParticipantApp(
           repository: repo,
+          initialPage: 'welcome1',
           lanTesting: true,
           lanHost: '192.168.1.50',
           cameraEnabled: false,

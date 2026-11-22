@@ -75,18 +75,17 @@ Record _session(
 void main() {
   group('item 1: sign-up and email verification', () {
     testWidgets(
-      'a first-time device defaults to the entry screen; a returning device goes straight to Sign in; each links to the other',
+      'first-time and returning devices open Welcome back and can choose Create account',
       (tester) async {
         setTallView(tester);
         final firstTime = FakeParticipantRepository(authenticated: false)
           ..hasSignedInBefore = false;
         await tester.pumpWidget(
-          ParticipantApp(
-            repository: firstTime,
-            initialPage: 'entry',
-            cameraEnabled: false,
-          ),
+          ParticipantApp(repository: firstTime, cameraEnabled: false),
         );
+        await tester.pumpAndSettle();
+        expect(find.text('Welcome\nback'), findsOneWidget);
+        await tester.tap(find.byKey(const Key('toggle-signup')));
         await tester.pumpAndSettle();
         expect(find.text('Join\nRALLY4EVER'), findsOneWidget);
         expect(find.text('Already have an account? Sign in'), findsOneWidget);
@@ -148,8 +147,14 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(find.text('STEP 1 OF 4'), findsOneWidget);
-        await tester.enterText(find.byKey(const Key('email')), 'new@example.test');
-        await tester.enterText(find.byKey(const Key('password')), 'Test-password-1');
+        await tester.enterText(
+          find.byKey(const Key('email')),
+          'new@example.test',
+        );
+        await tester.enterText(
+          find.byKey(const Key('password')),
+          'Test-password-1',
+        );
         await tester.tap(find.byKey(const Key('authenticate')));
         await tester.pumpAndSettle();
         expect(find.text('STEP 2 OF 4'), findsOneWidget);

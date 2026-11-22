@@ -29,3 +29,20 @@ All four local certificate fingerprints below are missing from Firebase:
 Upload values were read using keytool against the existing upload keystore without printing passwords. Debug values were read from `./gradlew signingReport` (stagingDebug). No signing key was generated or changed. Add these under Firebase Project settings → General → Android **org.raly4ever** → SHA certificate fingerprints. Also add the separate **Play app-signing** SHA-1/SHA-256 from Play Console → App integrity → App signing; it cannot be derived from the local upload/debug keystores. Local upload fingerprints identify the upload key, not Play's signing key.
 
 Re-download google-services.json after registering the fingerprints. The just-downloaded file still has no Android OAuth/certificate entries. No provider settings, certificate registrations, profiles, Auth users, releases or uploads were changed by this audit. Google device sign-in is not proven fixed until the signing fingerprints are registered; canceled/code 16 does not establish user cancellation.
+
+
+## 22 November 2026 — configuration corrected and entry unified
+
+Unsigned app launches now open Welcome back on both platforms, independent of the device's hasSignedInBefore history. Create account still opens the same shared entry/email verification/seven About you steps. The original difference came from local first-install history, not separate platform sign-up implementations. Brand back icons now use the iOS rounded chevron on both platforms, with explicit standard density and padded touch targets; OS Google account pickers/keyboards retain native behavior. Forty phone/tablet sign-up renders are compared between iOS and Android in signup_platform_parity_test.dart. Full Flutter suite: 230 passed, one skipped; analyze clean.
+
+Firebase Management API read confirmed ZERO SHA entries for Android org.raly4ever. Added existing debug and upload SHA-1/SHA-256, then downloaded Play's public certificates from App signing. Added all three supplied Play signing certificates (deployment, hybrid classical and hybrid PQC), both SHA types, for ten total verified entries. Re-downloaded ignored android/app/google-services.json; it now contains the matching Android OAuth clients as well as the existing Web client. No keys were generated and no Auth user/profile was deleted. Config and certificate backups are ignored under backups/android-google-20261122. Native Google account selection is still an interactive device check; do not mistake configuration validation or unit tests for an end-to-end Google login.
+
+Play certificate fingerprints registered:
+
+| Certificate | SHA-1 | SHA-256 |
+|---|---|---|
+| Deployment | 90:51:FE:CD:0A:64:51:B9:A4:98:67:9E:52:C9:37:25:8C:BE:20:F2 | 27:10:CE:16:BC:A6:C5:4F:C6:13:FF:D2:AC:4D:03:22:59:83:E3:80:34:76:3B:76:75:00:BB:44:3E:6E:CC:C2 |
+| Hybrid classical | 94:FD:C0:78:A5:4C:A1:97:79:3C:89:E5:6D:AE:54:3B:20:7A:AC:FB | EF:CA:78:C5:5B:2F:75:EF:3B:1F:68:D2:33:B2:08:26:A8:09:15:43:D5:89:4F:94:3B:50:74:A9:81:36:A5:97 |
+| Hybrid PQC | 0D:E2:69:B2:7B:DC:41:2C:9E:09:23:BD:88:B3:61:1F:2E:71:D8:83 | D7:B6:31:33:D9:FC:AD:99:8F:4A:0A:89:16:AF:95:21:15:66:87:08:40:12:DE:82:96:09:B9:B0:1C:A9:47:81 |
+
+Sign-in logs also revealed registerIdentity HTTP 400: the deployed function still accepted only the older payload while clients send firstNameHint. Deployed the existing tested compatible registerIdentity implementation to rally4ever-3adaf. Client fallback for older functions remains. No weakening of verified-email checks or duplicate-profile protections.

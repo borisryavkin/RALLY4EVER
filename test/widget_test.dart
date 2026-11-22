@@ -11,7 +11,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:rally4ever/main.dart';
 
 void main() {
-  testWidgets('shows the Rally4ever welcome flow', (WidgetTester tester) async {
+  testWidgets('shows Welcome back consistently on app launch', (
+    WidgetTester tester,
+  ) async {
     // Use a phone/tablet portrait viewport: the onboarding page is designed
     // around the vertical layout used by the supported mobile clients.
     tester.view.physicalSize = const Size(1600, 2560);
@@ -20,6 +22,6 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     await tester.pumpWidget(const MyApp());
-    expect(find.text('Find your\nprogram'), findsOneWidget);
+    expect(find.text('Welcome\nback'), findsOneWidget);
   });
 }

@@ -7,6 +7,13 @@ export '../theme/colors.dart';
 
 ThemeData rallyTheme() => ThemeData(
   useMaterial3: true,
+  // Keep the participant design identical on iOS and Android. Retain the
+  // actual platform for authentication, keyboard and accessibility behavior.
+  visualDensity: VisualDensity.standard,
+  materialTapTargetSize: MaterialTapTargetSize.padded,
+  actionIconTheme: ActionIconThemeData(
+    backButtonIconBuilder: (_) => const Icon(Icons.arrow_back_ios_new_rounded),
+  ),
   fontFamily: 'Inter',
   scaffoldBackgroundColor: cream,
   colorScheme: const ColorScheme.light(
@@ -67,15 +74,7 @@ ThemeData rallyTheme() => ThemeData(
   dividerTheme: const DividerThemeData(color: Color(0xffe5dfdc)),
 );
 
-const _weekdayNames = [
-  'Mon',
-  'Tue',
-  'Wed',
-  'Thu',
-  'Fri',
-  'Sat',
-  'Sun',
-];
+const _weekdayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 const _monthNames = [
   'Jan',
   'Feb',
@@ -132,7 +131,12 @@ class Panel extends StatelessWidget {
 }
 
 class StatusPill extends StatelessWidget {
-  const StatusPill(this.label, {super.key, this.dark = false, this.muted = false});
+  const StatusPill(
+    this.label, {
+    super.key,
+    this.dark = false,
+    this.muted = false,
+  });
   final String label;
   final bool dark;
   // A session that's full, closed, cancelled or over -- a visibly
@@ -152,7 +156,11 @@ class StatusPill extends StatelessWidget {
     child: Text(
       label,
       style: TextStyle(
-        color: dark ? Colors.white : muted ? slate : navy,
+        color: dark
+            ? Colors.white
+            : muted
+            ? slate
+            : navy,
         fontSize: 10,
         fontWeight: FontWeight.w700,
       ),

@@ -48,10 +48,7 @@ class _ParticipantAppState extends State<ParticipantApp>
   late final ParticipantRepository repo =
       widget.repository ?? DisabledParticipantRepository();
   late String page =
-      widget.initialPage ??
-      (repo.uid == null
-          ? (repo.hasSignedInBefore ? 'signin' : 'welcome1')
-          : 'home');
+      widget.initialPage ?? (repo.uid == null ? 'signin' : 'home');
   String? selectedId, selectedProgramId, error;
   Future<void> Function()? _lastFailedAction;
   String locationSearch = '';
@@ -225,7 +222,7 @@ class _ParticipantAppState extends State<ParticipantApp>
             'noapp',
             'forgot-password',
           ].contains(page)) {
-        page = repo.hasSignedInBefore ? 'signin' : 'entry';
+        page = 'signin';
       }
     });
   }
