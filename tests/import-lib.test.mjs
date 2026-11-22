@@ -10,9 +10,8 @@ import {
   weekdayFromDate,
   parseTimeRange,
   normalizeFrequency,
-  parseStartDate,
-  isCorruptedTimeCell,
-  rawTextForCorruptedTime,
+  isoFromYMD,
+  parseStartDateText,
 } from '../scripts/import-lib.mjs';
 
 test('normalizeVenueName lowercases, trims, collapses whitespace, strips punctuation and filler words', () => {
@@ -106,11 +105,17 @@ test('parseTimeRange never guesses: no am/pm anywhere, or non-time text, both co
   assert.equal(parseTimeRange(null).reason, 'empty');
 });
 
-test('isCorruptedTimeCell / rawTextForCorruptedTime detect and preserve the Excel date-from-time bug', () => {
-  const corrupted = new Date(Date.UTC(2023, 10, 12)); // read from a "m-d" formatted cell
-  assert.equal(isCorruptedTimeCell(corrupted), true);
-  assert.equal(isCorruptedTimeCell('2-3pm'), false);
-  assert.equal(rawTextForCorruptedTime(corrupted), '11-12');
+test('isoFromYMD builds a date from already-decoded integer parts, timezone-independent', () => {
+  // The exact case that motivated this: xlsx's own cellDates:true
+  // conversion shifts by a day depending on the machine's local
+  // timezone, but XLSX.SSF.parse_date_code's {y,m,d} does not -- so
+  // date construction here must never round-trip through a JS Date in a
+  // way that re-introduces that shift.
+  assert.equal(isoFromYMD(2023, 11, 12), '2023-11-12');
+  assert.equal(isoFromYMD(2025, 2, 21), '2025-02-21');
+  assert.equal(isoFromYMD(2025, 13, 1), null); // invalid month
+  assert.equal(isoFromYMD(2025, 2, 30), null); // invalid day-of-month
+  assert.equal(isoFromYMD(null, 1, 1), null);
 });
 
 test('normalizeFrequency maps the known single-word values, keeps descriptive text as-is', () => {
@@ -121,15 +126,14 @@ test('normalizeFrequency maps the known single-word values, keeps descriptive te
   assert.equal(normalizeFrequency(null), null);
 });
 
-test('parseStartDate accepts a real Date or an unambiguous DD/MM/YYYY string, never guesses at the rest', () => {
-  assert.equal(parseStartDate(new Date(Date.UTC(2025, 1, 21))), '2025-02-21');
-  assert.equal(parseStartDate('21/02/2025'), '2025-02-21');
-  assert.equal(parseStartDate('26/05/2025'), '2025-05-26');
+test('parseStartDateText accepts an unambiguous DD/MM/YYYY string, never guesses at the rest', () => {
+  assert.equal(parseStartDateText('21/02/2025'), '2025-02-21');
+  assert.equal(parseStartDateText('26/05/2025'), '2025-05-26');
   // Corrupted/unparseable examples straight from the real spreadsheet.
-  assert.equal(parseStartDate(2021), null);
-  assert.equal(parseStartDate('2021.0'), null);
-  assert.equal(parseStartDate('TBA'), null);
-  assert.equal(parseStartDate('7/1072025'), null);
-  assert.equal(parseStartDate(null), null);
-  assert.equal(parseStartDate(''), null);
+  assert.equal(parseStartDateText('2021'), null);
+  assert.equal(parseStartDateText('2021.0'), null);
+  assert.equal(parseStartDateText('TBA'), null);
+  assert.equal(parseStartDateText('7/1072025'), null);
+  assert.equal(parseStartDateText(null), null);
+  assert.equal(parseStartDateText(''), null);
 });

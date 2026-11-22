@@ -139,41 +139,32 @@ export function normalizeFrequency(raw) {
   return text || null;
 }
 
-/** A spreadsheet Start Date cell. Only a real Date or an unambiguous
- * DD/MM/YYYY string is parsed; "2021" (year only), "TBA", "7/1072025"
- * (clearly mistyped) and anything else never-guessable returns null with
- * the original text preserved by the caller in rawStartDate. */
-export function parseStartDate(raw) {
-  if (raw == null || raw === '') return null;
-  if (raw instanceof Date) {
-    if (Number.isNaN(raw.getTime())) return null;
-    return raw.toISOString().slice(0, 10);
+/** Builds 'YYYY-MM-DD' from already-validated integer parts (e.g. from
+ * XLSX's own serial-date decoder, which is timezone-independent -- unlike
+ * a JS Date built from a spreadsheet library's date conversion, which can
+ * shift by a day depending on the machine's local timezone). Returns null
+ * for a calendar-invalid combination (which also catches overflowed
+ * month/day from a bad decode) rather than silently normalizing it. */
+export function isoFromYMD(year, month, day) {
+  if (![year, month, day].every(Number.isInteger)) return null;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) {
+    return null;
   }
+  return `${String(year).padStart(4, '0')}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/** A Start Date spreadsheet cell that is plain text (not a real date
+ * serial -- see isoFromYMD for that path). Only an unambiguous DD/MM/YYYY
+ * string is parsed; "2021" (year only), "TBA", "7/1072025" (clearly
+ * mistyped) and anything else never-guessable returns null, with the
+ * original text preserved by the caller in rawStartDate. */
+export function parseStartDateText(raw) {
+  if (raw == null || raw === '') return null;
   const text = String(raw).trim();
   const m = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
   if (!m) return null;
   const [, d, mo, y] = m;
-  const day = Number(d), month = Number(mo), year = Number(y);
-  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-  const date = new Date(Date.UTC(year, month - 1, day));
-  if (date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
-  return date.toISOString().slice(0, 10);
-}
-
-/** True when a "Time" column cell is a Date/datetime -- Excel's classic
- * "typed a time range, got auto-converted to a calendar date" corruption.
- * Never treated as a real time; the caller keeps the month/day as
- * rawTime text and leaves startTime/endTime empty. */
-export function isCorruptedTimeCell(raw) {
-  return raw instanceof Date;
-}
-
-/** Best-effort reconstruction of what was likely typed, for the
- * admin-only rawTime field -- e.g. a Date read back from a cell
- * formatted "m-d" that shows 11-12 was probably typed as "11-12" (meant
- * as a time range), not a real calendar date. Not used for anything
- * participant-visible. */
-export function rawTextForCorruptedTime(date) {
-  if (!(date instanceof Date)) return String(date ?? '');
-  return `${date.getUTCMonth() + 1}-${date.getUTCDate()}`;
+  return isoFromYMD(Number(y), Number(mo), Number(d));
 }
